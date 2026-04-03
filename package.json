@@ -1,0 +1,32 @@
+{
+  "name": "smart-puc",
+  "version": "1.0.0",
+  "description": "Blockchain-Based Real-Time Vehicle Emission Monitoring and Compliance System",
+  "main": "truffle-config.js",
+  "scripts": {
+    "compile": "truffle compile",
+    "migrate": "truffle migrate",
+    "migrate:sepolia": "truffle migrate --network sepolia",
+    "test": "truffle test",
+    "dev:backend": "cd backend && python app.py",
+    "dev:frontend": "npx http-server frontend -p 8080 -c-1 --cors"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "emission",
+    "puc",
+    "smart-contract",
+    "web3"
+  ],
+  "author": "Smart PUC Team",
+  "license": "MIT",
+  "dependencies": {
+    "@truffle/hdwallet-provider": "^2.1.15",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "chai": "^4.3.10",
+    "http-server": "^14.1.1"
+  }
+}

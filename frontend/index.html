@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Smart PUC — Vehicle Owner Dashboard for real-time vehicle emission monitoring and blockchain-based PUC compliance">
+    <title>Smart PUC — Vehicle Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Leaflet mapping library -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body>
+    <div class="app-container">
+
+        <!-- ═══ Navbar ═══ -->
+        <nav class="navbar" id="navbar">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">⚡</div>
+                <div>
+                    <h1>Smart PUC</h1>
+                    <span>Vehicle Emission Monitor</span>
+                </div>
+            </a>
+            <div class="navbar-actions">
+                <a href="index.html" class="nav-link active">🚗 Vehicle Dashboard</a>
+                <a href="authority.html" class="nav-link">🏛️ Authority Panel</a>
+                <div class="wallet-status" id="walletStatus">
+                    <span class="wallet-dot" id="walletDot"></span>
+                    <span id="walletAddress">Not Connected</span>
+                </div>
+                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">
+                    🦊 Connect Wallet
+                </button>
+            </div>
+        </nav>
+
+        <!-- ═══ Alerts Container ═══ -->
+        <div id="alertsContainer"></div>
+
+        <!-- ═══ Vehicle ID & Route Selection ═══ -->
+        <div class="card mb-lg">
+            <div style="display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap;">
+                <div class="form-group" style="flex: 1; min-width: 200px;">
+                    <label class="form-label" for="vehicleIdInput">Vehicle Registration</label>
+                    <input type="text" class="form-input" id="vehicleIdInput" value="MH12AB1234" 
+                           placeholder="e.g. MH12AB1234" style="text-transform: uppercase;">
+                </div>
+                <div class="form-group" style="flex: 2; min-width: 250px;">
+                    <label class="form-label" for="routeSelect">Mumbai Route Selection</label>
+                    <select class="form-select" id="routeSelect">
+                        <!-- Populated by app.js -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">&nbsp;</label>
+                    <div style="display: flex; gap: var(--space-sm);">
+                        <button class="btn btn-accent" id="startRouteBtn" onclick="toggleRouteSimulation()">
+                            📍 Start Route
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="loadHistory()">
+                            📜 History
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ Live Leaflet Map ═══ -->
+        <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1px solid var(--clr-border);">
+            <div id="map" style="height: 400px; width: 100%; border-radius: var(--radius-lg); background-color: var(--clr-surface-2);"></div>
+        </div>
+
+        <!-- ═══ Live Metrics ═══ -->
+        <div class="metrics-grid" id="metricsGrid">
+            <div class="metric-card">
+                <div class="metric-label">Engine RPM</div>
+                <div class="metric-value" id="metricRpm">—</div>
+                <div class="metric-unit">revolutions/min</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="rpmBar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Speed</div>
+                <div class="metric-value" id="metricSpeed">—</div>
+                <div class="metric-unit">km/h</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="speedBar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Fuel Consumption</div>
+                <div class="metric-value" id="metricFuel">—</div>
+                <div class="metric-unit">L/100km</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="fuelBar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">CO₂ Emission</div>
+                <div class="metric-value" id="metricCo2">—</div>
+                <div class="metric-unit">g/km</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="co2Bar" style="width: 0%"></div></div>
+            </div>
+        </div>
+
+        <!-- ═══ Compliance + Latest TX ═══ -->
+        <div class="grid-2 mb-lg">
+            <!-- Compliance Panel -->
+            <div class="compliance-panel" id="compliancePanel">
+                <div class="compliance-label">Compliance Status</div>
+                <div class="status-badge status-badge-large" id="complianceBadge">
+                    AWAITING DATA
+                </div>
+                <div class="threshold-info">
+                    Threshold: <strong id="thresholdValue">120</strong> g/km (Bharat Stage VI — Petrol)
+                </div>
+            </div>
+
+            <!-- Latest Transaction -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">⛓️</span> Latest Transaction</div>
+                </div>
+                <div id="latestTx" class="empty-state">
+                    <div class="icon">📡</div>
+                    <p>No transaction yet.<br>Click <strong>Simulate & Record</strong> to start.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ Emission History Table ═══ -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">📊</span> Emission History</div>
+                <span class="text-muted text-mono" id="historyCount">0 records</span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Vehicle ID</th>
+                            <th>CO₂ (g/km)</th>
+                            <th>Timestamp</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <tr>
+                            <td colspan="5" class="text-center text-dim" style="padding: 2rem;">
+                                No records loaded. Click "Load History" to fetch on-chain data.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ═══ Footer ═══ -->
+        <footer class="footer">
+            Smart PUC — Blockchain-Based Real-Time Vehicle Emission Monitoring &amp; Compliance System
+            <br>
+            Built with Solidity • Web3.py • Ethers.js • Flask
+        </footer>
+    </div>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Application Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
