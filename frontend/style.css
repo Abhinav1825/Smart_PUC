@@ -686,6 +686,181 @@ td .mono {
 .gap-md { gap: var(--space-md); }
 .hidden { display: none !important; }
 
+/* ── Fraud Alert Banner ───────────────────────────────────────────── */
+.fraud-banner {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));
+    border: 2px solid rgba(239, 68, 68, 0.5);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
+    animation: pulse-fail 2s ease-in-out infinite;
+}
+
+.fraud-banner-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.fraud-icon {
+    width: 48px;
+    height: 48px;
+    background: var(--clr-fail);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 900;
+    flex-shrink: 0;
+}
+
+.fraud-banner strong {
+    color: var(--clr-fail);
+    font-size: 1rem;
+    letter-spacing: 0.05em;
+    display: block;
+    margin-bottom: var(--space-xs);
+}
+
+.fraud-banner span {
+    color: var(--clr-text-muted);
+    font-size: 0.875rem;
+}
+
+.fraud-score-display {
+    font-family: var(--font-mono);
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--clr-fail);
+    margin-left: auto;
+}
+
+/* ── WLTC Phase Indicator ─────────────────────────────────────────── */
+.wltc-phase-indicator {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.phase-dot {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--clr-text-dim);
+    background: var(--clr-surface-2);
+    border: 1px solid var(--clr-border);
+    transition: var(--transition);
+}
+
+.phase-dot.active.phase-low { background: rgba(16, 185, 129, 0.2); color: var(--clr-pass); border-color: var(--clr-pass); }
+.phase-dot.active.phase-medium { background: rgba(34, 211, 238, 0.2); color: var(--clr-accent); border-color: var(--clr-accent); }
+.phase-dot.active.phase-high { background: rgba(245, 158, 11, 0.2); color: var(--clr-warn); border-color: var(--clr-warn); }
+.phase-dot.active.phase-extra-high { background: rgba(239, 68, 68, 0.2); color: var(--clr-fail); border-color: var(--clr-fail); }
+
+/* ── CES Gauge ────────────────────────────────────────────────────── */
+.ces-gauge-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.ces-gauge-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.ces-gauge {
+    width: 220px;
+}
+
+.ces-gauge-svg {
+    width: 100%;
+}
+
+.ces-value-text {
+    font-family: var(--font-mono);
+    font-size: 1.75rem;
+    font-weight: 800;
+    fill: var(--clr-text);
+}
+
+.ces-label-text {
+    font-family: var(--font-sans);
+    font-size: 0.625rem;
+    fill: var(--clr-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.ces-threshold-info {
+    font-size: 0.75rem;
+    color: var(--clr-text-dim);
+    text-align: center;
+}
+
+/* ── Pollutant Bar Colors ─────────────────────────────────────────── */
+.bar-co2 { background: linear-gradient(90deg, #6366f1, #818cf8); }
+.bar-co { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.bar-nox { background: linear-gradient(90deg, #ef4444, #f87171); }
+.bar-hc { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.bar-pm25 { background: linear-gradient(90deg, #ec4899, #f472b6); }
+
+/* ── LSTM Prediction Panel ────────────────────────────────────────── */
+.prediction-panel {
+    min-height: 200px;
+}
+
+.lstm-warning {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    background: var(--clr-warn-bg);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--clr-warn);
+    font-size: 0.875rem;
+    animation: slideInDown 0.4s ease;
+}
+
+/* ── NFT Certificate Panel ────────────────────────────────────────── */
+.certificate-panel {
+    padding: var(--space-md) 0 0 0;
+}
+
+.cert-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-lg);
+}
+
+.cert-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.cert-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--clr-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cert-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--clr-text);
+    font-family: var(--font-mono);
+}
+
 /* ── Leaflet Map Dark Mode ─────────────────────────────────────────── */
 .leaflet-layer,
 .leaflet-control-zoom-in,

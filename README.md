@@ -1,94 +1,190 @@
-# Smart PUC — Real-Time Vehicle Emission Monitoring System
+# Smart PUC — Multi-Pollutant Vehicle Emission Monitoring System
 
-Blockchain-Based Real-Time Vehicle Emission Monitoring and Compliance System.
-This project implements a complete, transparent, and tamper-proof alternative to traditional Pollution Under Control (PUC) certificates. It focuses on **petrol vehicles** with an emission threshold of 120 g/km CO₂ (aligned with Bharat Stage VI / EURO 6).
+Blockchain-Based Real-Time Multi-Pollutant Vehicle Emission Monitoring and Compliance System.
+
+This project implements a transparent, tamper-proof alternative to traditional Pollution Under Control (PUC) certificates. It monitors **all 5 Bharat Stage VI regulated pollutants** (CO2, CO, NOx, HC, PM2.5) using physics-based models, ML fraud detection, and NFT-based digital certificates.
 
 ## Architecture
 
-The system consists of three main layers:
-1. **Smart Contract (Solidity)**: Deployed on Ethereum (local Ganache or Sepolia testnet) to store emission records immutably and emit violation events.
-2. **Backend Engine (Python/Flask)**: Simulates OBD-II telemetry (RPM, Speed, Fuel Rate), calculates CO₂ emissions, and interacts with the blockchain via Web3.py.
-3. **Frontend Dashboard (HTML/JS/Ethers.js)**: Provides role-based views for Vehicle Owners and Regulatory Authorities, integrating with MetaMask for wallet connection and real-time blockchain reads.
+```
++-------------------+     +------------------+     +-------------------+
+|   WLTC Simulator  | --> |  VSP Physics     | --> | Multi-Pollutant   |
+|   (1800s cycle)   |     |  Model (EPA)     |     | Emission Engine   |
++-------------------+     +------------------+     +-------------------+
+                                                           |
+                                                           v
++-------------------+     +------------------+     +-------------------+
+|   NFT PUC         | <-- |  Blockchain      | <-- | Fraud Detector    |
+|   Certificate     |     |  (Solidity)      |     | (Ensemble ML)     |
++-------------------+     +------------------+     +-------------------+
+                                                           |
+                                                           v
+                                                   +-------------------+
+                                                   | LSTM Predictor    |
+                                                   | (Preventive)      |
+                                                   +-------------------+
+                                                           |
+                                                           v
+                                                   +-------------------+
+                                                   | Dashboard         |
+                                                   | (5 pollutants +   |
+                                                   |  fraud + LSTM)    |
+                                                   +-------------------+
+```
+
+### Layers
+
+1. **Smart Contracts (Solidity)**: `EmissionContract.sol` stores all 5 pollutants + CES + fraud score per record. `PUCCertificate.sol` issues ERC-721 NFT certificates with 180-day expiry.
+2. **Physics Engine (Python)**: VSP model (EPA MOVES3), WLTC Class 3b driving cycle, multi-pollutant emission rates with Arrhenius NOx correction, cold-start penalties (COPERT 5), and Composite Emission Score.
+3. **ML Layer (Python)**: Three-component ensemble fraud detector (physics constraints + Isolation Forest + temporal consistency). LSTM predictor for preventive compliance warnings.
+4. **Backend API (Flask)**: Orchestrates the full pipeline: Simulator -> VSP -> Emissions -> Fraud -> Blockchain -> Response.
+5. **Frontend Dashboard (HTML/JS)**: Real-time display of all 5 pollutants, CES gauge, fraud alerts, LSTM prediction chart, WLTC phase indicator, NFT certificate viewer.
+
+## Key Features
+
+- **5 BSVI Pollutants**: CO2 (120 g/km), CO (1.0 g/km), NOx (0.06 g/km), HC (0.10 g/km), PM2.5 (0.0045 g/km)
+- **Composite Emission Score (CES)**: Weighted multi-pollutant metric (CO2=35%, NOx=30%, CO=15%, HC=12%, PM2.5=8%). CES < 1.0 = PASS
+- **WLTC Driving Cycle**: Full 1800-second Class 3b profile with 4 phases (Low/Medium/High/Extra High)
+- **VSP Physics Model**: EPA MOVES Vehicle Specific Power formula with operating mode bins
+- **Fraud Detection**: Ensemble of physics validator, Isolation Forest, and temporal consistency checker
+- **LSTM Prediction**: Forecasts emissions 25 seconds ahead; warns before violations occur
+- **NFT PUC Certificates**: ERC-721 digital certificates with 180-day validity and revocation
+- **VAHAN Integration**: Bridge to India's vehicle registration database (with mock fallback)
 
 ## Prerequisites
 
 - **Node.js** (v18+) and **npm**
-- **Python** (3.10+)
-- **Ganache** (UI or CLI) for local blockchain simulation
+- **Python** (3.10+) with pip
+- **Ganache** (UI or CLI) for local blockchain
 - **MetaMask** browser extension
-- **Truffle** (install globally via `npm install -g truffle`)
+- **Truffle** (`npm install -g truffle`)
 
-## Setup Instructions (All Phases)
+## Quick Start
 
-### Phase 1: Local Blockchain Setup
-1. Launch **Ganache** (Quickstart). Make sure it is running on `HTTP://127.0.0.1:7545` and Network ID `1337`.
-2. Extract the first private key from Ganache to use for the backend.
+### Option 1: One-Click Setup (Windows)
+```bash
+run_project.bat
+```
 
-### Phase 2: Smart Contract Setup
-1. Open a terminal in the project root folder.
-2. Install npm dependencies:
-   ```bash
-   npm install
-   ```
-3. Compile the smart contracts:
-   ```bash
-   npm run compile
-   # or: truffle compile
-   ```
-4. Deploy to local Ganache:
-   ```bash
-   npm run migrate
-   # or: truffle migrate --network development
-   ```
+### Option 2: Manual Setup
 
-### Phase 3: Backend & Environment Setup
-1. Copy the environment variables template:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edit `.env`:
-   - Set `PRIVATE_KEY` to the private key of your first Ganache account (from Phase 1).
-   - Keep `RPC_URL=http://127.0.0.1:7545`.
-3. Set up a Python virtual environment and install dependencies:
-   ```bash
-   cd backend
-   python -m venv venv
-   # Windows: venv\\Scripts\\activate
-   # Mac/Linux: source venv/bin/activate
-   pip install -r ../requirements.txt
-   ```
-4. Start the backend API:
-   ```bash
-   python app.py
-   ```
-   The backend should report `✅ Connected` to the blockchain and start on port 5000.
+#### 1. Blockchain Setup
+```bash
+# Start Ganache on port 7545
+npx ganache -d -p 7545
 
-### Phase 4 & 5: Wallet Integration & Frontend
-1. Open your browser and configure **MetaMask**:
-   - Add a custom network: Name = "Ganache", RPC URL = `http://127.0.0.1:7545`, Chain ID = `1337`.
-   - Import an account using a private key from Ganache (preferably Account 2 or 3, different from the backend's).
-2. Start the frontend development server:
-   ```bash
-   # Open a new terminal in the project root
-   npm run dev:frontend
-   ```
-   (This runs `npx http-server frontend -p 8080 -c-1 --cors`)
-3. Open `http://127.0.0.1:8080` in your browser.
-4. Click **Connect Wallet** to connect MetaMask.
+# Install dependencies and deploy contracts
+npm install
+npm run compile
+npm run migrate
+```
 
-### Phase 6 & 7: Full DApp Interaction
-1. **Vehicle Dashboard (`index.html`)**: Click "Simulate & Record". The backend will generate data, calculate CO₂, write it to the blockchain using the backend private key, and the frontend will update the metrics and PASS/FAIL status.
-2. **Authority Dashboard (`authority.html`)**: Open this page to view all simulated emission records across all registered vehicles. You can filter by violations and observe real-time "Violation Detected" event alerts if someone records an emission over 120 g/km.
+#### 2. Backend Setup
+```bash
+cp .env.example .env
+# Edit .env: set PRIVATE_KEY from Ganache Account 0
 
-## Testnet Deployment (Sepolia) - Optional
-1. Obtain an Infura/Alchemy Project ID and a MetaMask mnemonic with Sepolia test ETH.
-2. Update `.env` with `INFURA_PROJECT_ID` and `MNEMONIC`.
-3. Deploy: `npm run migrate:sepolia`
-4. Update `RPC_URL` in `.env` to your Infura endpoint and restart the backend.
-5. In MetaMask, switch to the Sepolia network.
+cd backend
+python -m venv venv
+# Windows: venv\Scripts\activate
+# Mac/Linux: source venv/bin/activate
+pip install -r ../requirements.txt
+python app.py
+```
+
+#### 3. Frontend
+```bash
+npm run dev:frontend
+# Open http://127.0.0.1:8080
+# Connect MetaMask (Ganache network, Chain ID 1337)
+```
+
+## Project Structure
+
+```
+Smart_PUC/
+|-- backend/
+|   |-- app.py                    # Flask API (main pipeline orchestrator)
+|   |-- emission_engine.py        # Multi-pollutant BSVI emission calculator
+|   |-- simulator.py              # WLTC Class 3b driving cycle simulator
+|   |-- blockchain_connector.py   # Web3.py multi-pollutant blockchain interface
+|   |-- emission_engine_legacy.py # Backup of original CO2-only engine
+|   |-- simulator_legacy.py       # Backup of original random simulator
+|-- physics/
+|   |-- vsp_model.py              # EPA MOVES VSP model + operating mode bins
+|-- ml/
+|   |-- fraud_detector.py         # Ensemble fraud detection (3 components)
+|   |-- lstm_predictor.py         # LSTM emission forecasting
+|-- contracts/
+|   |-- EmissionContract.sol      # Multi-pollutant + CES + fraud storage
+|   |-- PUCCertificate.sol        # ERC-721 NFT PUC certificate
+|-- frontend/
+|   |-- index.html                # Vehicle owner dashboard
+|   |-- authority.html            # Authority/RTO dashboard
+|   |-- app.js                    # Frontend logic (Chart.js + Ethers.js)
+|   |-- style.css                 # Premium dark theme
+|-- benchmarks/
+|   |-- scalability_test.py       # 5-experiment benchmark suite
+|   |-- blockchain_comparison.py  # Ethereum vs Polygon vs Hyperledger
+|-- integrations/
+|   |-- vaahan_bridge.py          # VAHAN 4.0 vehicle verification bridge
+|-- tests/
+|   |-- test_vsp_model.py
+|   |-- test_emission_engine.py
+|   |-- test_simulator.py
+|   |-- test_fraud_detector.py
+|   |-- test_lstm_predictor.py
+|-- test/
+|   |-- TestEmission.js           # Truffle smart contract tests
+```
 
 ## Running Tests
-To run the Truffle smart contract tests:
+
+### Python Tests
+```bash
+python -m pytest tests/ -v
+```
+
+### Solidity Tests
 ```bash
 truffle test
 ```
+
+### Benchmarks
+```bash
+python benchmarks/scalability_test.py
+python benchmarks/blockchain_comparison.py
+```
+
+## BSVI Compliance Thresholds
+
+| Pollutant | Threshold | CES Weight |
+|-----------|-----------|------------|
+| CO2       | 120 g/km  | 35%        |
+| CO        | 1.0 g/km  | 15%        |
+| NOx       | 0.06 g/km | 30%        |
+| HC        | 0.10 g/km | 12%        |
+| PM2.5     | 0.0045 g/km | 8%       |
+
+## Academic References
+
+- US EPA MOVES3 Technical Report (2020) — VSP model, operating mode bins
+- ARAI BSVI Notification, MoRTH India (2020) — emission thresholds
+- COPERT 5 Methodology, EEA Technical Report No. 19 — cold start corrections
+- Ntziachristos & Samaras, EMEP/EEA (2019) — emission factors
+- UN ECE Regulation No. 154 (WLTP), Annex 1 — WLTC cycle data
+- Heywood, "Internal Combustion Engine Fundamentals" — Arrhenius NOx
+- Rakha et al. (2004) — VSP to fuel rate polynomial
+- Liu et al., "Isolation Forest", ICDM 2008 — anomaly detection
+- Kwon et al., CAN Bus Anomaly Detection, IEEE TIFS 2021 — OBD security
+
+## Testnet Deployment (Sepolia)
+
+1. Set `INFURA_PROJECT_ID` and `MNEMONIC` in `.env`
+2. Deploy: `npm run migrate:sepolia`
+3. Update `RPC_URL` in `.env` and restart backend
+4. Switch MetaMask to Sepolia network
+
+## License
+
+MIT

@@ -3,130 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Smart PUC — Vehicle Owner Dashboard for real-time vehicle emission monitoring and blockchain-based PUC compliance">
+    <meta name="description" content="Smart PUC — Vehicle Owner Dashboard for real-time multi-pollutant emission monitoring, fraud detection, and blockchain-based PUC compliance">
     <title>Smart PUC — Vehicle Dashboard</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Leaflet mapping library -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 </head>
 <body>
     <div class="app-container">
 
-        <!-- ═══ Navbar ═══ -->
+        <!-- Navbar -->
         <nav class="navbar" id="navbar">
             <a href="index.html" class="navbar-brand">
-                <div class="logo">⚡</div>
+                <div class="logo">&#9889;</div>
                 <div>
                     <h1>Smart PUC</h1>
-                    <span>Vehicle Emission Monitor</span>
+                    <span>Multi-Pollutant Emission Monitor</span>
                 </div>
             </a>
             <div class="navbar-actions">
-                <a href="index.html" class="nav-link active">🚗 Vehicle Dashboard</a>
-                <a href="authority.html" class="nav-link">🏛️ Authority Panel</a>
+                <a href="index.html" class="nav-link active">Vehicle Dashboard</a>
+                <a href="authority.html" class="nav-link">Authority Panel</a>
                 <div class="wallet-status" id="walletStatus">
                     <span class="wallet-dot" id="walletDot"></span>
                     <span id="walletAddress">Not Connected</span>
                 </div>
                 <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">
-                    🦊 Connect Wallet
+                    Connect Wallet
                 </button>
             </div>
         </nav>
 
-        <!-- ═══ Alerts Container ═══ -->
+        <!-- Alerts Container -->
         <div id="alertsContainer"></div>
 
-        <!-- ═══ Vehicle ID & Route Selection ═══ -->
+        <!-- Fraud Alert Banner (hidden by default) -->
+        <div id="fraudAlertBanner" class="fraud-banner hidden">
+            <div class="fraud-banner-content">
+                <span class="fraud-icon">!</span>
+                <div>
+                    <strong>FRAUD DETECTED</strong>
+                    <span id="fraudAlertMsg">Anomalous OBD-II readings detected. Fraud score exceeds threshold.</span>
+                </div>
+                <span class="fraud-score-display" id="fraudScoreDisplay">0.00</span>
+            </div>
+        </div>
+
+        <!-- Vehicle ID, Route Selection & WLTC Phase -->
         <div class="card mb-lg">
             <div style="display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap;">
                 <div class="form-group" style="flex: 1; min-width: 200px;">
                     <label class="form-label" for="vehicleIdInput">Vehicle Registration</label>
-                    <input type="text" class="form-input" id="vehicleIdInput" value="MH12AB1234" 
+                    <input type="text" class="form-input" id="vehicleIdInput" value="MH12AB1234"
                            placeholder="e.g. MH12AB1234" style="text-transform: uppercase;">
                 </div>
                 <div class="form-group" style="flex: 2; min-width: 250px;">
                     <label class="form-label" for="routeSelect">Mumbai Route Selection</label>
-                    <select class="form-select" id="routeSelect">
-                        <!-- Populated by app.js -->
-                    </select>
+                    <select class="form-select" id="routeSelect"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">WLTC Phase</label>
+                    <div class="wltc-phase-indicator" id="wltcPhaseIndicator">
+                        <span class="phase-dot phase-low active" id="phaseLow" title="Low (Urban)">L</span>
+                        <span class="phase-dot phase-medium" id="phaseMedium" title="Medium (Suburban)">M</span>
+                        <span class="phase-dot phase-high" id="phaseHigh" title="High (Rural)">H</span>
+                        <span class="phase-dot phase-extra-high" id="phaseExtraHigh" title="Extra High (Motorway)">EH</span>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">&nbsp;</label>
                     <div style="display: flex; gap: var(--space-sm);">
                         <button class="btn btn-accent" id="startRouteBtn" onclick="toggleRouteSimulation()">
-                            📍 Start Route
+                            Start Route
                         </button>
                         <button class="btn btn-outline btn-sm" onclick="loadHistory()">
-                            📜 History
+                            History
                         </button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ═══ Live Leaflet Map ═══ -->
+        <!-- Live Leaflet Map -->
         <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1px solid var(--clr-border);">
             <div id="map" style="height: 400px; width: 100%; border-radius: var(--radius-lg); background-color: var(--clr-surface-2);"></div>
         </div>
 
-        <!-- ═══ Live Metrics ═══ -->
+        <!-- CES Gauge + Compliance -->
+        <div class="grid-2 mb-lg">
+            <!-- CES Gauge -->
+            <div class="card ces-gauge-card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#9878;</span> Composite Emission Score (CES)</div>
+                </div>
+                <div class="ces-gauge-container">
+                    <div class="ces-gauge" id="cesGauge">
+                        <svg viewBox="0 0 200 120" class="ces-gauge-svg">
+                            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--clr-surface-3)" stroke-width="12" stroke-linecap="round"/>
+                            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#cesGradient)" stroke-width="12" stroke-linecap="round"
+                                  id="cesArc" stroke-dasharray="0 251.3"/>
+                            <defs>
+                                <linearGradient id="cesGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:var(--clr-pass)"/>
+                                    <stop offset="60%" style="stop-color:var(--clr-warn)"/>
+                                    <stop offset="100%" style="stop-color:var(--clr-fail)"/>
+                                </linearGradient>
+                            </defs>
+                            <text x="100" y="85" text-anchor="middle" class="ces-value-text" id="cesValueText">--</text>
+                            <text x="100" y="105" text-anchor="middle" class="ces-label-text">CES Score</text>
+                        </svg>
+                    </div>
+                    <div class="ces-threshold-info">
+                        Pass &lt; 1.0 | Weights: CO&#8322; 35%, NOx 30%, CO 15%, HC 12%, PM2.5 8%
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compliance Panel -->
+            <div class="compliance-panel" id="compliancePanel">
+                <div class="compliance-label">Overall Compliance</div>
+                <div class="status-badge status-badge-large" id="complianceBadge">
+                    AWAITING DATA
+                </div>
+                <div class="threshold-info">
+                    BSVI Thresholds: CO&#8322;&lt;120, CO&lt;1.0, NOx&lt;0.06, HC&lt;0.10, PM2.5&lt;0.0045 g/km
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Metrics — All 5 Pollutants -->
         <div class="metrics-grid" id="metricsGrid">
             <div class="metric-card">
                 <div class="metric-label">Engine RPM</div>
-                <div class="metric-value" id="metricRpm">—</div>
+                <div class="metric-value" id="metricRpm">&mdash;</div>
                 <div class="metric-unit">revolutions/min</div>
                 <div class="metric-bar"><div class="metric-bar-fill" id="rpmBar" style="width: 0%"></div></div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Speed</div>
-                <div class="metric-value" id="metricSpeed">—</div>
+                <div class="metric-value" id="metricSpeed">&mdash;</div>
                 <div class="metric-unit">km/h</div>
                 <div class="metric-bar"><div class="metric-bar-fill" id="speedBar" style="width: 0%"></div></div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Fuel Consumption</div>
-                <div class="metric-value" id="metricFuel">—</div>
+                <div class="metric-value" id="metricFuel">&mdash;</div>
                 <div class="metric-unit">L/100km</div>
                 <div class="metric-bar"><div class="metric-bar-fill" id="fuelBar" style="width: 0%"></div></div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">CO₂ Emission</div>
-                <div class="metric-value" id="metricCo2">—</div>
-                <div class="metric-unit">g/km</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="co2Bar" style="width: 0%"></div></div>
+                <div class="metric-label">CO&#8322; Emission</div>
+                <div class="metric-value" id="metricCo2">&mdash;</div>
+                <div class="metric-unit">g/km (threshold: 120)</div>
+                <div class="metric-bar"><div class="metric-bar-fill bar-co2" id="co2Bar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">CO Emission</div>
+                <div class="metric-value" id="metricCo">&mdash;</div>
+                <div class="metric-unit">g/km (threshold: 1.0)</div>
+                <div class="metric-bar"><div class="metric-bar-fill bar-co" id="coBar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">NOx Emission</div>
+                <div class="metric-value" id="metricNox">&mdash;</div>
+                <div class="metric-unit">g/km (threshold: 0.06)</div>
+                <div class="metric-bar"><div class="metric-bar-fill bar-nox" id="noxBar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">HC Emission</div>
+                <div class="metric-value" id="metricHc">&mdash;</div>
+                <div class="metric-unit">g/km (threshold: 0.10)</div>
+                <div class="metric-bar"><div class="metric-bar-fill bar-hc" id="hcBar" style="width: 0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">PM2.5 Emission</div>
+                <div class="metric-value" id="metricPm25">&mdash;</div>
+                <div class="metric-unit">g/km (threshold: 0.0045)</div>
+                <div class="metric-bar"><div class="metric-bar-fill bar-pm25" id="pm25Bar" style="width: 0%"></div></div>
             </div>
         </div>
 
-        <!-- ═══ Compliance + Latest TX ═══ -->
+        <!-- LSTM Prediction + Latest TX -->
         <div class="grid-2 mb-lg">
-            <!-- Compliance Panel -->
-            <div class="compliance-panel" id="compliancePanel">
-                <div class="compliance-label">Compliance Status</div>
-                <div class="status-badge status-badge-large" id="complianceBadge">
-                    AWAITING DATA
+            <!-- LSTM Prediction Panel -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#128200;</span> LSTM Emission Forecast</div>
+                    <span class="text-muted text-mono" id="predictionStatus">Collecting data...</span>
                 </div>
-                <div class="threshold-info">
-                    Threshold: <strong id="thresholdValue">120</strong> g/km (Bharat Stage VI — Petrol)
+                <div id="lstmPredictionPanel" class="prediction-panel">
+                    <canvas id="predictionChart" height="180"></canvas>
+                    <div id="lstmWarning" class="lstm-warning hidden">
+                        <strong>Preventive Warning:</strong> <span id="lstmWarningMsg">CES predicted to exceed 0.85</span>
+                    </div>
                 </div>
             </div>
 
             <!-- Latest Transaction -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">⛓️</span> Latest Transaction</div>
+                    <div class="card-title"><span class="icon">&#9939;</span> Latest Transaction</div>
                 </div>
                 <div id="latestTx" class="empty-state">
-                    <div class="icon">📡</div>
-                    <p>No transaction yet.<br>Click <strong>Simulate & Record</strong> to start.</p>
+                    <div class="icon">&#128225;</div>
+                    <p>No transaction yet.<br>Click <strong>Start Route</strong> to begin.</p>
                 </div>
             </div>
         </div>
 
-        <!-- ═══ Emission History Table ═══ -->
+        <!-- NFT PUC Certificate Status -->
+        <div class="card mb-lg">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128196;</span> PUC Certificate (NFT)</div>
+                <button class="btn btn-outline btn-sm" onclick="loadCertificateStatus()">Check Status</button>
+            </div>
+            <div id="certificatePanel" class="certificate-panel">
+                <div class="cert-grid">
+                    <div class="cert-item">
+                        <span class="cert-label">Status</span>
+                        <span class="cert-value" id="certStatus">Not Issued</span>
+                    </div>
+                    <div class="cert-item">
+                        <span class="cert-label">Issue Date</span>
+                        <span class="cert-value" id="certIssueDate">&mdash;</span>
+                    </div>
+                    <div class="cert-item">
+                        <span class="cert-label">Expiry Date</span>
+                        <span class="cert-value" id="certExpiryDate">&mdash;</span>
+                    </div>
+                    <div class="cert-item">
+                        <span class="cert-label">Avg CES</span>
+                        <span class="cert-value" id="certAvgCES">&mdash;</span>
+                    </div>
+                    <div class="cert-item">
+                        <span class="cert-label">Token ID</span>
+                        <span class="cert-value text-mono" id="certTokenId">&mdash;</span>
+                    </div>
+                    <div class="cert-item">
+                        <span class="cert-label">Validity</span>
+                        <span class="cert-value" id="certValidity">&mdash;</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vehicle Stats Summary -->
+        <div class="metrics-grid mb-lg" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="metric-card">
+                <div class="metric-label">Total Records</div>
+                <div class="metric-value" id="statTotalRecords">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Violations</div>
+                <div class="metric-value" id="statViolations" style="-webkit-text-fill-color:var(--clr-fail)">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Fraud Alerts</div>
+                <div class="metric-value" id="statFraudAlerts" style="-webkit-text-fill-color:var(--clr-warn)">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg CES</div>
+                <div class="metric-value" id="statAvgCES">&mdash;</div>
+            </div>
+        </div>
+
+        <!-- Emission History Table -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">📊</span> Emission History</div>
+                <div class="card-title"><span class="icon">&#128202;</span> Emission History</div>
                 <span class="text-muted text-mono" id="historyCount">0 records</span>
             </div>
             <div class="table-container">
@@ -135,15 +278,20 @@
                         <tr>
                             <th>#</th>
                             <th>Vehicle ID</th>
-                            <th>CO₂ (g/km)</th>
-                            <th>Timestamp</th>
+                            <th>CO&#8322;</th>
+                            <th>CO</th>
+                            <th>NOx</th>
+                            <th>HC</th>
+                            <th>PM2.5</th>
+                            <th>CES</th>
+                            <th>Fraud</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody id="historyTableBody">
                         <tr>
-                            <td colspan="5" class="text-center text-dim" style="padding: 2rem;">
-                                No records loaded. Click "Load History" to fetch on-chain data.
+                            <td colspan="10" class="text-center text-dim" style="padding: 2rem;">
+                                No records loaded. Click "History" to fetch on-chain data.
                             </td>
                         </tr>
                     </tbody>
@@ -151,19 +299,18 @@
             </div>
         </div>
 
-        <!-- ═══ Footer ═══ -->
+        <!-- Footer -->
         <footer class="footer">
-            Smart PUC — Blockchain-Based Real-Time Vehicle Emission Monitoring &amp; Compliance System
+            Smart PUC &mdash; Blockchain-Based Multi-Pollutant Vehicle Emission Monitoring &amp; Compliance System (BSVI)
             <br>
-            Built with Solidity • Web3.py • Ethers.js • Flask
+            Built with Solidity | Web3.py | Flask | WLTC | VSP | MOVES | LSTM | Isolation Forest
         </footer>
     </div>
 
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    
-    <!-- Application Logic -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

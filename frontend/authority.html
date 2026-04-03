@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Smart PUC Authority Dashboard — regulatory oversight of vehicle emission compliance">
+    <meta name="description" content="Smart PUC Authority Dashboard — regulatory oversight of multi-pollutant vehicle emission compliance">
     <title>Smart PUC — Authority Dashboard</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,22 +11,24 @@
 <div class="app-container">
     <nav class="navbar">
         <a href="index.html" class="navbar-brand">
-            <div class="logo">⚡</div>
+            <div class="logo">&#9889;</div>
             <div><h1>Smart PUC</h1><span>Authority Dashboard</span></div>
         </a>
         <div class="navbar-actions">
-            <a href="index.html" class="nav-link">🚗 Vehicle</a>
-            <a href="authority.html" class="nav-link active">🏛️ Authority</a>
+            <a href="index.html" class="nav-link">Vehicle</a>
+            <a href="authority.html" class="nav-link active">Authority</a>
             <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">🦊 Connect</button>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
         </div>
     </nav>
     <div id="alertsContainer"></div>
     <div class="metrics-grid">
         <div class="metric-card"><div class="metric-label">Total Records</div><div class="metric-value" id="statTotal">0</div></div>
         <div class="metric-card"><div class="metric-label">Violations</div><div class="metric-value" id="statViol" style="-webkit-text-fill-color:var(--clr-fail)">0</div></div>
+        <div class="metric-card"><div class="metric-label">Fraud Alerts</div><div class="metric-value" id="statFraud" style="-webkit-text-fill-color:var(--clr-warn)">0</div></div>
         <div class="metric-card"><div class="metric-label">Vehicles</div><div class="metric-value" id="statVeh">0</div></div>
-        <div class="metric-card"><div class="metric-label">Compliance %</div><div class="metric-value" id="statComp">—</div></div>
+        <div class="metric-card"><div class="metric-label">Compliance %</div><div class="metric-value" id="statComp">&mdash;</div></div>
+        <div class="metric-card"><div class="metric-label">Avg CES</div><div class="metric-value" id="statAvgCes">&mdash;</div></div>
     </div>
     <div class="card mb-lg">
         <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
@@ -36,60 +38,79 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Filter</label>
-                <select class="form-select" id="filterSt"><option value="all">All</option><option value="fail">Violations</option><option value="pass">Compliant</option></select>
+                <select class="form-select" id="filterSt"><option value="all">All</option><option value="fail">Violations</option><option value="pass">Compliant</option><option value="fraud">Fraud Alerts</option></select>
             </div>
             <div class="form-group"><label class="form-label">&nbsp;</label>
                 <div style="display:flex;gap:.5rem">
-                    <button class="btn btn-accent" onclick="loadAll()">🔄 Refresh</button>
-                    <button class="btn btn-danger btn-sm" onclick="document.getElementById('filterSt').value='fail';loadAll()">🚨 Violations</button>
+                    <button class="btn btn-accent" onclick="loadAll()">Refresh</button>
+                    <button class="btn btn-danger btn-sm" onclick="document.getElementById('filterSt').value='fail';loadAll()">Violations</button>
+                    <button class="btn btn-outline btn-sm" onclick="document.getElementById('filterSt').value='fraud';loadAll()">Fraud</button>
                 </div>
             </div>
         </div>
     </div>
     <div id="violationAlerts"></div>
     <div class="card">
-        <div class="card-header"><div class="card-title">📋 All Records</div><span class="text-muted text-mono" id="recCnt">0</span></div>
+        <div class="card-header"><div class="card-title">All Records</div><span class="text-muted text-mono" id="recCnt">0</span></div>
         <div class="table-container">
-            <table><thead><tr><th>#</th><th>Vehicle</th><th>CO₂</th><th>Time</th><th>Status</th><th>Link</th></tr></thead>
-            <tbody id="recBody"><tr><td colspan="6" class="text-center text-dim" style="padding:2rem">Click Refresh to load</td></tr></tbody></table>
+            <table><thead><tr><th>#</th><th>Vehicle</th><th>CO&#8322;</th><th>NOx</th><th>CES</th><th>Fraud</th><th>Phase</th><th>Time</th><th>Status</th></tr></thead>
+            <tbody id="recBody"><tr><td colspan="9" class="text-center text-dim" style="padding:2rem">Click Refresh to load</td></tr></tbody></table>
         </div>
     </div>
-    <footer class="footer">Smart PUC — All records immutable on <a href="https://sepolia.etherscan.io" target="_blank">Etherscan</a></footer>
+    <footer class="footer">Smart PUC &mdash; Multi-pollutant BSVI compliance records immutable on blockchain</footer>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <script src="app.js"></script>
 <script>
 const API=window.SMART_PUC_API||'http://127.0.0.1:5000';
+const PHASE_LABELS=['Low','Medium','High','Extra High'];
 async function loadAll(){
     const tb=document.getElementById('recBody'),search=document.getElementById('searchVid').value.trim().toUpperCase(),
           filt=document.getElementById('filterSt').value;
-    tb.innerHTML='<tr><td colspan="6" class="text-center"><div class="spinner"></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="9" class="text-center"><div class="spinner"></div></td></tr>';
     try{
         const contract=await getContract();
-        if(!contract){tb.innerHTML='<tr><td colspan="6" class="text-center text-dim">Connect wallet first</td></tr>';return;}
-        const vehs=await contract.getRegisteredVehicles();let all=[],viols=0;
+        if(!contract){tb.innerHTML='<tr><td colspan="9" class="text-center text-dim">Connect wallet first</td></tr>';return;}
+        const vehs=await contract.getRegisteredVehicles();let all=[],viols=0,frauds=0,cesSum=0;
         for(const v of vehs){
             if(search&&v.toUpperCase()!==search)continue;
             const recs=await contract.getAllRecords(v);
-            for(const r of recs){const s=r[3]?'PASS':'FAIL';if(!r[3])viols++;
-                if(filt==='fail'&&s!=='FAIL')continue;if(filt==='pass'&&s!=='PASS')continue;
-                all.push({vehicleId:r[0],co2Level:Number(r[1]),timestamp:Number(r[2]),status:s});}
+            for(const r of recs){
+                const s=r[11]?'PASS':'FAIL';
+                const ces=Number(r[6])/10000;
+                const fraud=Number(r[7])/10000;
+                if(!r[11])viols++;
+                if(fraud>=0.65)frauds++;
+                cesSum+=ces;
+                if(filt==='fail'&&s!=='FAIL')continue;
+                if(filt==='pass'&&s!=='PASS')continue;
+                if(filt==='fraud'&&fraud<0.65)continue;
+                all.push({vehicleId:r[0],co2:Number(r[1])/1000,nox:Number(r[3])/1000,ces:ces,fraud:fraud,phase:Number(r[9]),timestamp:Number(r[10]),status:s});
+            }
         }
         all.sort((a,b)=>b.timestamp-a.timestamp);
         document.getElementById('statTotal').textContent=all.length;
         document.getElementById('statViol').textContent=viols;
+        document.getElementById('statFraud').textContent=frauds;
         document.getElementById('statVeh').textContent=vehs.length;
         const pass=all.filter(r=>r.status==='PASS').length;
-        document.getElementById('statComp').textContent=all.length?((pass/all.length)*100).toFixed(1):'—';
+        document.getElementById('statComp').textContent=all.length?((pass/all.length)*100).toFixed(1)+'%':'--';
+        document.getElementById('statAvgCes').textContent=all.length?(cesSum/all.length).toFixed(3):'--';
         document.getElementById('recCnt').textContent=all.length+' records';
-        if(!all.length){tb.innerHTML='<tr><td colspan="6" class="text-center text-dim" style="padding:2rem">No records</td></tr>';return;}
-        tb.innerHTML=all.map((r,i)=>{const d=new Date(r.timestamp*1000).toLocaleString(),cl=r.status==='PASS'?'pass':'fail';
-            return`<tr><td class="mono">${i+1}</td><td><strong>${r.vehicleId}</strong></td><td class="mono">${r.co2Level}</td><td class="text-muted">${d}</td><td><span class="status-badge ${cl}">${r.status}</span></td><td><a href="https://sepolia.etherscan.io" target="_blank">🔍</a></td></tr>`;}).join('');
-    }catch(e){tb.innerHTML=`<tr><td colspan="6" class="text-center text-fail">${e.message}</td></tr>`;}
+        if(!all.length){tb.innerHTML='<tr><td colspan="9" class="text-center text-dim" style="padding:2rem">No records</td></tr>';return;}
+        tb.innerHTML=all.map((r,i)=>{
+            const d=new Date(r.timestamp*1000).toLocaleString();
+            const cl=r.status==='PASS'?'pass':'fail';
+            const fcl=r.fraud>=0.65?'text-fail':r.fraud>=0.35?'text-warn':'text-pass';
+            return '<tr><td class="mono">'+( i+1)+'</td><td><strong>'+r.vehicleId+'</strong></td><td class="mono">'+r.co2.toFixed(1)+'</td><td class="mono">'+r.nox.toFixed(4)+'</td><td class="mono">'+r.ces.toFixed(3)+'</td><td class="mono '+fcl+'">'+r.fraud.toFixed(3)+'</td><td>'+PHASE_LABELS[r.phase]+'</td><td class="text-muted">'+d+'</td><td><span class="status-badge '+cl+'">'+r.status+'</span></td></tr>';
+        }).join('');
+    }catch(e){tb.innerHTML='<tr><td colspan="9" class="text-center text-fail">'+e.message+'</td></tr>';}
 }
 async function listenViol(){try{const c=await getContract();if(!c)return;
-    c.on('ViolationDetected',(v,co2,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
-        `<div class="alert alert-violation">🚨 <strong>VIOLATION</strong> — ${v}: ${co2} g/km at ${new Date(Number(t)*1000).toLocaleTimeString()}<button class="alert-dismiss" onclick="this.parentElement.remove()">✕</button></div>`);});
+    c.on('ViolationDetected',(v,ces,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
+        '<div class="alert alert-violation">VIOLATION: '+v+' CES='+(Number(ces)/10000).toFixed(3)+' at '+new Date(Number(t)*1000).toLocaleTimeString()+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
+    c.on('FraudDetected',(v,fs,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
+        '<div class="alert alert-warning">FRAUD ALERT: '+v+' Score='+(Number(fs)/10000).toFixed(3)+' at '+new Date(Number(t)*1000).toLocaleTimeString()+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
 }catch(e){console.warn(e);}}
 document.addEventListener('DOMContentLoaded',listenViol);
 </script>

@@ -1,7 +1,8 @@
 /**
- * Smart PUC — Truffle Unit Tests for EmissionContract
- * =====================================================
- * Test cases TC-01 through TC-05 (TC-06 is Sepolia-specific, manual).
+ * Smart PUC — Truffle Unit Tests for Upgraded EmissionContract
+ * ==============================================================
+ * Tests multi-pollutant storage, CES compliance, fraud detection,
+ * vehicle stats, and per-pollutant violation events.
  */
 
 const EmissionContract = artifacts.require("EmissionContract");
@@ -10,6 +11,29 @@ contract("EmissionContract", (accounts) => {
     const owner = accounts[0];
     const nonOwner = accounts[1];
     let instance;
+
+    // Scaling factors matching the contract
+    const SCALE_3 = 1000;
+    const SCALE_4 = 10000;
+    const SCALE_5 = 100000;
+
+    // Helper to store a standard emission record
+    async function storeRecord(vehicleId, co2, co, nox, hc, pm25, ces, fraud, vsp, phase, ts) {
+        return instance.storeEmission(
+            vehicleId,
+            co2 || 100000,   // 100.0 g/km scaled
+            co || 500,       // 0.5 g/km scaled
+            nox || 30,       // 0.03 g/km scaled
+            hc || 50,        // 0.05 g/km scaled
+            pm25 || 200,     // 0.002 g/km scaled (×100000)
+            ces || 7000,     // 0.70 CES scaled
+            fraud || 1000,   // 0.10 fraud scaled
+            vsp || 10000,    // 10.0 W/kg scaled
+            phase || 0,      // Low phase
+            ts || Math.floor(Date.now() / 1000),
+            { from: owner }
+        );
+    }
 
     beforeEach(async () => {
         instance = await EmissionContract.new({ from: owner });
@@ -21,117 +45,133 @@ contract("EmissionContract", (accounts) => {
         assert.equal(contractOwner, owner, "Owner should be the deployer");
     });
 
-    // TC-01 (cont): verify default threshold
-    it("TC-01: should have default threshold of 120", async () => {
-        const threshold = await instance.threshold();
-        assert.equal(threshold.toNumber(), 120, "Default threshold should be 120 g/km");
-    });
+    // TC-02: Store emission with PASS status (CES < 10000 and fraud < 6500)
+    it("TC-02: should store PASS for CES=0.70 and fraud=0.10", async () => {
+        const tx = await storeRecord("MH12AB1234");
 
-    // TC-02: Store emission below threshold → PASS
-    it("TC-02: should store PASS for co2=100 (below 120 threshold)", async () => {
-        const vehicleId = "MH12AB1234";
-        const co2 = 100;
-        const timestamp = Math.floor(Date.now() / 1000);
-
-        const tx = await instance.storeEmission(vehicleId, co2, timestamp, { from: owner });
-
-        // Check RecordStored event
-        assert.equal(tx.logs.length, 1, "Should emit exactly 1 event (RecordStored)");
-        assert.equal(tx.logs[0].event, "RecordStored", "Event should be RecordStored");
-
-        // Verify the record
-        const record = await instance.getRecord(vehicleId, 0);
-        assert.equal(record.vehicleId, vehicleId, "Vehicle ID mismatch");
-        assert.equal(record.co2Level.toNumber(), co2, "CO2 mismatch");
-        assert.equal(record.status, true, "Status should be PASS (true)");
-    });
-
-    // TC-03: Store emission above threshold → FAIL + ViolationDetected
-    it("TC-03: should store FAIL and emit ViolationDetected for co2=150", async () => {
-        const vehicleId = "MH14CD5678";
-        const co2 = 150;
-        const timestamp = Math.floor(Date.now() / 1000);
-
-        const tx = await instance.storeEmission(vehicleId, co2, timestamp, { from: owner });
-
-        // Should emit 2 events: RecordStored + ViolationDetected
+        // Should emit RecordStored
         const events = tx.logs.map(l => l.event);
-        assert.include(events, "RecordStored", "Should emit RecordStored");
-        assert.include(events, "ViolationDetected", "Should emit ViolationDetected");
+        assert.include(events, "RecordStored");
 
-        // Verify FAIL status
-        const record = await instance.getRecord(vehicleId, 0);
-        assert.equal(record.status, false, "Status should be FAIL (false)");
-        assert.equal(record.co2Level.toNumber(), 150, "CO2 should be 150");
+        // Verify record
+        const record = await instance.getRecord("MH12AB1234", 0);
+        assert.equal(record.vehicleId, "MH12AB1234");
+        assert.equal(record.co2Level.toNumber(), 100000);
+        assert.equal(record.status, true, "Should be PASS");
     });
 
-    // TC-04: Store 3 records and verify getRecord returns all correctly
-    it("TC-04: should store and retrieve 3 records correctly", async () => {
+    // TC-03: Store emission with FAIL status (CES >= 10000)
+    it("TC-03: should store FAIL when CES >= 1.0", async () => {
+        const tx = await storeRecord(
+            "MH14CD5678",
+            150000,  // 150 g/km CO2
+            1200,    // 1.2 g/km CO
+            80,      // 0.08 g/km NOx
+            120,     // 0.12 g/km HC
+            500,     // 0.005 g/km PM2.5
+            12000,   // CES = 1.2 (FAIL)
+            1000,    // fraud = 0.10
+            15000, 2, Math.floor(Date.now() / 1000)
+        );
+
+        const events = tx.logs.map(l => l.event);
+        assert.include(events, "ViolationDetected");
+
+        const record = await instance.getRecord("MH14CD5678", 0);
+        assert.equal(record.status, false, "Should be FAIL");
+    });
+
+    // TC-04: Fraud detection (fraud >= 0.65)
+    it("TC-04: should emit FraudDetected when fraud score >= 0.65", async () => {
+        const tx = await storeRecord(
+            "KA01EF9012",
+            100000, 500, 30, 50, 200,
+            7000,    // CES = 0.70
+            7500,    // fraud = 0.75 (above threshold)
+            10000, 0, Math.floor(Date.now() / 1000)
+        );
+
+        const events = tx.logs.map(l => l.event);
+        assert.include(events, "FraudDetected");
+    });
+
+    // TC-05: Multiple records and vehicle stats
+    it("TC-05: should track vehicle stats correctly", async () => {
         const vehicleId = "KA01EF9012";
-        const values = [90, 130, 110];
         const baseTs = Math.floor(Date.now() / 1000);
 
-        for (let i = 0; i < values.length; i++) {
-            await instance.storeEmission(vehicleId, values[i], baseTs + i * 60, { from: owner });
-        }
+        // PASS record
+        await storeRecord(vehicleId, 100000, 500, 30, 50, 200, 7000, 1000, 10000, 0, baseTs);
+        // FAIL record (high CES)
+        await storeRecord(vehicleId, 150000, 1200, 80, 120, 500, 12000, 1000, 15000, 2, baseTs + 60);
+        // Fraud record
+        await storeRecord(vehicleId, 100000, 500, 30, 50, 200, 7000, 8000, 10000, 0, baseTs + 120);
 
-        // Verify count
         const count = await instance.getRecordCount(vehicleId);
-        assert.equal(count.toNumber(), 3, "Should have 3 records");
+        assert.equal(count.toNumber(), 3);
 
-        // Verify each record
-        for (let i = 0; i < values.length; i++) {
-            const rec = await instance.getRecord(vehicleId, i);
-            assert.equal(rec.co2Level.toNumber(), values[i], `Record ${i} CO2 mismatch`);
-            assert.equal(rec.status, values[i] <= 120, `Record ${i} status mismatch`);
-        }
-
-        // Verify getViolations returns only the FAIL (130)
-        const violations = await instance.getViolations(vehicleId);
-        assert.equal(violations.length, 1, "Should have 1 violation");
-        assert.equal(violations[0].co2Level.toNumber(), 130, "Violation CO2 should be 130");
+        const stats = await instance.getVehicleStats(vehicleId);
+        assert.equal(stats[0].toNumber(), 3, "Total records should be 3");
+        assert.equal(stats[1].toNumber(), 1, "Violations should be 1");
+        assert.equal(stats[2].toNumber(), 1, "Fraud alerts should be 1");
     });
 
-    // TC-05: setThreshold from non-owner should revert
-    it("TC-05: should revert setThreshold from non-owner", async () => {
+    // TC-06: Violations filter
+    it("TC-06: getViolations should return only FAIL records", async () => {
+        const vehicleId = "DL01XY0001";
+        const ts = Math.floor(Date.now() / 1000);
+
+        await storeRecord(vehicleId, 100000, 500, 30, 50, 200, 7000, 1000, 10000, 0, ts);
+        await storeRecord(vehicleId, 150000, 1200, 80, 120, 500, 12000, 1000, 15000, 2, ts + 60);
+
+        const violations = await instance.getViolations(vehicleId);
+        assert.equal(violations.length, 1);
+        assert.equal(violations[0].status, false);
+    });
+
+    // TC-07: setThreshold from non-owner should revert
+    it("TC-07: should revert setThreshold from non-owner", async () => {
         try {
-            await instance.setThreshold(100, { from: nonOwner });
+            await instance.setThreshold(100000, { from: nonOwner });
             assert.fail("Should have reverted");
         } catch (err) {
-            assert.include(
-                err.message,
-                "Only contract owner",
-                "Should revert with onlyOwner error"
-            );
+            assert.include(err.message, "Only contract owner");
         }
     });
 
-    // TC-05 (cont): owner CAN set threshold
-    it("TC-05: owner should be able to set threshold", async () => {
-        await instance.setThreshold(100, { from: owner });
-        const newThreshold = await instance.threshold();
-        assert.equal(newThreshold.toNumber(), 100, "Threshold should be updated to 100");
+    // TC-08: Vehicle auto-registration
+    it("TC-08: should auto-register vehicles", async () => {
+        await storeRecord("MH12AB1234");
+        await storeRecord("DL01XY0001");
+
+        const vehicles = await instance.getRegisteredVehicles();
+        assert.equal(vehicles.length, 2);
+        assert.include(vehicles, "MH12AB1234");
+        assert.include(vehicles, "DL01XY0001");
     });
 
-    // Additional: input validation
-    it("should reject empty vehicle ID", async () => {
+    // TC-09: Input validation
+    it("TC-09: should reject empty vehicle ID", async () => {
         try {
-            await instance.storeEmission("", 100, Date.now(), { from: owner });
+            await instance.storeEmission("", 100000, 500, 30, 50, 200, 7000, 1000, 10000, 0, Date.now(), { from: owner });
             assert.fail("Should have reverted");
         } catch (err) {
             assert.include(err.message, "Vehicle ID cannot be empty");
         }
     });
 
-    it("should reject zero CO2 value", async () => {
-        try {
-            await instance.storeEmission("TEST001", 0, Date.now(), { from: owner });
-            assert.fail("Should have reverted");
-        } catch (err) {
-            assert.include(err.message, "CO2 value must be greater than zero");
-        }
-    });
+    // TC-10: All records retrieval
+    it("TC-10: getAllRecords should return complete multi-pollutant data", async () => {
+        await storeRecord("MH12AB1234", 115000, 800, 45, 75, 350, 8500, 2000, 12000, 1, Math.floor(Date.now() / 1000));
 
-    // TC-06 note: Sepolia deployment test is manual
-    // Deploy to Sepolia → call storeEmission → verify on Etherscan
+        const records = await instance.getAllRecords("MH12AB1234");
+        assert.equal(records.length, 1);
+        assert.equal(records[0].co2Level.toNumber(), 115000);
+        assert.equal(records[0].coLevel.toNumber(), 800);
+        assert.equal(records[0].noxLevel.toNumber(), 45);
+        assert.equal(records[0].hcLevel.toNumber(), 75);
+        assert.equal(records[0].pm25Level.toNumber(), 350);
+        assert.equal(records[0].cesScore.toNumber(), 8500);
+        assert.equal(records[0].wltcPhase, 1);
+    });
 });
