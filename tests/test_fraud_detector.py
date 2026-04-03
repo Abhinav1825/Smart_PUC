@@ -95,11 +95,14 @@ class TestFraudDetector(unittest.TestCase):
         self.assertFalse(result["is_fraud"])
 
     def test_obvious_fraud(self):
-        """A clearly impossible reading should be flagged."""
+        """A clearly impossible reading should be flagged as HIGH fraud."""
         reading = {"speed": 300.0, "rpm": 0, "fuel_rate": -5.0, "acceleration": 10.0}
         result = self.detector.analyze(reading)
+        # Physics override: score >= 0.7 on physics -> forced to 0.80+
         self.assertTrue(result["is_fraud"])
         self.assertEqual(result["severity"], "HIGH")
+        self.assertGreaterEqual(result["fraud_score"], 0.65)
+        self.assertTrue(result.get("physics_override", False))
 
     def test_severity_levels(self):
         """Severity should be LOW, MEDIUM, or HIGH."""

@@ -43,9 +43,10 @@ BUILD_PATH = os.path.join(
 )
 
 # Scaling factors matching the Solidity contract
-SCALE_3 = 1000       # 3 decimal places (CO2, CO, HC, VSP)
-SCALE_5 = 100000     # 5 decimal places (PM2.5)
-SCALE_4 = 10000      # 4 decimal places (CES, fraud score, NOx)
+# All pollutant values (CO2, CO, NOx, HC, PM2.5) are scaled x1000
+# CES and fraud scores are scaled x10000
+SCALE_POLLUTANT = 1000   # 3 decimal places for all pollutants
+SCALE_SCORE = 10000      # 4 decimal places for CES, fraud score
 
 # WLTC phase mapping
 WLTC_PHASES = {0: "Low", 1: "Medium", 2: "High", 3: "Extra High"}
@@ -159,14 +160,15 @@ class BlockchainConnector:
             timestamp = int(time.time())
 
         # Scale float values to integers for Solidity
-        co2_scaled = int(round(co2 * SCALE_3))
-        co_scaled = int(round(co * SCALE_3))
-        nox_scaled = int(round(nox * SCALE_3))
-        hc_scaled = int(round(hc * SCALE_3))
-        pm25_scaled = int(round(pm25 * SCALE_5))
-        ces_scaled = int(round(ces_score * SCALE_4))
-        fraud_scaled = int(round(fraud_score * SCALE_4))
-        vsp_scaled = int(round(vsp * SCALE_3))
+        # All pollutants use x1000, scores use x10000
+        co2_scaled = int(round(co2 * SCALE_POLLUTANT))
+        co_scaled = int(round(co * SCALE_POLLUTANT))
+        nox_scaled = int(round(nox * SCALE_POLLUTANT))
+        hc_scaled = int(round(hc * SCALE_POLLUTANT))
+        pm25_scaled = int(round(pm25 * SCALE_POLLUTANT))
+        ces_scaled = int(round(ces_score * SCALE_SCORE))
+        fraud_scaled = int(round(fraud_score * SCALE_SCORE))
+        vsp_scaled = int(round(vsp * SCALE_POLLUTANT))
         phase = min(max(int(wltc_phase), 0), 3)
 
         tx = self.contract.functions.storeEmission(
@@ -190,7 +192,9 @@ class BlockchainConnector:
 
         if self.account:
             signed = self.w3.eth.account.sign_transaction(tx, self.private_key)
-            tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
+            # Web3.py v6/v7 compatibility: try raw_transaction then rawTransaction
+            raw_tx = getattr(signed, 'raw_transaction', None) or getattr(signed, 'rawTransaction', None)
+            tx_hash = self.w3.eth.send_raw_transaction(raw_tx)
         else:
             tx_hash = self.w3.eth.send_transaction(tx)
 
@@ -240,7 +244,7 @@ class BlockchainConnector:
                 "total_records": result[0],
                 "violations": result[1],
                 "fraud_alerts": result[2],
-                "avg_ces": result[3] / SCALE_4 if result[0] > 0 else 0.0,
+                "avg_ces": result[3] / SCALE_SCORE if result[0] > 0 else 0.0,
             }
         except Exception:
             return {

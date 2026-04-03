@@ -1,20 +1,48 @@
-node_modules/
-.env
-build/
+# ─── Python ────────────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
-backend/venv/
-backend/__pycache__/
-ml/__pycache__/
-physics/__pycache__/
-benchmarks/__pycache__/
-integrations/__pycache__/
-tests/__pycache__/
 *.egg-info/
 dist/
 .pytest_cache/
+*.egg
+
+# ─── Virtual Environment ──────────────────────────────────
+backend/venv/
+venv/
+.venv/
+env/
+
+# ─── ML Model Files ──────────────────────────────────────
 *.h5
 *.pkl
+*.npy
+*.keras
+*.savedmodel
+
+# ─── Node.js ──────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ─── Blockchain Build Artifacts ───────────────────────────
+build/
 artifacts/
 cache/
+
+# ─── Environment / Secrets ────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ─── IDE / Editor ─────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── OS ───────────────────────────────────────────────────
+*.log
+*.tmp

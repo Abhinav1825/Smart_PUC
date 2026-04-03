@@ -58,7 +58,7 @@ class TestWLTCSimulator(unittest.TestCase):
 
     def test_phase_valid(self):
         """Phase should be one of the WLTC phases."""
-        valid_phases = {"LOW", "MEDIUM", "HIGH", "EXTRA_HIGH"}
+        valid_phases = {"Low", "Medium", "High", "Extra High"}
         for _ in range(50):
             reading = self.sim.generate_reading()
             self.assertIn(reading["phase"], valid_phases)

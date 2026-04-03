@@ -272,9 +272,10 @@ def estimate_fuel_rate(vsp: float, speed_mps: float) -> float:
        Instantaneous Speed and Acceleration Measurements,"
        *Transportation Research Record*, 1738, 56-67, 2004.
     """
-    # Guard: avoid division by zero at near-zero speeds.
+    # Guard: at near-zero speeds, return idle fuel consumption baseline
+    # rather than 0.0 (engine still consumes fuel while idling).
     if speed_mps < 0.2778:
-        return 0.0
+        return 2.0  # ~2.0 L/100km equivalent idle consumption
 
     # Clamp VSP to zero during deceleration (fuel cut-off assumption).
     p: float = float(np.maximum(vsp, 0.0))

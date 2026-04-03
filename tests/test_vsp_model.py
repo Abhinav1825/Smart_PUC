@@ -83,9 +83,9 @@ class TestVSPModel(unittest.TestCase):
         self.assertGreater(rate, 0.0)
 
     def test_fuel_rate_idle_low(self):
-        """Fuel rate at idle should be relatively low."""
+        """Fuel rate at idle should be a small positive value."""
         rate = estimate_fuel_rate(vsp=0.0, speed_mps=0.0)
-        self.assertGreater(rate, 0.0)
+        self.assertGreater(rate, 0.0)  # Should be ~2.0 L/100km idle baseline
         self.assertLess(rate, 10.0)
 
     def test_fuel_rate_increases_with_vsp(self):

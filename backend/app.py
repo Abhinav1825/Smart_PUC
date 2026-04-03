@@ -52,6 +52,36 @@ try:
     from ml.fraud_detector import FraudDetector
     fraud_detector = FraudDetector()
     fraud_available = True
+
+    # Train Isolation Forest on realistic WLTC cycle data (if available)
+    # or fall back to correlated synthetic data derived from the simulator
+    import numpy as _np
+    _training_data_path = os.path.join(os.path.dirname(__file__), "..", "ml", "training_data.npy")
+    _baseline_data = []
+
+    if os.path.exists(_training_data_path):
+        # Use pre-generated WLTC cycle data (columns: speed, rpm, fuel_rate, accel, co2, nox, vsp, ces)
+        _raw = _np.load(_training_data_path)
+        for row in _raw[:600]:  # use first 600 points (~1/3 cycle)
+            _baseline_data.append({
+                "speed": float(row[0]), "rpm": float(row[1]),
+                "fuel_rate": float(row[2]), "acceleration": float(row[3]),
+                "co2": float(row[4]), "vsp": float(row[6]),
+            })
+    else:
+        # Fallback: generate correlated data from WLTC simulator
+        _tmp_sim = WLTCSimulator(vehicle_id="IF_TRAINING", dt=1.0)
+        for _ in range(600):
+            _r = _tmp_sim.generate_reading()
+            _baseline_data.append({
+                "speed": _r["speed"], "rpm": float(_r["rpm"]),
+                "fuel_rate": _r["fuel_rate"], "acceleration": _r.get("acceleration", 0.0),
+                "co2": 130.0, "vsp": 5.0,
+            })
+        del _tmp_sim
+
+    fraud_detector.fit(_baseline_data)
+    del _baseline_data, _np
 except ImportError:
     fraud_detector = None
     fraud_available = False
@@ -65,14 +95,87 @@ except ImportError:
     predictor = None
     predictor_available = False
 
+# WLTC phase enum -> integer mapping for blockchain storage
+_PHASE_TO_INT = {"Low": 0, "Medium": 1, "High": 2, "Extra High": 3}
+
 # ────────────────────────── App Setup ────────────────────────────────────
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 app = Flask(__name__)
-CORS(app)
+
+# Custom JSON encoder to handle numpy types
+import json as _json
+import numpy as _np_json
+
+class _NumpyJSONEncoder(_json.JSONEncoder):
+    """Handle numpy types in Flask JSON responses."""
+    def default(self, obj):
+        if isinstance(obj, (_np_json.integer,)):
+            return int(obj)
+        if isinstance(obj, (_np_json.floating,)):
+            return float(obj)
+        if isinstance(obj, (_np_json.bool_,)):
+            return bool(obj)
+        if isinstance(obj, _np_json.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+app.json_encoder = _NumpyJSONEncoder  # type: ignore[attr-defined]
+# Also set via the modern Flask way
+app.json_provider_class = None  # Use default but override serializer
+
+from flask.json.provider import DefaultJSONProvider
+class _NumpyJSONProvider(DefaultJSONProvider):
+    def default(self, obj):
+        if isinstance(obj, (_np_json.integer,)):
+            return int(obj)
+        if isinstance(obj, (_np_json.floating,)):
+            return float(obj)
+        if isinstance(obj, (_np_json.bool_,)):
+            return bool(obj)
+        if isinstance(obj, _np_json.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+app.json_provider_class = _NumpyJSONProvider
+app.json = _NumpyJSONProvider(app)
+# CORS: allow all origins in development, restrict via CORS_ORIGINS env var in production
+_cors_origins = os.getenv("CORS_ORIGINS", "*")
+if _cors_origins == "*":
+    CORS(app)
+else:
+    CORS(app, origins=_cors_origins.split(","))
+
+# Simple in-memory rate limiting (per-IP, per-minute)
+_rate_limit_store: dict = {}
+_RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "120"))  # requests per minute
+_RATE_LIMIT_WINDOW = 60  # seconds
 
 DEFAULT_VEHICLE_ID = os.getenv("DEFAULT_VEHICLE_ID", "MH12AB1234")
+
+
+@app.before_request
+def _check_rate_limit():
+    """Simple per-IP rate limiting to prevent API abuse."""
+    client_ip = request.remote_addr or "unknown"
+    now = time.time()
+
+    # Clean expired entries
+    expired = [ip for ip, (_, ts) in _rate_limit_store.items() if now - ts > _RATE_LIMIT_WINDOW]
+    for ip in expired:
+        del _rate_limit_store[ip]
+
+    if client_ip in _rate_limit_store:
+        count, window_start = _rate_limit_store[client_ip]
+        if now - window_start < _RATE_LIMIT_WINDOW:
+            if count >= _RATE_LIMIT_MAX:
+                return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
+            _rate_limit_store[client_ip] = (count + 1, window_start)
+        else:
+            _rate_limit_store[client_ip] = (1, now)
+    else:
+        _rate_limit_store[client_ip] = (1, now)
 
 # ────────────────────────── Initialise Components ────────────────────────
 
@@ -87,8 +190,9 @@ except Exception as e:
     blockchain = None
     blockchain_connected = False
 
-# Track readings count for LSTM window
+# Track readings count for LSTM window and cold-start timing
 readings_count = 0
+_engine_start_time: float = time.time()  # timestamp of first reading for cold-start
 
 # ────────────────────────── Helper Functions ─────────────────────────────
 
@@ -125,8 +229,8 @@ def compute_full_emission(
         vsp_value = calculate_vsp(speed_mps, acceleration)
         op_mode_bin = get_operating_mode_bin(vsp_value, speed_mps)
 
-    # Determine cold start (first 120 seconds)
-    cold_start = readings_count < 24  # ~120s at 5s intervals
+    # Determine cold start: first 180 seconds after engine start (COPERT 5)
+    cold_start = (time.time() - _engine_start_time) < 180.0
 
     # Calculate multi-pollutant emissions
     emission = calculate_emissions(
@@ -188,13 +292,15 @@ def record():
         data = request.get_json(silent=True) or {}
         vehicle_id = data.get("vehicle_id", DEFAULT_VEHICLE_ID)
 
-        # Get telemetry data
+        # Get telemetry data with input validation
         if "fuel_rate" in data and "speed" in data:
-            fuel_rate = float(data["fuel_rate"])
-            speed = float(data["speed"])
-            rpm = int(data.get("rpm", 2000))
+            fuel_rate = max(0.0, min(float(data["fuel_rate"]), 50.0))
+            speed = max(0.0, min(float(data["speed"]), 250.0))
+            rpm = max(0, min(int(data.get("rpm", 2000)), 8000))
             fuel_type = data.get("fuel_type", "petrol")
-            acceleration = float(data.get("acceleration", 0.0))
+            if fuel_type not in ("petrol", "diesel"):
+                fuel_type = "petrol"
+            acceleration = max(-10.0, min(float(data.get("acceleration", 0.0)), 10.0))
         else:
             reading = simulator.generate_reading()
             fuel_rate = reading["fuel_rate"]
@@ -203,10 +309,12 @@ def record():
             fuel_type = reading.get("fuel_type", "petrol")
             acceleration = reading.get("acceleration", 0.0)
 
-        # Get WLTC phase from simulator
+        # Get WLTC phase from simulator (map enum string to integer 0-3)
         wltc_phase = 0
         if hasattr(simulator, '_current_time'):
-            wltc_phase = simulator.get_phase(simulator._current_time).value if hasattr(simulator.get_phase(simulator._current_time), 'value') else 0
+            phase_obj = simulator.get_phase(simulator._current_time)
+            phase_str = phase_obj.value if hasattr(phase_obj, 'value') else str(phase_obj)
+            wltc_phase = _PHASE_TO_INT.get(phase_str, 0)
 
         timestamp = int(time.time())
 
@@ -233,7 +341,9 @@ def record():
                 "vsp": emission.get("vsp", 0),
             }
             fraud_result = fraud_detector.analyze(reading_for_fraud)
-            fraud_detector.update(reading_for_fraud)
+            # Note: analyze() already updates the temporal checker internally,
+            # so we do NOT call fraud_detector.update() separately to avoid
+            # double-inserting into the temporal window.
 
         # Step 3: LSTM prediction
         predictions = None

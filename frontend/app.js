@@ -523,7 +523,7 @@ async function loadHistory() {
                 '<td class="mono">' + (r.coLevel / 1000).toFixed(3) + '</td>' +
                 '<td class="mono">' + (r.noxLevel / 1000).toFixed(4) + '</td>' +
                 '<td class="mono">' + (r.hcLevel / 1000).toFixed(4) + '</td>' +
-                '<td class="mono">' + (r.pm25Level / 100000).toFixed(5) + '</td>' +
+                '<td class="mono">' + (r.pm25Level / 1000).toFixed(4) + '</td>' +
                 '<td class="mono">' + (r.cesScore / 10000).toFixed(3) + '</td>' +
                 '<td class="mono">' + (r.fraudScore / 10000).toFixed(3) + '</td>' +
                 '<td><span class="status-badge ' + cl + '">' + r.status + '</span></td>' +

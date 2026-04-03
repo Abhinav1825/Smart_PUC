@@ -198,7 +198,7 @@ contract PUCCertificate is ERC721 {
         uint256 _tokenId,
         string memory _reason
     ) public onlyAuthority {
-        require(_ownerOf(_tokenId) != address(0), "Certificate does not exist");
+        require(_exists(_tokenId), "Certificate does not exist");
         require(!revokedCertificates[_tokenId], "Certificate already revoked");
 
         revokedCertificates[_tokenId] = true;
@@ -214,7 +214,7 @@ contract PUCCertificate is ERC721 {
     function getCertificate(
         uint256 _tokenId
     ) public view returns (CertificateData memory) {
-        require(_ownerOf(_tokenId) != address(0), "Certificate does not exist");
+        require(_exists(_tokenId), "Certificate does not exist");
         return certificates[_tokenId];
     }
 

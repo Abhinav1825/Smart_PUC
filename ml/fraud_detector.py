@@ -380,6 +380,14 @@ class FraudDetector:
         )
         fraud_score = min(fraud_score, 1.0)
 
+        # Physics override: if physics validator detects severe violations
+        # (score >= 0.7, meaning 5+ of 7 rules broken), override the
+        # ensemble score to ensure blatantly impossible readings are always
+        # flagged, regardless of IF/temporal contributions.
+        physics_override = physics_score >= 0.7
+        if physics_override:
+            fraud_score = max(fraud_score, 0.80)
+
         if fraud_score >= 0.65:
             severity = "HIGH"
         elif fraud_score >= 0.35:
@@ -393,6 +401,7 @@ class FraudDetector:
             "fraud_score": fraud_score,
             "is_fraud": fraud_score >= 0.65,
             "severity": severity,
+            "physics_override": physics_override,
             "components": {
                 "physics": physics_score,
                 "isolation": isolation_score,

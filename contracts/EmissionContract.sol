@@ -39,8 +39,8 @@ contract EmissionContract {
     /// @notice BSVI HC threshold: 0.100 g/km => 100
     uint256 public constant BSVI_HC   = 100;
 
-    /// @notice BSVI PM2.5 threshold: 0.004 g/km => 4
-    uint256 public constant BSVI_PM25 = 4;
+    /// @notice BSVI PM2.5 threshold: 0.0045 g/km => 5 (rounded up at x1000 scale)
+    uint256 public constant BSVI_PM25 = 5;
 
     /// @notice CES score ceiling for compliance (scaled x10000). Must be < 10000 (i.e., < 1.0)
     uint256 public constant CES_PASS_CEILING = 10000;
@@ -100,6 +100,9 @@ contract EmissionContract {
     /// @notice Running sum of CES scores per vehicle (for computing average)
     mapping(string => uint256) private cesSumByVehicle;
 
+    /// @notice Authorized callers whitelist (testing stations / backend)
+    mapping(address => bool) public authorizedCallers;
+
     // ───────────────────────── Events ──────────────────────────────────
 
     /// @notice Emitted on every successful record storage
@@ -148,6 +151,16 @@ contract EmissionContract {
     constructor() {
         owner = msg.sender;
         threshold = BSVI_CO2;
+        authorizedCallers[msg.sender] = true;
+    }
+
+    /**
+     * @notice Add or remove an authorized caller. Owner-only.
+     * @param _caller Address to authorize/deauthorize
+     * @param _authorized True to authorize, false to revoke
+     */
+    function setAuthorizedCaller(address _caller, bool _authorized) public onlyOwner {
+        authorizedCallers[_caller] = _authorized;
     }
 
     // ───────────────────────── Core Functions ──────────────────────────
@@ -183,6 +196,9 @@ contract EmissionContract {
         uint8   _wltcPhase,
         uint256 _timestamp
     ) public {
+        // Access control: only authorized callers (testing stations / backend)
+        require(authorizedCallers[msg.sender], "Caller not authorized to store emissions");
+
         // Input validation
         require(bytes(_vehicleId).length > 0, "Vehicle ID cannot be empty");
         require(_timestamp > 0, "Timestamp must be greater than zero");
@@ -310,6 +326,38 @@ contract EmissionContract {
         string memory _vehicleId
     ) public view returns (EmissionRecord[] memory) {
         return emissionRecords[_vehicleId];
+    }
+
+    /**
+     * @notice Get a paginated slice of records for a vehicle.
+     * @param _vehicleId Vehicle registration number
+     * @param _offset    Start index (0-based)
+     * @param _limit     Maximum number of records to return
+     * @return Array of EmissionRecord structs in the requested range
+     */
+    function getRecordsPaginated(
+        string memory _vehicleId,
+        uint256 _offset,
+        uint256 _limit
+    ) public view returns (EmissionRecord[] memory) {
+        EmissionRecord[] storage records = emissionRecords[_vehicleId];
+        uint256 total = records.length;
+
+        if (_offset >= total) {
+            return new EmissionRecord[](0);
+        }
+
+        uint256 end = _offset + _limit;
+        if (end > total) {
+            end = total;
+        }
+
+        uint256 count = end - _offset;
+        EmissionRecord[] memory page = new EmissionRecord[](count);
+        for (uint256 i = 0; i < count; i++) {
+            page[i] = records[_offset + i];
+        }
+        return page;
     }
 
     /**
