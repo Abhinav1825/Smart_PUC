@@ -1,4 +1,4 @@
-# Smart PUC v3.0 — Blockchain Vehicle Emission Monitoring System
+# Smart PUC v3.1 — Blockchain-Based Vehicle Emission Monitoring System
 
 ![CI](https://github.com/your-org/Smart_PUC/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
@@ -6,7 +6,19 @@
 ![Node](https://img.shields.io/badge/Node.js-18%2B-339933.svg)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)
 
-A production-grade, blockchain-based real-time vehicle emission monitoring and compliance system for India. Implements a **3-node trust architecture** where no single party can tamper with emission data. Tracks all 5 Bharat Stage VI pollutants (CO2, CO, NOx, HC, PM2.5) using physics-based models and ML fraud detection, issues NFT-based digital PUC certificates, and rewards compliant vehicles with ERC-20 Green Credit Tokens redeemable through an on-chain marketplace.
+A **research prototype** of a blockchain-based real-time vehicle emission
+monitoring and compliance system for India. It implements a **3-node trust
+architecture** in which no single party can tamper with emission data,
+tracks all five Bharat Stage VI pollutants (CO2, CO, NOx, HC, PM2.5) using
+physics-based models and ML-assisted fraud detection, issues NFT-based
+digital PUC certificates, and rewards compliant vehicles with ERC-20 Green
+Credit Tokens redeemable through an on-chain marketplace.
+
+> ⚠️ **Research prototype — not for live deployment.** This repository is
+> designed to accompany an academic paper and to support reproducible
+> experiments. Before any pilot rollout, read [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md),
+> [docs/PRIVACY_DPDP.md](docs/PRIVACY_DPDP.md), and the
+> **Limitations and Non-Goals** section below.
 
 ---
 
@@ -41,37 +53,37 @@ A production-grade, blockchain-based real-time vehicle emission monitoring and c
 
 | Category | Feature | Status |
 |----------|---------|--------|
-| Smart Contracts | On-chain CES calculation (trustless scoring) | **NEW** |
-| Smart Contracts | Nonce-based replay protection | **NEW** |
-| Smart Contracts | bytes32 gas-optimized vehicle tracking | **NEW** |
-| Smart Contracts | Bounded vehicle tracking (MAX_VEHICLES cap) | **NEW** |
-| Smart Contracts | O(1) violation index tracking | **NEW** |
-| Smart Contracts | IPFS tokenURI + base URI metadata linking | **NEW** |
-| Smart Contracts | GreenToken marketplace with 4 reward types | **NEW** |
-| Smart Contracts | Burn-to-redeem mechanism | **NEW** |
-| Backend | JWT authentication for authority endpoints | **NEW** |
-| Backend | Real OBD-II hardware support (ELM327 via python-obd) | **NEW** |
-| Backend | Analytics endpoints (trends, fleet, distribution, phases) | **NEW** |
-| Backend | Fleet management endpoints | **NEW** |
-| Backend | RTO integration endpoints | **NEW** |
-| Backend | Notification system | **NEW** |
-| Backend | Green Token marketplace endpoints | **NEW** |
-| Frontend | Analytics dashboard with Chart.js | **NEW** |
-| Frontend | Fleet management panel | **NEW** |
-| Frontend | RTO portal with compliance heatmap | **NEW** |
-| Frontend | Marketplace for token redemption | **NEW** |
-| Frontend | QR code generation + auto-verify from URL | **NEW** |
-| Testing | 30 comprehensive Truffle tests across 3 contracts | **NEW** |
-| CI/CD | 5-job GitHub Actions pipeline | **NEW** |
-| Deployment | Multi-chain: Ganache, Sepolia, Polygon, Amoy | **NEW** |
-| Deployment | Docker 3-node orchestration with healthchecks | **NEW** |
+| Smart Contracts | On-chain CES calculation (trustless scoring) | ✓ |
+| Smart Contracts | Nonce-based replay protection | ✓ |
+| Smart Contracts | bytes32 gas-optimized vehicle tracking | ✓ |
+| Smart Contracts | Optional soft cap on vehicle count (pilot-mode only; disabled by default) | ✓ |
+| Smart Contracts | O(1) violation index tracking | ✓ |
+| Smart Contracts | IPFS tokenURI + base URI metadata linking | ✓ |
+| Smart Contracts | GreenToken marketplace with 4 reward types | ✓ |
+| Smart Contracts | Burn-to-redeem mechanism | ✓ |
+| Backend | JWT authentication for authority endpoints | ✓ |
+| Backend | Real OBD-II hardware support (ELM327 via python-obd) | ✓ |
+| Backend | Analytics endpoints (trends, fleet, distribution, phases) | ✓ |
+| Backend | Fleet management endpoints | ✓ |
+| Backend | RTO integration endpoints | ✓ |
+| Backend | Notification system | ✓ |
+| Backend | Green Token marketplace endpoints | ✓ |
+| Frontend | Analytics dashboard with Chart.js | ✓ |
+| Frontend | Fleet management panel | ✓ |
+| Frontend | RTO portal with compliance heatmap | ✓ |
+| Frontend | Marketplace for token redemption | ✓ |
+| Frontend | QR code generation + auto-verify from URL | ✓ |
+| Testing | 30 comprehensive Truffle tests across 3 contracts | ✓ |
+| CI/CD | 5-job GitHub Actions pipeline | ✓ |
+| Deployment | Multi-chain: Ganache, Sepolia, Polygon, Amoy | ✓ |
+| Deployment | Docker 3-node orchestration with healthchecks | ✓ |
 | Core | WLTC Class 3b driving cycle simulation | -- |
 | Core | EPA MOVES3 VSP operating mode model | -- |
 | Core | 3-component ML fraud detection (Isolation Forest) | -- |
-| Core | LSTM emission forecasting (25s horizon) | -- |
+| Core | Emission forecasting (25s horizon; linear fallback by default, optional LSTM) | -- |
 | Core | ERC-721 NFT PUC certificates | -- |
 | Core | ERC-20 Green Credit Token rewards | -- |
-| Core | VAHAN 4.0 vehicle registration bridge | -- |
+| Core | VAHAN 4.0 vehicle registration bridge (simulated integration point) | -- |
 
 ---
 
@@ -144,7 +156,7 @@ run_project.bat
 
 This starts Ganache, deploys contracts, launches the backend, OBD simulator, and frontend.
 
-### Option B: Docker (Recommended for Production)
+### Option B: Docker (Recommended)
 
 ```bash
 docker-compose up --build
@@ -509,6 +521,61 @@ Smart_PUC/
 **Composite Emission Score:** `CES = sum(pollutant_i / threshold_i * weight_i)`. Vehicle passes if `CES < 1.0`.
 
 ---
+
+## Limitations and Non-Goals
+
+This repository is a research prototype. Paper reviewers, recruiters, and
+pilot operators should understand the boundaries of what it claims.
+
+- **Private key protection.** Device and station private keys are loaded
+  from `.env` for reproducibility. Any real deployment must move the OBD
+  device key into a secure element (ATECC608A, TPM 2.0, ARM TrustZone).
+  See [docs/THREAT_MODEL.md §5.7](docs/THREAT_MODEL.md).
+- **VAHAN integration is simulated.** `integrations/vaahan_bridge.py` ships
+  a `MockVaahanService` with ~10 hand-coded vehicles. The real Parivahan
+  VAHAN 4.0 API is access-controlled; the production hook is clearly
+  marked in the source.
+- **Privacy.** Vehicle registrations are stored as plaintext on-chain in
+  the default configuration. This is acceptable for an academic prototype
+  but incompatible with India's DPDP Act 2023 and the EU GDPR. The
+  mitigation plan (salted hash, commitment, or zkPUC) is documented in
+  [docs/PRIVACY_DPDP.md](docs/PRIVACY_DPDP.md).
+- **LSTM forecasting.** The predictor module ships a linear-extrapolation
+  fallback by default (`use_lstm=False`). The TensorFlow-based LSTM path
+  exists for completeness but is not part of the headline results; retrain
+  it yourself if you want the deep-learning numbers.
+- **In-memory rate limiting and notifications** have been replaced by
+  SQLite persistence in v3.1. Horizontal scaling beyond a single process
+  still requires Redis or Postgres — see [docs/ARCHITECTURE_TRADEOFFS.md](docs/ARCHITECTURE_TRADEOFFS.md).
+- **Truffle is deprecated.** The toolchain works but ConsenSys sunset
+  Truffle in 2023. A migration to Hardhat is planned and documented in
+  [docs/ARCHITECTURE_TRADEOFFS.md §2](docs/ARCHITECTURE_TRADEOFFS.md).
+- **Contracts are not upgradeable.** A UUPS proxy migration is planned.
+  For now, bugs require redeploy + data migration.
+- **Single-chain deployment.** Polygon PoS is the default. zkEVM and
+  Arbitrum network entries are in `truffle-config.js` but have not been
+  end-to-end tested.
+- **No admin multisig yet.** The `admin` role in every contract is a single
+  EOA in the current deployment. Production must use a 2-of-3 (or better)
+  multisig.
+
+## Paper and Reproducibility
+
+Documentation intended to accompany an academic paper lives in [docs/](docs/):
+
+| Document | Purpose |
+|----------|---------|
+| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | Formal adversary model, mitigation table, hardening checklist |
+| [docs/PRIVACY_DPDP.md](docs/PRIVACY_DPDP.md) | DPDP Act / GDPR gap analysis, pseudonymisation plan, zkPUC sketch |
+| [docs/GAS_ANALYSIS.md](docs/GAS_ANALYSIS.md) | Per-operation gas cost table, fiat projections, national-scale cost model |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | End-to-end latency and throughput methodology + results |
+| [docs/ARCHITECTURE_TRADEOFFS.md](docs/ARCHITECTURE_TRADEOFFS.md) | Design decisions and rejected alternatives |
+| [docs/FRAUD_EVALUATION.md](docs/FRAUD_EVALUATION.md) | Labelled-attack dataset, precision/recall/F1 of the fraud detector |
+| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Deterministic reproduction steps for every published number |
+
+Each of those documents has a **§ Reproducing These Numbers** section that
+lists a single command to regenerate the JSON reports the paper cites from.
+All scripts live under [scripts/](scripts/) and [benchmarks/](benchmarks/).
 
 ## License
 

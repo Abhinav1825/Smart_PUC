@@ -4,6 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Smart PUC — Vehicle Owner Dashboard for real-time multi-pollutant emission monitoring, fraud detection, and blockchain-based PUC compliance">
+    <!--
+      Content Security Policy. Deliberately strict: only whitelisted CDNs
+      for scripts/styles, self + blob for media, and localhost:5000 for the
+      backend API. Adjust the api host in production deployments.
+      NOTE: 'unsafe-inline' is currently required because several pages use
+      inline handlers; a follow-up will move those into app.js to enable a
+      nonce-based CSP.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com;
+      style-src  'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net;
+      img-src    'self' data: blob: https://*.tile.openstreetmap.org;
+      font-src   'self' data:;
+      connect-src 'self' http://localhost:5000 http://127.0.0.1:5000 https://router.project-osrm.org ws://localhost:* http://localhost:*;
+      object-src 'none';
+      base-uri   'self';
+      form-action 'self';
+      frame-ancestors 'none';
+    ">
     <title>Smart PUC — Vehicle Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>

@@ -421,8 +421,23 @@ contract("Smart PUC - Full Test Suite", (accounts) => {
       const countAfter = await registry.vehicleCount();
       assert.equal(countAfter.toNumber(), 3, "Vehicle count should still be 3");
 
-      const maxVehicles = await registry.MAX_VEHICLES();
-      assert.equal(maxVehicles.toNumber(), 10000, "MAX_VEHICLES should be 10000");
+      // Soft cap is disabled by default (0 = no cap).
+      const softCap = await registry.softVehicleCap();
+      assert.equal(softCap.toNumber(), 0, "softVehicleCap should default to 0 (disabled)");
+
+      // Enabling it should reject the next registration.
+      await registry.setSoftVehicleCap(3, { from: admin });
+      try {
+        await storePassRecord(registry, "VEH_D", station, device, 304, 1700006400);
+        assert.fail("Should have rejected due to soft cap");
+      } catch (err) {
+        assert.ok(
+          err.message.includes("Soft vehicle cap reached"),
+          "Expected soft-cap rejection, got: " + err.message
+        );
+      }
+      // Restore to disabled so the rest of the suite is unaffected.
+      await registry.setSoftVehicleCap(0, { from: admin });
     });
 
     it("TC-17: Pagination works correctly", async () => {
@@ -598,11 +613,26 @@ contract("Smart PUC - Full Test Suite", (accounts) => {
       const tx = await pucCert.issueCertificate(vid, vehicleOwner, "", { from: station });
 
       const balanceAfter = await greenToken.balanceOf(vehicleOwner);
-      const expectedReward = web3.utils.toBN("100000000000000000000"); // 100 * 10^18
+      const reward = balanceAfter.sub(balanceBefore);
 
+      // v3.1: reward is proportional to averageCES. The vehicle used in
+      // makeEligible() has all-PASS records with a low CES, so the reward
+      // should sit between GREEN_TOKEN_REWARD_MIN (50 GCT) and
+      // GREEN_TOKEN_REWARD_MAX (200 GCT).
+      const minReward = web3.utils.toBN("50000000000000000000");
+      const maxReward = web3.utils.toBN("200000000000000000000");
       assert.ok(
-        balanceAfter.sub(balanceBefore).eq(expectedReward),
-        "Vehicle owner should receive 100 GCT tokens"
+        reward.gte(minReward) && reward.lte(maxReward),
+        `Reward ${reward.toString()} should be between 50 and 200 GCT (got ${reward.toString()})`
+      );
+
+      // And it should match the pure computeRewardAmount(averageCES) value.
+      const certId = tx.logs.find((l) => l.event === "CertificateIssued").args.tokenId;
+      const cert = await pucCert.getCertificate(certId);
+      const expected = await pucCert.computeRewardAmount(cert.averageCES);
+      assert.ok(
+        reward.eq(expected),
+        `Reward ${reward.toString()} should equal computeRewardAmount(${cert.averageCES.toString()}) = ${expected.toString()}`
       );
 
       // Check GreenTokensAwarded event

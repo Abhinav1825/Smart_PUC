@@ -25,7 +25,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  *        - On-chain CES calculation (no longer trusts station-supplied CES)
  *        - bytes32 vehicle ID hashing for gas-efficient internal mappings
  *        - Nonce-based replay protection
- *        - Bounded vehicle tracking (MAX_VEHICLES cap)
+ *        - Optional soft cap on distinct vehicles (pilot mode)
  *        - O(1) violation index tracking with paginated retrieval
  */
 contract EmissionRegistry is ReentrancyGuard {
@@ -69,10 +69,29 @@ contract EmissionRegistry is ReentrancyGuard {
     uint256 private constant CES_WEIGHT_PM25 = 800;
     uint256 private constant CES_WEIGHT_TOTAL = 10000;
 
-    // ───────────────────── Bounded Vehicle Tracking ──────────────────────
+    // ───────────────────── Vehicle Tracking ──────────────────────────────
+    //
+    // v3.0 imposed a hard MAX_VEHICLES = 10_000 cap as a defensive bound.
+    // That limit is too small for any real deployment (India has ~300M
+    // vehicles) and paper reviewers correctly flagged it as a toy number.
+    //
+    // v3.1 removes the hard cap and replaces it with an *advisory* soft
+    // cap. Nothing in the contract storage or algorithms grows unboundedly:
+    //   * registeredVehicles[] is append-only and read via pagination, so
+    //     storage cost is O(1) per write regardless of total size.
+    //   * every mapping is keyed by bytes32 hash and has O(1) access.
+    //   * violation/record arrays are per-vehicle and paginated, so a
+    //     single vehicle cannot poison reads for others.
+    //
+    // Operators can set ``softVehicleCap`` to non-zero to rate-limit new
+    // vehicle registrations per deployment (e.g. during a controlled pilot).
+    // A value of zero disables the soft cap entirely — the default.
 
-    uint256 public constant MAX_VEHICLES = 10000;
     uint256 public vehicleCount;
+
+    /// @notice Advisory soft cap on distinct registered vehicles (0 = no cap).
+    /// Used for controlled pilot deployments; set via ``setSoftVehicleCap``.
+    uint256 public softVehicleCap;
 
     // ───────────────────────── Structs ────────────────────────────────────
 
@@ -232,6 +251,13 @@ contract EmissionRegistry is ReentrancyGuard {
         pucCertificateContract = _addr;
     }
 
+    /// @notice Set an advisory soft cap on distinct registered vehicles.
+    ///         Pass 0 to disable the cap entirely.
+    /// @dev Intended for controlled pilot deployments; not a security feature.
+    function setSoftVehicleCap(uint256 _cap) external onlyAdmin {
+        softVehicleCap = _cap;
+    }
+
     /// @notice Transfer admin role
     function transferAdmin(address _newAdmin) external onlyAdmin {
         require(_newAdmin != address(0), "Invalid admin address");
@@ -361,9 +387,13 @@ contract EmissionRegistry is ReentrancyGuard {
         // Update stats
         cesSumByVehicle[vid] += cesScore;
 
-        // Auto-register vehicle with bounded tracking
+        // Auto-register vehicle. Soft cap is only enforced when set to a
+        // non-zero value (controlled pilot mode); a zero value means no cap.
         if (!isRegistered[vid]) {
-            require(vehicleCount < MAX_VEHICLES, "Maximum vehicle capacity reached");
+            require(
+                softVehicleCap == 0 || vehicleCount < softVehicleCap,
+                "Soft vehicle cap reached"
+            );
             registeredVehicles.push(_vehicleId);
             isRegistered[vid] = true;
             vehicleCount++;

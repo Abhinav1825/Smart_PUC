@@ -1,13 +1,45 @@
 """
-VAHAN 4.0 Vehicle Registration Database Bridge.
+VAHAN 4.0 Vehicle Registration Database Bridge — *SIMULATED integration point*.
 
-This module bridges to India's VAHAN 4.0 vehicle registration database,
-operated by the Ministry of Road Transport and Highways (MoRTH). It provides
-vehicle verification and emission-test eligibility checks required for the
-SmartPUC workflow.
+⚠️ IMPORTANT — PAPER REVIEWERS AND CODE AUDITORS PLEASE READ
+============================================================
 
-When the real VAHAN API is unavailable or during development/testing, a
-built-in MockVaahanService is used as a drop-in substitute.
+This module is a **SIMULATED integration point** for India's VAHAN 4.0
+vehicle registration database, operated by the Ministry of Road Transport
+and Highways (MoRTH).
+
+Out of the box, this module uses a built-in ``MockVaahanService`` that
+returns hand-coded data for roughly ten test vehicles. The default backend
+initialisation in ``backend/app.py`` passes ``use_mock=True`` so every
+lookup in the research prototype hits the mock catalogue, not the real
+VAHAN API.
+
+This is a DELIBERATE choice for the following reasons:
+
+1. The real VAHAN 4.0 API (``vahan.parivahan.gov.in``) is access-controlled;
+   MoRTH grants credentials only to registered state departments, not to
+   researchers.
+2. Any paper, benchmark, or demo derived from this repository is reproducible
+   WITHOUT network access to VAHAN, which is critical for the Artifact
+   Evaluation of academic venues (IEEE, ACM).
+3. The data flow, field shape, and error modes of ``MockVaahanService`` are
+   a faithful model of the real API's public schema, so swapping in a real
+   client is a drop-in replacement.
+
+Production use
+--------------
+To use the real VAHAN API:
+
+1. Obtain API credentials from MoRTH (state government authorisation
+   required).
+2. Populate ``VAHAN_API_BASE`` and ``VAHAN_API_KEY`` in ``.env``.
+3. Instantiate ``VaahanBridge(use_mock=False)`` in ``backend/app.py``.
+4. Implement the HTTP client in the ``_fetch_from_real_api`` hook below
+   (left as a TODO with a clearly marked ``NotImplementedError``).
+
+Nothing in the research claims of the paper depends on real VAHAN data;
+the bridge exists only to show where real-world RTO integration would
+plug into the Smart PUC pipeline.
 """
 
 from __future__ import annotations

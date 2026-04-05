@@ -1,15 +1,33 @@
 """Emission prediction for preventive compliance monitoring.
 
-This module provides two predictor implementations for forecasting future
-emission levels (CO2, NOx) and the composite emission score (CES) from a
-sliding window of recent sensor readings:
+⚠️  HONEST STATUS NOTE — FOR PAPER REVIEWERS
+============================================
 
-1. **EmissionPredictor** (LSTM-based) — requires TensorFlow.  Uses a
-   stacked LSTM architecture (128 -> 64 units) with dropout and batch
-   normalisation.  Must be trained before use via :meth:`train`.
-2. **MockPredictor** (linear extrapolation) — no dependencies.  Fits a
-   first-order linear trend across the sliding window and extrapolates.
-   Used as the default when TensorFlow is not installed.
+This module ships **two** forecasting paths. The system defaults to the
+second one.
+
+1. ``EmissionPredictor`` (LSTM, TensorFlow) — requires TensorFlow and a
+   trained model file. It is implemented and importable, but **is not
+   trained or evaluated as part of the default Smart PUC pipeline**. No
+   headline numbers in the paper or in ``docs/BENCHMARKS.md`` depend on
+   it. It exists as a future-work scaffold and as an example of how a
+   deep-learning forecaster would plug into the Smart PUC architecture;
+   reviewers should treat it as *implemented but unvalidated*.
+
+2. ``MockPredictor`` (linear extrapolation) — the **default** and the
+   only predictor currently used by the backend (``backend/app.py`` calls
+   ``create_predictor(use_lstm=False)``). It fits a first-order linear
+   trend across a sliding window and extrapolates. Zero dependencies,
+   deterministic, and fast enough for real-time early-warning.
+
+If a future version of Smart PUC wants to claim LSTM-based forecasting
+numbers, it must also publish:
+  * the training pipeline (partially present in
+    ``ml/generate_training_data.py``),
+  * a held-out evaluation with RMSE / MAE versus the linear baseline, and
+  * a model checkpoint in the reproducibility bundle.
+Until then, the paper describes the predictor as *linear extrapolation
+with LSTM scaffolding for future work*.
 
 When predicted values breach configurable thresholds the system can issue
 early warnings *before* a compliance violation occurs, giving the driver

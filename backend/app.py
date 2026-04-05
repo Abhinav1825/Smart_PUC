@@ -90,6 +90,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from simulator import WLTCSimulator
 from emission_engine import calculate_emissions
 from blockchain_connector import BlockchainConnector
+from persistence import PersistenceStore
 
 # Import VSP model
 try:
@@ -212,18 +213,43 @@ else:
 API_KEY = os.getenv("API_KEY", "")
 
 # JWT auth for authority endpoints (dashboard -> Node 2)
-JWT_SECRET = os.getenv("JWT_SECRET", "smartpuc-secret-key-change-in-prod")
+# SECURITY: JWT_SECRET MUST be set via environment; refuse to start otherwise.
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
-# Default admin credentials (override via env vars in production)
-AUTH_USERNAME = os.getenv("AUTH_USERNAME", "admin")
-AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "smartpuc2024")
+# Authority credentials — MUST be supplied via environment variables.
+# The backend refuses to authenticate anyone if either is empty, making it
+# impossible to ship with a default "admin/admin"-style password.
+AUTH_USERNAME = os.getenv("AUTH_USERNAME", "")
+AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "")
+
+if not JWT_SECRET:
+    print("  [warn] JWT_SECRET is not set — authority endpoints will reject all logins.")
+    print("         Set JWT_SECRET in .env before serving any real traffic.")
+if not AUTH_USERNAME or not AUTH_PASSWORD:
+    print("  [warn] AUTH_USERNAME / AUTH_PASSWORD are not set — authority login is disabled.")
+    print("         Set both in .env before serving any real traffic.")
+
+# ────────────────────────── Persistence ──────────────────────────────────
+# SQLite-backed persistence for rate limiter, notifications, telemetry cold
+# store, Merkle batches, and audit log. Set PERSISTENCE_DB to a file path to
+# enable; leave blank to run with in-memory fallback.
+
+_persistence_path = os.getenv("PERSISTENCE_DB", "").strip()
+if _persistence_path:
+    if not os.path.isabs(_persistence_path):
+        _persistence_path = os.path.join(os.path.dirname(__file__), "..", _persistence_path)
+store = PersistenceStore(_persistence_path or None)
+if store.enabled:
+    print(f"  Persistence: SQLite at {_persistence_path}")
+else:
+    print("  Persistence: disabled (in-memory fallback)")
 
 # ────────────────────────── Rate Limiting ────────────────────────────────
-# In-memory rate limiting. Thread-safe with lock-based access.
-# NOTE: In production, replace with Redis-backed rate limiting (e.g.,
-# flask-limiter with Redis storage) to support multi-process deployments.
+# Primary: SQLite-backed rate limiter via PersistenceStore (survives restart,
+# shareable across multi-process deployments via WAL).
+# Fallback: thread-safe in-memory store when persistence is disabled.
 
 _rate_limit_lock = threading.Lock()
 _rate_limit_store: dict = {}
@@ -243,7 +269,12 @@ _MAX_NOTIFICATIONS = 100
 
 def _add_notification(notif_type: str, message: str, vehicle_id: str = "",
                       severity: str = "info"):
-    """Add a notification to the in-memory event log (thread-safe)."""
+    """Add a notification to the event log.
+
+    When the SQLite persistence store is enabled, notifications are written
+    durably and survive restarts. The in-memory ring buffer is always
+    updated as well so that the most recent entries are cheap to read.
+    """
     notif = {
         "timestamp": int(time.time()),
         "type": notif_type,
@@ -253,9 +284,13 @@ def _add_notification(notif_type: str, message: str, vehicle_id: str = "",
     }
     with _notifications_lock:
         _notifications.append(notif)
-        # Trim to last N notifications
         if len(_notifications) > _MAX_NOTIFICATIONS:
             del _notifications[:-_MAX_NOTIFICATIONS]
+    # Durable persistence (no-op if disabled)
+    try:
+        store.add_notification(notif_type, message, vehicle_id=vehicle_id, severity=severity)
+    except Exception:
+        pass  # never let persistence failures break the hot path
 
 
 # ────────────────────────── Auth Decorators ──────────────────────────────
@@ -295,12 +330,23 @@ def require_auth(f):
 
 @app.before_request
 def _check_rate_limit():
-    """Thread-safe per-IP rate limiting."""
+    """Per-IP rate limiting. Uses SQLite when persistence is enabled,
+    otherwise falls back to the thread-safe in-memory store."""
     client_ip = request.remote_addr or "unknown"
+
+    if store.enabled:
+        allowed, _count = store.rate_limit_check(
+            client_ip, _RATE_LIMIT_MAX, _RATE_LIMIT_WINDOW
+        )
+        if not allowed:
+            return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
+        return  # proceed
+
+    # In-memory fallback (no persistence)
     now = time.time()
     with _rate_limit_lock:
         expired = [ip for ip, (_, ts) in _rate_limit_store.items()
-                    if now - ts > _RATE_LIMIT_WINDOW]
+                   if now - ts > _RATE_LIMIT_WINDOW]
         for ip in expired:
             del _rate_limit_store[ip]
         if client_ip in _rate_limit_store:
@@ -408,7 +454,8 @@ def auth_login():
     POST /api/auth/login
     Authenticate with username/password and receive a JWT token.
 
-    Body: { "username": "admin", "password": "smartpuc2024" }
+    Body: { "username": "<AUTH_USERNAME>", "password": "<AUTH_PASSWORD>" }
+    (values come from the backend's environment; no default is shipped.)
     Returns: { "success": true, "token": "<jwt>", "expires_in": 86400 }
     """
     try:
@@ -418,6 +465,15 @@ def auth_login():
 
         if not username or not password:
             return jsonify({"success": False, "error": "Username and password required"}), 400
+
+        # Refuse to authenticate if the server was not configured with
+        # credentials. This prevents the default "admin/admin" failure mode
+        # that has plagued many research prototypes.
+        if not JWT_SECRET or not AUTH_USERNAME or not AUTH_PASSWORD:
+            return jsonify({
+                "success": False,
+                "error": "Authority auth is not configured on this server"
+            }), 503
 
         # Constant-time comparison to prevent timing attacks
         username_match = hmac.compare_digest(username, AUTH_USERNAME)

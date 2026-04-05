@@ -65,8 +65,18 @@ contract PUCCertificate is ERC721, ReentrancyGuard {
     /// @notice Minimum consecutive passes required (matches EmissionRegistry)
     uint256 public constant MIN_CONSECUTIVE_PASSES = 3;
 
-    /// @notice Green tokens rewarded per certificate issuance (100 GCT)
+    /// @notice Baseline Green Token reward constant (100 GCT), used as the
+    ///         centre of the proportional reward formula below.
     uint256 public constant GREEN_TOKEN_REWARD = 100 * 10**18;
+
+    /// @notice Minimum reward issued to any compliant vehicle (50 GCT).
+    ///         A vehicle that only just clears the CES ceiling still gets
+    ///         a token so that the incentive is not binary.
+    uint256 public constant GREEN_TOKEN_REWARD_MIN = 50 * 10**18;
+
+    /// @notice Maximum reward for a perfectly clean vehicle (200 GCT).
+    ///         Encourages vehicles that drive significantly below BSVI.
+    uint256 public constant GREEN_TOKEN_REWARD_MAX = 200 * 10**18;
 
     /// @notice Authorized testing stations that can trigger issuance
     mapping(address => bool) public authorizedIssuers;
@@ -215,6 +225,38 @@ contract PUCCertificate is ERC721, ReentrancyGuard {
         emit TokenURISet(_tokenId, _uri);
     }
 
+    // ───────────────────────── Reward Calculation ─────────────────────
+
+    /**
+     * @notice Compute the proportional Green Token reward for a given
+     *         average CES score. Lower CES (cleaner vehicle) earns more.
+     * @dev The reward is a linear interpolation between GREEN_TOKEN_REWARD_MAX
+     *      (at averageCES = 0) and GREEN_TOKEN_REWARD_MIN (at
+     *      averageCES = CES_PASS_CEILING). averageCES is scaled x10000,
+     *      matching EmissionRegistry.
+     *
+     *      A perfectly clean vehicle (CES = 0) receives 200 GCT.
+     *      A vehicle exactly at the ceiling (CES = 9999) receives 50 GCT.
+     *      A mid-tier vehicle (CES = 5000) receives 125 GCT.
+     *
+     *      This replaces the flat 100 GCT reward of v3.0 and ties the
+     *      incentive to actual emission performance — directly motivating
+     *      the user's request that rewards be proportional to measured
+     *      CO2 reduction. (CES is weighted 35% on CO2, so a lower CES
+     *      primarily reflects a lower CO2 footprint relative to BSVI.)
+     */
+    function computeRewardAmount(uint256 _averageCES) public pure returns (uint256) {
+        // Cap the input so the formula stays well-defined.
+        uint256 ces = _averageCES >= CES_PASS_CEILING ? CES_PASS_CEILING : _averageCES;
+
+        // spread = MAX - MIN, delta = CES_PASS_CEILING - ces
+        uint256 spread = GREEN_TOKEN_REWARD_MAX - GREEN_TOKEN_REWARD_MIN;
+        uint256 delta = CES_PASS_CEILING - ces;
+
+        // Linear interpolation: MIN + spread * delta / CEILING
+        return GREEN_TOKEN_REWARD_MIN + (spread * delta) / CES_PASS_CEILING;
+    }
+
     // ───────────────────────── Core Functions ──────────────────────────
 
     /**
@@ -315,9 +357,12 @@ contract PUCCertificate is ERC721, ReentrancyGuard {
             issueTime, expiryTime, averageCES
         );
 
-        // Award Green Credit Tokens
-        try greenToken.mint(_vehicleOwner, GREEN_TOKEN_REWARD) {
-            emit GreenTokensAwarded(_vehicleId, _vehicleOwner, GREEN_TOKEN_REWARD);
+        // Award Green Credit Tokens — amount is proportional to the
+        // vehicle's averageCES so that cleaner vehicles receive larger
+        // rewards. See computeRewardAmount() for the formula.
+        uint256 rewardAmount = computeRewardAmount(averageCES);
+        try greenToken.mint(_vehicleOwner, rewardAmount) {
+            emit GreenTokensAwarded(_vehicleId, _vehicleOwner, rewardAmount);
         } catch {
             // GreenToken minting failure should not block certificate issuance
         }
