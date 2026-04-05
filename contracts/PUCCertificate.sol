@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 /**
  * @title IEmissionRegistry
@@ -40,7 +42,19 @@ interface IGreenToken {
  *
  *      Scaling: averageCES is scaled x10000 (e.g., 0.85 => 8500).
  */
-contract PUCCertificate is ERC721, ReentrancyGuard {
+/**
+ * @dev Storage layout rules (critical for UUPS upgrades)
+ * -----------------------------------------------------
+ * Do NOT reorder, insert, or delete state variables. New variables must
+ * be appended AT THE END, and any deprecation MUST keep the slot by
+ * leaving a placeholder. The `__gap` at the bottom reserves 50 slots.
+ */
+contract PUCCertificate is
+    Initializable,
+    UUPSUpgradeable,
+    ERC721Upgradeable,
+    ReentrancyGuardUpgradeable
+{
 
     // ───────────────────────── State Variables ─────────────────────────
 
@@ -169,20 +183,41 @@ contract PUCCertificate is ERC721, ReentrancyGuard {
         _;
     }
 
-    // ───────────────────────── Constructor ─────────────────────────────
+    // ───────────────────────── Storage Gap (UUPS) ─────────────────────
+    // Reserved slots for future upgrades. Shrink only when adding new
+    // state variables immediately before the gap.
+    uint256[50] private __gap;
+
+    // ───────────────────────── Initializer (UUPS) ─────────────────────
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     /**
      * @param _emissionRegistry Address of the deployed EmissionRegistry contract
      * @param _greenToken       Address of the deployed GreenToken contract
      */
-    constructor(
+    function initialize(
         address _emissionRegistry,
         address _greenToken
-    ) ERC721("PUC Certificate", "PUC") {
+    ) external initializer {
+        __UUPSUpgradeable_init();
+        __ERC721_init("PUC Certificate", "PUC");
+        __ReentrancyGuard_init();
+
         authority = msg.sender;
         emissionRegistry = IEmissionRegistry(_emissionRegistry);
         greenToken = IGreenToken(_greenToken);
         _tokenIdCounter = 0;
+    }
+
+    // ───────────────────────── UUPS Upgrade Auth ─────────────────────
+
+    /// @dev Only the authority role may authorize contract upgrades.
+    function _authorizeUpgrade(address newImplementation) internal override onlyAuthority {
+        // The onlyAuthority modifier is the access check.
     }
 
     // ───────────────────────── Admin Functions ─────────────────────────

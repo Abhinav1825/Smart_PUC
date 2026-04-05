@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 /**
  * @title GreenToken
@@ -17,7 +19,17 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  *      The redemption marketplace allows users to burn tokens in exchange for
  *      real-world rewards. Each redemption is tracked on-chain with a unique ID.
  */
-contract GreenToken is ERC20 {
+/**
+ * @dev Storage layout rules (critical for UUPS upgrades)
+ * -----------------------------------------------------
+ * Do NOT reorder, insert, or delete state variables. New variables must
+ * be appended AT THE END. The `__gap` at the bottom reserves 50 slots.
+ */
+contract GreenToken is
+    Initializable,
+    UUPSUpgradeable,
+    ERC20Upgradeable
+{
 
     // ───────────────────────── Reward Types ───────────────────────────
 
@@ -73,9 +85,25 @@ contract GreenToken is ERC20 {
     event RewardMinted(address indexed recipient, uint256 amount, uint256 totalEarned);
     event Redeemed(address indexed user, uint8 rewardType, uint256 amount, uint256 redemptionId);
 
-    // ───────────────────────── Constructor ─────────────────────────────
+    // ───────────────────────── Storage Gap (UUPS) ─────────────────────
+    // Reserved slots for future upgrades.
+    uint256[50] private __gap;
 
-    constructor() ERC20("Green Credit Token", "GCT") {
+    // ───────────────────────── Initializer (UUPS) ─────────────────────
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initialize the upgradeable GreenToken. Call exactly once via
+     *         the proxy deployment.
+     */
+    function initialize() external initializer {
+        __UUPSUpgradeable_init();
+        __ERC20_init("Green Credit Token", "GCT");
+
         admin = msg.sender;
 
         // Initialize reward costs
@@ -83,6 +111,13 @@ contract GreenToken is ERC20 {
         rewardCost[PARKING_WAIVER]   = 30 * 10 ** 18;
         rewardCost[TAX_CREDIT]       = 100 * 10 ** 18;
         rewardCost[PRIORITY_SERVICE] = 20 * 10 ** 18;
+    }
+
+    // ───────────────────────── UUPS Upgrade Auth ─────────────────────
+
+    /// @dev Only admin may authorize upgrades.
+    function _authorizeUpgrade(address newImplementation) internal override {
+        require(msg.sender == admin, "Only admin can upgrade");
     }
 
     // ───────────────────────── Admin Functions ─────────────────────────

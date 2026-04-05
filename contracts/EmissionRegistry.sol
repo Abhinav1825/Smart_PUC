@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
@@ -28,7 +30,20 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  *        - Optional soft cap on distinct vehicles (pilot mode)
  *        - O(1) violation index tracking with paginated retrieval
  */
-contract EmissionRegistry is ReentrancyGuard {
+/**
+ * @dev Storage layout rules (critical for UUPS upgrades)
+ * -----------------------------------------------------
+ * Do NOT reorder, insert, or delete state variables between the marker
+ * comments. New variables MUST be appended at the end of the existing
+ * list, and any deprecation MUST keep the slot by leaving a placeholder.
+ * The `__gap` at the bottom provides 50 reserved slots for future
+ * upgrades.
+ */
+contract EmissionRegistry is
+    Initializable,
+    UUPSUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using ECDSA for bytes32;
 
     // ───────────────────────── Roles ──────────────────────────────────────
@@ -191,12 +206,38 @@ contract EmissionRegistry is ReentrancyGuard {
         _;
     }
 
-    // ───────────────────────── Constructor ────────────────────────────────
+    // ───────────────────────── Storage Gap (UUPS) ────────────────────────
+    //
+    // Reserved slots for future upgrades. NEVER shrink this array — that
+    // would collide with future state added by subclasses / upgrades.
+    // Append new variables BEFORE the gap and shrink the gap by the
+    // corresponding number of slots.
+    uint256[50] private __gap;
 
+    // ───────────────────────── Initializer (UUPS) ────────────────────────
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initialize the upgradeable registry. Call exactly once via
+     *         the proxy deployment; subsequent calls revert.
+     */
+    function initialize() external initializer {
+        __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
         admin = msg.sender;
-        // Admin is also an authorized station for initial setup/testing
+        // Admin is also an authorized station for initial setup/testing.
         testingStations[msg.sender] = true;
+    }
+
+    // ───────────────────────── UUPS Upgrade Auth ─────────────────────────
+
+    /// @dev Only the current admin may authorize an upgrade.
+    function _authorizeUpgrade(address newImplementation) internal override onlyAdmin {
+        // No-op; the onlyAdmin modifier is the access check.
     }
 
     // ───────────────────────── Internal Helpers ──────────────────────────
@@ -218,18 +259,16 @@ contract EmissionRegistry is ReentrancyGuard {
         uint256 _pm25
     ) internal pure returns (uint256) {
         // Each term: (value * weight / threshold) gives a weighted ratio.
-        // We multiply by 10000 first to maintain precision, then divide by
-        // CES_WEIGHT_TOTAL at the end.
-        // Final result is scaled x10000 (matching CES_PASS_CEILING scale).
+        // At exactly the BSVI threshold every term equals its weight, so
+        // the sum equals CES_WEIGHT_TOTAL = 10000 = CES_PASS_CEILING. This
+        // is already in the x10000 scale — no further multiplication needed.
         uint256 cesRaw = (_co2 * CES_WEIGHT_CO2 / BSVI_CO2)
                        + (_nox * CES_WEIGHT_NOX / BSVI_NOX)
                        + (_co * CES_WEIGHT_CO / BSVI_CO)
                        + (_hc * CES_WEIGHT_HC / BSVI_HC)
                        + (_pm25 * CES_WEIGHT_PM25 / BSVI_PM25);
 
-        // cesRaw is currently in x1000 scale (from pollutant scaling).
-        // Multiply by 10 to convert to x10000, then divide by weight total.
-        return (cesRaw * 10) / CES_WEIGHT_TOTAL;
+        return cesRaw;
     }
 
     // ───────────────────────── Admin Functions ────────────────────────────

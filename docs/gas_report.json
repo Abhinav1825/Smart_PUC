@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-04-05T09:26:25.203Z",
+  "toolchain": "hardhat+ethers-v6",
+  "proxyKind": "UUPS",
+  "assumptions": {
+    "polygon_gwei": 50,
+    "polygon_matic_usd": 0.7,
+    "ethereum_gwei": 15,
+    "ethereum_usd": 2400
+  },
+  "results": [
+    {
+      "operation": "storeEmission (first submission for new vehicle)",
+      "contract": "EmissionRegistry",
+      "gas": 497530,
+      "polygon_usd": 0.017414,
+      "ethereum_usd": 17.9111
+    },
+    {
+      "operation": "storeEmission (subsequent PASS)",
+      "contract": "EmissionRegistry",
+      "gas": 356919,
+      "polygon_usd": 0.012492,
+      "ethereum_usd": 12.8491
+    },
+    {
+      "operation": "storeEmission (FAIL + pollutant events)",
+      "contract": "EmissionRegistry",
+      "gas": 480691,
+      "polygon_usd": 0.016824,
+      "ethereum_usd": 17.3049
+    },
+    {
+      "operation": "issueCertificate (with GreenToken mint)",
+      "contract": "PUCCertificate",
+      "gas": 490643,
+      "polygon_usd": 0.017173,
+      "ethereum_usd": 17.6631
+    },
+    {
+      "operation": "revokeCertificate",
+      "contract": "PUCCertificate",
+      "gas": 65627,
+      "polygon_usd": 0.002297,
+      "ethereum_usd": 2.3626
+    },
+    {
+      "operation": "redeem (burn-to-reward)",
+      "contract": "GreenToken",
+      "gas": 198281,
+      "polygon_usd": 0.00694,
+      "ethereum_usd": 7.1381
+    },
+    {
+      "operation": "setTestingStation",
+      "contract": "EmissionRegistry",
+      "gas": 52992,
+      "polygon_usd": 0.001855,
+      "ethereum_usd": 1.9077
+    },
+    {
+      "operation": "setRegisteredDevice",
+      "contract": "EmissionRegistry",
+      "gas": 53068,
+      "polygon_usd": 0.001857,
+      "ethereum_usd": 1.9104
+    },
+    {
+      "operation": "setVehicleOwner",
+      "contract": "EmissionRegistry",
+      "gas": 54356,
+      "polygon_usd": 0.001902,
+      "ethereum_usd": 1.9568
+    },
+    {
+      "operation": "setSoftVehicleCap",
+      "contract": "EmissionRegistry",
+      "gas": 31402,
+      "polygon_usd": 0.001099,
+      "ethereum_usd": 1.1305
+    }
+  ]
+}

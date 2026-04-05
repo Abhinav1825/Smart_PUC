@@ -9,15 +9,15 @@ echo  ============================================================
 echo.
 
 :: ──────────────────────────────────────────────────────────
-:: STEP 1: Install global tools (Truffle + Ganache)
+:: STEP 1: Install global tools (Ganache) and Hardhat (via local npm)
 :: ──────────────────────────────────────────────────────────
 echo [1/8] Checking global tools...
-where truffle >nul 2>nul
+where ganache >nul 2>nul
 if %errorlevel% neq 0 (
-    echo       Installing Truffle and Ganache globally...
-    call npm.cmd install -g truffle ganache
+    echo       Installing Ganache globally...
+    call npm.cmd install -g ganache
 ) else (
-    echo       Truffle and Ganache already installed.
+    echo       Ganache already installed.
 )
 
 :: ──────────────────────────────────────────────────────────
@@ -50,13 +50,14 @@ timeout /t 5 /nobreak > nul
 :: STEP 5: Compile and deploy all 3 smart contracts
 :: ──────────────────────────────────────────────────────────
 echo [5/8] Deploying 3 smart contracts (EmissionRegistry + PUCCertificate + GreenToken)...
-call truffle migrate --reset --network development
+call npx hardhat compile
+call npx hardhat run scripts/deploy.js --network localhost
 
 :: ──────────────────────────────────────────────────────────
 :: STEP 6: Start Testing Station Backend (Node 2)
 :: ──────────────────────────────────────────────────────────
 echo [6/8] Starting Testing Station Backend (Node 2) on port 5000...
-start "SmartPUC - Testing Station (Node 2)" /min cmd /c "venv\Scripts\python.exe backend\app.py"
+start "SmartPUC - Testing Station (Node 2)" /min cmd /c "venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 5000"
 timeout /t 3 /nobreak > nul
 
 :: ──────────────────────────────────────────────────────────

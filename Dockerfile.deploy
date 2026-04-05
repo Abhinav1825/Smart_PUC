@@ -3,10 +3,12 @@ FROM node:18-slim
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm install --no-audit --no-fund
 
-COPY truffle-config.js .
+COPY hardhat.config.js ./
 COPY contracts/ ./contracts/
-COPY migrations/ ./migrations/
+COPY scripts/ ./scripts/
 
-CMD ["npx", "truffle", "migrate", "--network", "development"]
+# Compile first so the Python backend sees the flat build/contracts/
+# artifacts immediately (independent of a successful deploy).
+CMD ["sh", "-c", "npx hardhat compile && node scripts/flatten_artifacts.js && npx hardhat run scripts/deploy.js --network docker"]

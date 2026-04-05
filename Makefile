@@ -14,6 +14,7 @@ NPX      ?= npx
 NPM      ?= npm
 
 GANACHE_FLAGS := --deterministic --accounts 10 --defaultBalanceEther 100 --port 7545 --gasLimit 12000000
+HARDHAT_NODE_PORT ?= 7545
 
 .PHONY: help
 help: ## Show this help message
@@ -35,16 +36,24 @@ install-python: ## Install Python dependencies
 # ─── Smart contract build / test ─────────────────────────────────────────
 
 .PHONY: compile
-compile: ## Compile Solidity contracts
-	$(NPX) truffle compile
+compile: ## Compile Solidity contracts (Hardhat) and flatten artifacts
+	$(NPX) hardhat compile
 
-.PHONY: migrate
-migrate: ## Deploy all three contracts against local Ganache
-	$(NPX) truffle migrate --reset --network development
+.PHONY: deploy
+deploy: ## Deploy UUPS proxies to the local Ganache / Hardhat node
+	$(NPX) hardhat run scripts/deploy.js --network localhost
+
+.PHONY: deploy-hardhat
+deploy-hardhat: ## Deploy against the in-process Hardhat network
+	$(NPX) hardhat run scripts/deploy.js --network hardhat
 
 .PHONY: test-sol
-test-sol: ## Run the 30 Truffle contract tests
-	$(NPX) truffle test
+test-sol: ## Run the Hardhat Solidity test suite (including UUPS upgrade tests)
+	$(NPX) hardhat test
+
+.PHONY: test-sol-gas
+test-sol-gas: ## Run Hardhat tests with gas reporter enabled
+	REPORT_GAS=true $(NPX) hardhat test
 
 .PHONY: slither
 slither: ## Run Slither static analysis (requires slither-analyzer)
@@ -69,9 +78,13 @@ test: test-sol test-py ## Run all tests (Solidity + Python)
 ganache: ## Start a deterministic local Ganache (foreground)
 	$(NPX) ganache $(GANACHE_FLAGS)
 
+.PHONY: node
+node: ## Start an in-process Hardhat node on :7545 (foreground)
+	$(NPX) hardhat node --port $(HARDHAT_NODE_PORT)
+
 .PHONY: backend
-backend: ## Start the Flask testing-station backend
-	cd backend && $(PY) app.py
+backend: ## Start the FastAPI testing-station backend (uvicorn)
+	cd backend && $(PY) -m uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 
 .PHONY: frontend
 frontend: ## Serve the frontend on http://localhost:3000
@@ -97,7 +110,7 @@ logs: ## Tail docker-compose logs
 
 .PHONY: bench-gas
 bench-gas: ## Measure gas for every write op; writes docs/gas_report.json
-	$(NPX) truffle exec scripts/measure_gas.js --network development
+	$(NPX) hardhat run scripts/measure_gas.js --network localhost
 
 .PHONY: bench-latency
 bench-latency: ## Run end-to-end latency benchmark (1000 samples)

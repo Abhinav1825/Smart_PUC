@@ -2,6 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# System packages for curl (healthcheck) and wheels
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -9,8 +13,11 @@ COPY backend/ ./backend/
 COPY physics/ ./physics/
 COPY ml/ ./ml/
 COPY integrations/ ./integrations/
-COPY .env .env
+
+# Optional: copy .env if present (mounted in compose otherwise)
+COPY .env* ./
 
 EXPOSE 5000
 
-CMD ["python", "backend/app.py"]
+# FastAPI + Uvicorn entrypoint. The app module is backend.main:app.
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "1"]

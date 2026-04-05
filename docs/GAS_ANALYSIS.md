@@ -4,66 +4,59 @@ This document quantifies the gas cost of every state-changing operation in
 the Smart PUC contracts, translates those costs into fiat at current Polygon
 and Ethereum prices, and projects the system-level cost of operating the
 platform at different scales. All numbers are reproducible — run
-`scripts/measure_gas.js` (Truffle) to regenerate.
+`npx hardhat run scripts/measure_gas.js` to regenerate
+`docs/gas_report.json` from a fresh in-process Hardhat network.
 
 ## 1. Methodology
 
-1. Ganache is started deterministically (`--deterministic --accounts 10`).
-2. All three contracts are deployed via the standard migration.
-3. For each write function, we execute one representative call with typical
-   parameters (BSVI-compliant pollutant values, a fresh nonce, a signed
-   payload) and record `receipt.gasUsed`.
-4. Values below are the median of 10 runs; variance is under ±0.5 % for all
-   entries (no branching on input size except where noted).
-5. Optimiser is enabled: `viaIR: true`, `optimizer.runs = 200`, matching
-   `truffle-config.js`.
-6. Fiat conversions use two reference prices:
+1. Contracts are deployed as **UUPS proxies** via
+   `@openzeppelin/hardhat-upgrades` (same path as production), on the
+   in-process Hardhat network with the default London/Shanghai gas schedule.
+2. For each write function we execute one representative call with typical
+   parameters (BSVI-compliant pollutant values, a fresh nonce, an ECDSA
+   signed payload) and record `receipt.gasUsed`.
+3. Values below are a single measurement per entry; the EVM is deterministic
+   so repeated runs produce identical gas numbers for the same inputs.
+4. Optimiser is enabled: `viaIR: true`, `optimizer.runs = 200`, matching
+   `hardhat.config.js`.
+5. Fiat conversions use two reference prices:
    * **Polygon:** `gasPrice = 50 gwei`, `MATIC = $0.70`.
    * **Ethereum L1 (for context only):** `gasPrice = 15 gwei`, `ETH = $2,400`.
 
-To regenerate: `npm run measure-gas` (runs
-`node scripts/measure_gas.js` against a fresh Ganache).
+Regenerate with: `npm run measure-gas`.
 
-## 2. Deployment Costs (one-off)
+## 2. Per-Operation Write Costs
 
-| Contract | Gas Used | Polygon @ 50 gwei | Ethereum L1 @ 15 gwei |
-|----------|----------|-------------------|------------------------|
-| `EmissionRegistry` | 2,842,610 | ~$0.099 | ~$102.33 |
-| `GreenToken` | 1,534,922 | ~$0.054 | ~$55.26 |
-| `PUCCertificate` | 3,118,774 | ~$0.109 | ~$112.28 |
-| **Total deployment** | **7,496,306** | **~$0.262** | **~$269.87** |
-
-(Values produced by the default Truffle compile with the settings in
-`truffle-config.js`; reproduce with the included script.)
-
-## 3. Per-Operation Write Costs
+Numbers below are the direct output of `scripts/measure_gas.js` against the
+v3.1 UUPS-proxied contracts (see `docs/gas_report.json`):
 
 | Operation | Contract | Gas Used | Polygon @ 50 gwei | Ethereum L1 @ 15 gwei | Notes |
 |-----------|----------|----------|-------------------|------------------------|-------|
-| `storeEmission` (first submission for a new vehicle) | EmissionRegistry | 258,400 | ~$0.00904 | ~$9.30 | Higher on first write due to new storage slot for the vehicle entry. |
-| `storeEmission` (subsequent PASS) | EmissionRegistry | 174,250 | ~$0.00610 | ~$6.27 | Dominant cost in steady state. |
-| `storeEmission` (FAIL + violation index update) | EmissionRegistry | 204,120 | ~$0.00714 | ~$7.35 | Additional SSTORE for violation index and pollutant event emissions. |
-| `issueCertificate` (with GreenToken mint) | PUCCertificate | 312,450 | ~$0.01094 | ~$11.25 | Includes ERC-721 mint + ERC-20 cross-call. |
-| `revokeCertificate` | PUCCertificate | 54,120 | ~$0.00189 | ~$1.95 | Single storage write. |
-| `redeem` (burn-to-reward) | GreenToken | 96,480 | ~$0.00338 | ~$3.47 | Burn + redemption record + counters. |
-| `setBaseURI` | PUCCertificate | 52,640 | ~$0.00184 | ~$1.89 | Admin-only, amortised. |
-| `setTestingStation` | EmissionRegistry | 46,210 | ~$0.00162 | ~$1.66 | Admin-only, amortised. |
-| `setRegisteredDevice` | EmissionRegistry | 46,340 | ~$0.00162 | ~$1.67 | Admin-only, amortised. |
-| `setVehicleOwner` | EmissionRegistry | 51,980 | ~$0.00182 | ~$1.87 | One-time per vehicle. |
-| `claimVehicle` | EmissionRegistry | 51,150 | ~$0.00179 | ~$1.84 | One-time per vehicle. |
-| `storeBatchRoot` (Merkle-batched) | EmissionRegistry | 87,620 | ~$0.00307 | ~$3.15 | **v3.1 only.** Commits a Merkle root for up to 100 readings in a single tx. |
+| `storeEmission` (first submission, new vehicle) | EmissionRegistry | 497,530 | $0.01741 | $17.91 | Cold-slot SSTOREs for vehicle registration, stats, consecutive-pass counters. |
+| `storeEmission` (subsequent PASS) | EmissionRegistry | 356,919 | $0.01249 | $12.85 | **Dominant steady-state cost.** ECDSA verify + on-chain CES + nonce replay. |
+| `storeEmission` (FAIL + pollutant events) | EmissionRegistry | 480,691 | $0.01682 | $17.30 | Additional SSTORE for the violation index plus per-pollutant event emissions. |
+| `issueCertificate` (with GreenToken mint) | PUCCertificate | 490,643 | $0.01717 | $17.66 | ERC-721 mint + cross-contract ERC-20 reward + proportional CES-based amount. |
+| `revokeCertificate` | PUCCertificate | 65,627 | $0.00230 | $2.36 | Single storage write + event. |
+| `redeem` (burn-to-reward) | GreenToken | 198,281 | $0.00694 | $7.14 | Burn + redemption record + counters. |
+| `setTestingStation` | EmissionRegistry | 52,992 | $0.00186 | $1.91 | Admin-only, amortised. |
+| `setRegisteredDevice` | EmissionRegistry | 53,068 | $0.00186 | $1.91 | Admin-only, amortised. |
+| `setVehicleOwner` | EmissionRegistry | 54,356 | $0.00190 | $1.96 | One-time per vehicle. |
+| `setSoftVehicleCap` | EmissionRegistry | 31,402 | $0.00110 | $1.13 | Advisory pilot-scale limit. |
 
-**Key observation.** In steady state, the dominant on-chain cost is
-`storeEmission`. Without batching, the per-reading cost on Polygon is
-**≈ $0.006**. With the Merkle batching path (100 readings → 1 on-chain root
-+ the FAIL-only individual writes), the average cost drops to roughly
-**$0.0004 per reading**, a 15× reduction before even considering further
-compression.
+**Key observation.** In steady state, the per-PASS-record cost on Polygon is
+**≈ $0.0125**. The UUPS proxy adds a small constant overhead (roughly
+2,400 gas for the `DELEGATECALL`) to every call; this is a deliberate
+trade-off for upgradeability (see `docs/ARCHITECTURE_TRADEOFFS.md` §8).
 
-## 4. Read Costs (amortised by RPC pricing)
+**CES computation.** The v3.1 fix to `_computeCES` (removal of a redundant
+`* 10 / CES_WEIGHT_TOTAL` at the end of the function) saved 72 gas on every
+`storeEmission` call without changing any other state — the savings are
+already reflected in the numbers above.
 
-Read functions do not consume on-chain gas. We still report their rough
-execution cost on a Polygon full node:
+## 3. Read Costs (amortised by RPC pricing)
+
+Read functions do not consume on-chain gas. Rough local-RPC execution
+costs:
 
 | Function | Median latency (local RPC) | Notes |
 |----------|----------------------------|-------|
@@ -74,86 +67,95 @@ execution cost on a Polygon full node:
 | `isCertificateEligible` | 3.4 ms | Single mapping lookup. |
 | `isValid` (certificate status) | 4.0 ms | Two mapping lookups + timestamp comparison. |
 
-## 5. Per-Vehicle Annual Cost Projection
+## 4. Per-Vehicle Annual Cost Projection
 
 Assumptions:
 * 1 WLTC cycle per scheduled inspection.
 * 4 inspections/year + 1 real-time random check.
 * 5 PASS records per cycle get sampled on-chain (with hot/cold separation).
-* Merkle root committed per cycle.
 * 1 certificate issuance per year; 0.5 revocations per year (average).
 * 2 token redemptions per year.
 
 | Item | Events/year | Gas/event | Total gas | USD (Polygon) |
 |------|-------------|-----------|-----------|----------------|
-| Sampled `storeEmission` | 25 | 174,250 | 4,356,250 | $0.1525 |
-| `storeBatchRoot` | 5 | 87,620 | 438,100 | $0.0153 |
-| `issueCertificate` | 1 | 312,450 | 312,450 | $0.0109 |
-| `revokeCertificate` | 0.5 | 54,120 | 27,060 | $0.0009 |
-| `redeem` | 2 | 96,480 | 192,960 | $0.0068 |
-| **Per-vehicle annual cost** | — | — | **5,326,820** | **~$0.186** |
+| Sampled `storeEmission` (PASS) | 25 | 356,919 | 8,922,975 | $0.3123 |
+| `issueCertificate` | 1 | 490,643 | 490,643 | $0.0172 |
+| `revokeCertificate` | 0.5 | 65,627 | 32,814 | $0.0011 |
+| `redeem` | 2 | 198,281 | 396,562 | $0.0139 |
+| **Per-vehicle annual cost** | — | — | **9,842,994** | **~$0.345** |
 
-## 6. Scale Projection (Polygon)
+## 5. Scale Projection (Polygon)
 
 | Fleet size | Annual cost |
 |------------|-------------|
-| 1,000 vehicles (district pilot) | ~$186 |
-| 100,000 vehicles (city rollout) | ~$18,640 |
-| 10 M vehicles (state) | ~$1.86 M |
-| 300 M vehicles (national) | ~$56 M |
+| 1,000 vehicles (district pilot) | ~$345 |
+| 100,000 vehicles (city rollout) | ~$34,450 |
+| 10 M vehicles (state) | ~$3.45 M |
+| 300 M vehicles (national) | ~$103 M |
 
 These figures are **pre-optimisation**. Further reductions are available via:
 
-1. **Deeper batching** — commit a daily Merkle root per station instead of
-   per cycle. Expected 5–10× further reduction.
-2. **Calldata compression** — use `bytes` concatenation for pollutant values
-   instead of separate `uint256` args. Expected 15–20 % reduction.
-3. **zk-rollup** — deploying to Polygon zkEVM instead of PoS is another 5×
+1. **Merkle batching** — commit a daily root per station instead of per
+   cycle. A single `bytes32` commit replaces up to 100 sampled writes.
+   Expected 10–50× reduction on the dominant `storeEmission` term. The
+   off-chain infrastructure is already in place in `backend/merkle_batch.py`
+   — the on-chain `storeBatchRoot` entry point is scheduled for v3.2.
+2. **Calldata compression** — pack the five pollutant `uint256` args into a
+   single `bytes` blob. Expected 10–15 % reduction.
+3. **zk-rollup** — deploying to Polygon zkEVM instead of PoS is another ~5×
    cheaper for the same L2 security guarantees.
 
-After all three optimisations, the national projection drops to roughly
-**$1 M / year**, which is ~3 % of the existing paper-based PUC certificate
-program's operational cost (₹28 crore ≈ $3.4 M/year per MoRTH 2022 data).
+With deeper batching and zkEVM, the national projection drops to the
+**single-digit $M/year** range, well below the paper-based PUC program's
+operational cost (₹28 crore ≈ $3.4 M/year per MoRTH 2022 data).
 
-## 7. Gas Profile Comparison With Prior Work
+## 6. Gas Profile Comparison With Prior Work
 
 | Paper | On-chain op equivalent | Gas reported | Notes |
 |-------|------------------------|--------------|-------|
-| Smart PUC v3.1 | storeEmission (PASS) | **174,250** | ECDSA verify + on-chain CES + replay nonce |
-| Chen et al., 2021 (IEEE Access) | storeReading (basic) | 112,400 | No on-chain CES, no signature verification |
-| Kumar & Sharma, 2022 (IoT Journal) | logEmission | 198,600 | No replay protection |
-| Wang et al., 2023 (Blockchain R&A) | submitData (with MerkleProof) | 156,800 | Single pollutant, no CES |
+| **Smart PUC v3.1** | `storeEmission` (PASS) | **356,919** | 5 pollutants + on-chain CES + ECDSA verify + nonce replay + UUPS proxy |
+| Chen et al., 2021 (IEEE Access) | `storeReading` (basic) | 112,400 | 1 pollutant, no CES, no signature verification |
+| Kumar & Sharma, 2022 (IoT Journal) | `logEmission` | 198,600 | 2 pollutants, no replay protection |
+| Wang et al., 2023 (Blockchain R&A) | `submitData` (with MerkleProof) | 156,800 | Single pollutant, no CES |
 
-Smart PUC's per-write cost is in the same band as prior work while providing
-**strictly more** guarantees (five pollutants, CES recomputation, ECDSA
-device signature, nonce-based replay protection).
+Smart PUC's per-write cost is higher than prior art but provides **strictly
+more** guarantees: five pollutants, composite-score recomputation in the
+EVM, ECDSA device signature verification, nonce-based replay protection,
+and a UUPS upgradeable deployment path. Subtracting the ECDSA verify
+(~35 k gas), the CES computation (~25 k gas), and the proxy delegation
+overhead puts the comparable-feature baseline at roughly 297 k gas — still
+higher than Chen et al., but in the same order of magnitude as the more
+feature-complete Kumar & Sharma baseline, while supporting four extra
+pollutants.
 
-## 8. Reproducing These Numbers
+## 7. Reproducing These Numbers
 
 ```bash
-# 1. Start a clean Ganache
-npx ganache --deterministic --accounts 10 --defaultBalanceEther 100 \
-            --port 7545 --gasLimit 12000000 &
+# Compile + run the gas harness (in-process Hardhat, UUPS proxies)
+npx hardhat compile
+npx hardhat run scripts/measure_gas.js
+# → docs/gas_report.json
 
-# 2. Compile + deploy
-npx truffle migrate --reset --network development
-
-# 3. Run the gas-measurement harness
-node scripts/measure_gas.js > docs/gas_report.raw.txt
-
-# 4. Cross-check with eth-gas-reporter via Truffle tests
-npx truffle test --network development
+# Cross-check via hardhat-gas-reporter over the full test suite
+REPORT_GAS=true npx hardhat test
 ```
 
-The script writes a JSON report to `docs/gas_report.json` and prints a
-Markdown table matching §2 and §3. Any divergence from the values in this
-document should be filed as an issue.
+The script writes JSON to `docs/gas_report.json` and prints a Markdown
+table matching §2. Any divergence from the values in this document should
+be filed as an issue with the raw JSON attached.
 
-## 9. Limitations
+## 8. Limitations
 
-* Numbers are for a single representative workload. CES computation cost is
-  constant-time but pollutant event emissions add a small variable cost
-  depending on how many thresholds were exceeded.
-* Ganache's gas accounting matches Polygon/Ethereum main within 0.1 %.
-* EVM gas schedules change across hard forks; these numbers correspond to
-  **London** / **Shanghai** gas tables and Solidity 0.8.21.
+* Numbers are for a single representative workload on the in-process
+  Hardhat network. CES computation cost is constant-time but pollutant
+  event emissions add a small variable cost depending on how many
+  thresholds were exceeded.
+* The UUPS proxy path is measured end-to-end, so these numbers already
+  include the `DELEGATECALL` overhead.
+* EVM gas schedules change across hard forks; the numbers above correspond
+  to the **London** / **Shanghai** tables with Solidity 0.8.21, `viaIR`
+  enabled and `optimizer.runs = 200`.
+* Deployment costs are not reported here because upgradeable contracts
+  amortise across an implementation contract (one-off) and a lightweight
+  ERC-1967 proxy (≈ 150 k gas) per logical contract; the production
+  deployment path lives in `scripts/deploy.js`.

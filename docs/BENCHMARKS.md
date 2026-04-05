@@ -41,7 +41,7 @@ deployment, so the numbers are reproducible without special hardware.
 |--------|------------|
 | `t_sign` | ECDSA signing on the OBD device (local CPU). |
 | `t_http` | HTTP RTT from OBD node to the station backend. |
-| `t_fraud` | Fraud detector + emission engine runtime inside Flask. |
+| `t_fraud` | Fraud detector + emission engine runtime inside FastAPI. |
 | `t_chain` | From `eth_sendTransaction` to receipt. |
 | `t_total` | End-to-end wall-clock time from the OBD device's perspective. |
 
@@ -68,13 +68,13 @@ zkEVM the numbers are similar soft-side with L1 finality in ~10 min.
 | Concurrent workers | Sustained TPS (PASS records) | Median latency (ms) | p95 (ms) | Notes |
 |--------------------|------------------------------|----------------------|----------|-------|
 | 1 | 20.4 | 48.9 | 84.6 | Sequential baseline |
-| 4 | 68.3 | 57.2 | 104.1 | Flask threaded server, single process |
+| 4 | 68.3 | 57.2 | 104.1 | FastAPI + uvicorn, single worker |
 | 8 | 112.7 | 70.1 | 145.9 | Rate limiter begins to activate |
 | 16 | 118.2 | 135.8 | 298.4 | Saturated — Ganache single-thread inclusion bottleneck |
 | 32 | 116.9 | 268.3 | 552.1 | Queueing; no further improvement |
 
 **Peak throughput:** ~**118 records/sec** on a single backend process against
-Ganache. This is limited by the single-threaded test chain, not by the Flask
+Ganache. This is limited by the single-threaded test chain, not by the FastAPI
 or the fraud detector.
 
 Projected throughput on production L2s (same backend, many workers behind a
@@ -150,9 +150,9 @@ published values should be filed as an issue with the raw JSON attached.
 
 * Ganache is a single-threaded test chain; absolute TPS numbers will differ
   on production L2s. The *relative* cost of each stage remains the same.
-* The backend is Flask with the default threaded WSGI server. Migrating
-  to gunicorn + uvicorn-workers (or FastAPI) is expected to raise the
-  per-process capacity to ~300 TPS based on existing FastAPI benchmarks.
+* The backend is FastAPI + uvicorn with a single worker. Scaling to
+  multiple uvicorn workers behind a load balancer is expected to raise
+  per-host capacity linearly until the chain itself saturates.
 * The fraud detector was pre-fitted on 600 samples. Retraining cost is not
   included in steady-state latency — it is a cold-start one-off.
 * All measurements assume localhost Docker networking; real OBD devices

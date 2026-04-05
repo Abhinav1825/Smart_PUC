@@ -1,7 +1,5 @@
-version: "3.8"
-
 # Smart PUC — 3-Node Architecture Docker Compose
-# Usage: docker-compose up
+# Usage: docker compose up
 # This starts all 3 nodes + Ganache blockchain
 
 services:
@@ -22,7 +20,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Contract Deployment (runs once) ──
+  # ── Contract Deployment (runs once; Hardhat + UUPS proxies) ──
   deploy-contracts:
     build:
       context: .
@@ -33,9 +31,11 @@ services:
     environment:
       - RPC_URL=http://ganache:8545
     volumes:
+      # The flattened Truffle-shape artifacts land here so the Python
+      # backend (which mounts the same volume) can load ABIs unchanged.
       - contract-build:/app/build
 
-  # ── Node 2: Testing Station Backend ──
+  # ── Node 2: Testing Station Backend (FastAPI + uvicorn) ──
   station:
     build:
       context: .
@@ -47,9 +47,8 @@ services:
         condition: service_completed_successfully
     environment:
       - RPC_URL=http://ganache:8545
-      - FLASK_PORT=5000
-      - FLASK_DEBUG=false
       - CORS_ORIGINS=*
+      - PERSISTENCE_DB=backend/data/smartpuc.db
     volumes:
       - contract-build:/app/build
     healthcheck:
@@ -57,7 +56,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 20s
 
   # ── Node 1: OBD Device Simulator ──
   obd-device:

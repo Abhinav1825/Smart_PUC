@@ -12,10 +12,12 @@ such as IEEE Access, IEEE IoT Journal, and ACM TOIT.
 | Node.js | 18.x or 20.x (LTS) | `node --version` |
 | npm | 9+ | Shipped with Node |
 | Python | 3.10 or 3.11 | `python --version` |
-| Solidity compiler | 0.8.21 | Pinned in `truffle-config.js` |
+| Solidity compiler | 0.8.21 | Pinned in `hardhat.config.js` |
 | OpenZeppelin contracts | 4.9.6 | Pinned in `package.json` |
 | Web3.py | 6.15.1 | Pinned in `requirements.txt` |
-| Flask | 3.0.3 | Pinned in `requirements.txt` |
+| FastAPI | 0.115.0 | Pinned in `requirements.txt` |
+| uvicorn | 0.30.6 | Pinned in `requirements.txt` |
+| Pydantic | 2.9.2 | Pinned in `requirements.txt` |
 | scikit-learn | 1.4.2 | Pinned in `requirements.txt` |
 | Docker | 24.x or later | Optional — only for the one-command path |
 | Git commit | `git rev-parse HEAD` | Record at the top of your paper's data availability section |
@@ -50,7 +52,7 @@ Expected services:
 |---------|------|-------------|
 | `ganache` | 7545 | HTTP JSON-RPC `eth_chainId` |
 | `deploy-contracts` | — | One-shot, exits 0 |
-| `station` (Flask backend) | 5000 | `GET /api/status` returns 200 |
+| `station` (FastAPI backend) | 5000 | `GET /health` returns 200 |
 | `obd-device` | — | Posts signed telemetry every 5 s |
 | `frontend` | 3000 | HTTP 200 on `/index.html` |
 
@@ -67,7 +69,7 @@ npx ganache --deterministic --accounts 10 --defaultBalanceEther 100 \
             --port 7545 --gasLimit 12000000
 
 # Contracts (terminal 2)
-npx truffle migrate --reset --network development
+npx hardhat compile && npx hardhat run scripts/deploy.js --network localhost
 
 # Backend (terminal 3)
 cp .env.example .env
@@ -89,7 +91,7 @@ The one-liner for each:
 
 ```bash
 # Gas cost table (docs/GAS_ANALYSIS.md)
-npx truffle exec scripts/measure_gas.js --network development
+npx hardhat run scripts/measure_gas.js --network localhost
 # -> docs/gas_report.json
 
 # End-to-end latency (docs/BENCHMARKS.md §2)
@@ -110,8 +112,8 @@ python -m ml.fraud_evaluation --samples 5000
 python -m benchmarks.scalability_test
 # -> prints LaTeX tables for the paper
 
-# Truffle tests (30 contract tests)
-npx truffle test
+# Hardhat tests (33+ contract tests incl. UUPS proxy semantics)
+npx hardhat test
 
 # Python tests (9 modules, with coverage)
 python -m pytest tests/ -v --cov=backend --cov=ml --cov=physics --cov=integrations
@@ -127,7 +129,7 @@ python -m pytest tests/ -v --cov=backend --cov=ml --cov=physics --cov=integratio
 | Latency benchmark (N = 1000) | 2–3 min |
 | Throughput sweep (5 configs × 200) | 4–6 min |
 | Fraud detector evaluation (N = 5000) | 30 s |
-| Truffle test suite | 60 s |
+| Hardhat test suite | 60 s |
 | Python test suite | 20 s |
 
 ## 6. Determinism Notes

@@ -34,36 +34,45 @@ migration cost is dominated by operations, not development.
 
 ## 2. Truffle vs. Hardhat vs. Foundry
 
-The prototype uses **Truffle 5.11** because it was chosen before ConsenSys
-deprecated Truffle in September 2023. Truffle still works but is no longer
-maintained.
+Smart PUC **v3.1 migrated from Truffle to Hardhat + ethers v6**. The
+drivers were:
 
-Recommended migration path (not yet applied — see `docs/ROADMAP.md`):
+* Truffle was officially deprecated by ConsenSys in September 2023 and is
+  no longer maintained.
+* Hardhat's in-process EVM makes tests run without an external node.
+* The OpenZeppelin Upgrades plugin (`@openzeppelin/hardhat-upgrades`)
+  integrates natively with Hardhat, enabling the UUPS proxy deployment
+  path used by `scripts/deploy.js`.
+* `hardhat-gas-reporter` produces per-function gas tables that feed
+  directly into `docs/GAS_ANALYSIS.md`.
 
-1. **Hardhat + ethers v6** — near drop-in replacement, TypeScript support,
-   better stack traces. Low-risk migration; estimated half-day.
-2. **Foundry** — faster tests and fuzz testing. Higher-risk migration
-   because the test suite (`test/TestEmission.js`) would have to be rewritten
-   in Solidity; estimated two days.
+Compatibility was preserved for the Python backend by
+`scripts/flatten_artifacts.js`, which post-processes Hardhat's default
+`artifacts/contracts/<Name>.sol/<Name>.json` outputs into the legacy
+`build/contracts/<Name>.json` shape expected by
+`backend/blockchain_connector.py`.
 
-We recommend **Hardhat** as the first step and leave Foundry as an optional
-second step for the fuzz test harness only.
+**Foundry** remains an optional follow-up — useful primarily for fuzz
+testing the CES and signature-verification arithmetic. It would
+complement, not replace, Hardhat.
 
 ## 3. Flask vs. FastAPI
 
-Flask was chosen for familiarity and its tiny footprint in Docker. Tradeoffs:
+Smart PUC **v3.1 migrated from Flask to FastAPI + uvicorn**. The
+drivers were:
 
-| Dimension | Flask (current) | FastAPI (proposed) |
-|-----------|-----------------|---------------------|
+| Dimension | Flask (v3.0) | FastAPI (v3.1, current) |
+|-----------|---------------|--------------------------|
 | Async support | No (blocking WSGI) | Yes (ASGI / uvicorn) |
-| Request validation | Manual `data.get(...)` | Pydantic models |
-| OpenAPI / Swagger | Manual | Generated automatically |
-| Throughput (uvicorn vs gunicorn sync) | ~800 req/s | ~2500 req/s |
-| Learning curve | Negligible | 1 day |
-| Code churn for migration | Mostly mechanical | ~50 routes × 20 min each |
+| Request validation | Manual `data.get(...)` + bounds checks | Pydantic v2 models |
+| OpenAPI / Swagger | Manual / none | Auto-generated at `/docs` |
+| Throughput (single process) | ~120 TPS | expected ~300–500 TPS |
+| Type safety | Runtime `isinstance` checks | Pydantic + typed endpoints |
 
-Migration is recommended but non-trivial. Current Flask code remains correct
-and is adequate for a pilot-scale deployment. See `docs/ROADMAP.md`.
+The FastAPI app lives in `backend/main.py`, with Pydantic schemas in
+`backend/schemas.py` and reusable dependencies in `backend/dependencies.py`.
+Every legacy Flask route was ported 1:1, so the frontend, OBD simulator,
+and benchmark scripts continue to work unchanged.
 
 ## 4. On-chain CES vs Off-chain with Proof
 
@@ -119,8 +128,9 @@ contracts deploy on:
 | Ethereum mainnet | 12 s | Expensive | Only if regulatory audit demands L1 |
 | Sepolia | — | Free | Dev / testing |
 
-The repository contains working Truffle network entries for Polygon, Amoy,
-**zkEVM**, and **Arbitrum** (see `truffle-config.js`).
+The repository contains working Hardhat network entries for Polygon, Amoy,
+**zkEVM**, **zkEVM Cardona**, **Arbitrum One**, and **Arbitrum Sepolia**
+(see `hardhat.config.js`).
 
 ## 8. What We Would Do Differently for a Greenfield v4
 

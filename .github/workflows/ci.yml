@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # ── Solidity Tests ──────────────────────────────────────────────────
+  # ── Solidity tests (Hardhat + in-process network + UUPS proxies) ────
   solidity-tests:
     runs-on: ubuntu-latest
     steps:
@@ -15,29 +15,22 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: npm
 
-      - run: npm install
+      - run: npm install --no-audit --no-fund
 
       - name: Compile contracts
-        run: npx truffle compile
+        run: npx hardhat compile
 
-      - name: Start Ganache
-        run: npx ganache --deterministic --accounts 10 --gasLimit 12000000 &
+      - name: Run Hardhat tests
+        run: npx hardhat test
 
-      - name: Wait for Ganache
-        run: sleep 5
+      - name: Run gas-reporter pass
+        run: REPORT_GAS=true npx hardhat test
+        continue-on-error: true
 
-      - name: Run Truffle tests
-        run: npx truffle test
-
-      - name: Generate test gas report
-        run: |
-          echo "=== Gas Report ==="
-          npx truffle test 2>&1 | grep -iE "(gas|cost|deploy)" || echo "No gas data captured (add eth-gas-reporter to devDependencies for detailed reports)"
-
-  # ── Solidity Security (Slither) ─────────────────────────────────────
+  # ── Static analysis (Slither) ───────────────────────────────────────
   solidity-security:
     runs-on: ubuntu-latest
     steps:
@@ -45,13 +38,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: npm
 
-      - run: npm install
+      - run: npm install --no-audit --no-fund
 
       - name: Compile contracts (needed by Slither)
-        run: npx truffle compile
+        run: npx hardhat compile
 
       - uses: actions/setup-python@v5
         with:
@@ -61,9 +54,9 @@ jobs:
         run: pip install slither-analyzer
 
       - name: Run Slither static analysis
-        run: slither . --print human-summary || true
+        run: slither contracts/ --exclude-dependencies --print human-summary || true
 
-  # ── Python Tests ────────────────────────────────────────────────────
+  # ── Python tests ────────────────────────────────────────────────────
   python-tests:
     runs-on: ubuntu-latest
     steps:
@@ -77,7 +70,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov httpx
 
       - name: Run tests with coverage
         run: |
@@ -113,7 +106,7 @@ jobs:
             --max-complexity=15 \
             --ignore=E501,W503,E402
 
-  # ── Docker Build Verification ───────────────────────────────────────
+  # ── Docker build verification ───────────────────────────────────────
   docker-build:
     runs-on: ubuntu-latest
     steps:

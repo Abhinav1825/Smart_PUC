@@ -73,7 +73,7 @@ Credit Tokens redeemable through an on-chain marketplace.
 | Frontend | RTO portal with compliance heatmap | ✓ |
 | Frontend | Marketplace for token redemption | ✓ |
 | Frontend | QR code generation + auto-verify from URL | ✓ |
-| Testing | 30 comprehensive Truffle tests across 3 contracts | ✓ |
+| Testing | 33+ Hardhat + ethers v6 tests (incl. UUPS proxy semantics) | ✓ |
 | CI/CD | 5-job GitHub Actions pipeline | ✓ |
 | Deployment | Multi-chain: Ganache, Sepolia, Polygon, Amoy | ✓ |
 | Deployment | Docker 3-node orchestration with healthchecks | ✓ |
@@ -168,7 +168,7 @@ Starts 5 services with full healthchecks:
 |---------|------|-------------|
 | `ganache` | 7545 | Local Ethereum blockchain |
 | `deploy-contracts` | -- | One-shot: deploys all 3 contracts |
-| `station` | 5000 | Testing Station Flask API |
+| `station` | 5000 | Testing Station FastAPI (uvicorn) |
 | `obd-device` | -- | OBD Device simulator |
 | `frontend` | 3000 | Static file server for all 7 pages |
 
@@ -183,7 +183,7 @@ pip install -r requirements.txt
 npx ganache --deterministic --accounts 10 --defaultBalanceEther 100 --port 7545
 
 # 3. Deploy all 3 contracts
-npx truffle migrate --reset
+npx hardhat run scripts/deploy.js --network localhost
 
 # 4. Start Testing Station backend (separate terminal)
 cd backend && python app.py
@@ -309,18 +309,20 @@ Compliant vehicles earn **100 GCT** per PUC certificate. Tokens are redeemable t
 
 ## Testing
 
-### Solidity Tests (30 tests across 3 contracts)
+### Solidity Tests (33+ Hardhat tests across 3 contracts)
 
 ```bash
-npx truffle test
+npx hardhat test            # run the full suite
+npm run test:gas            # run with gas reporter enabled
 ```
 
 Covers:
-- EmissionRegistry: record submission, on-chain CES calculation, nonce replay protection, role access, device signature verification, bounded tracking, violation indexing
-- PUCCertificate: issuance, revocation, eligibility checks, IPFS tokenURI, metadata linking
-- GreenToken: minting, balance tracking, marketplace redemption, burn mechanics, reward cost validation
+- **EmissionRegistry:** record submission, on-chain CES calculation, nonce replay protection, role access, device signature verification, soft vehicle cap, violation indexing.
+- **PUCCertificate:** issuance, revocation, eligibility checks, IPFS tokenURI, metadata linking, proportional Green Token reward.
+- **GreenToken:** minting, balance tracking, marketplace redemption, burn mechanics, reward cost validation.
+- **UUPS proxy semantics:** state preservation across upgrades, unauthorized upgrade rejection.
 
-Edge cases tested: replay attacks, invalid signatures, overflow protection, gas optimization, unauthorized access.
+Edge cases tested: replay attacks, invalid signatures, overflow protection, gas optimization, unauthorized access, upgrade authorization.
 
 ### Python Tests
 
@@ -344,7 +346,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs **5 parallel jobs*
 
 | Job | Runner | What It Does |
 |-----|--------|-------------|
-| **solidity-tests** | ubuntu-latest | Compile contracts, start Ganache, run 30 Truffle tests, generate gas report |
+| **solidity-tests** | ubuntu-latest | Compile contracts (Hardhat), run the full test suite on the in-process Hardhat network, emit gas report |
 | **solidity-security** | ubuntu-latest | Run Slither static analysis for vulnerability detection |
 | **python-tests** | ubuntu-latest | Run pytest with coverage across backend, ml, physics, integrations; upload coverage artifact |
 | **lint** | ubuntu-latest | Flake8 linting on all Python modules (max-line-length=120, max-complexity=15) |
@@ -369,13 +371,17 @@ echo "MNEMONIC=your twelve word mnemonic phrase here" > .env
 echo "INFURA_PROJECT_ID=your_infura_project_id" >> .env
 
 # Deploy to Sepolia
-npx truffle migrate --network sepolia
+npx hardhat run scripts/deploy.js --network sepolia
 
 # Deploy to Polygon Amoy testnet
-npx truffle migrate --network amoy
+npx hardhat run scripts/deploy.js --network amoy
 
 # Deploy to Polygon mainnet
-npx truffle migrate --network polygon
+npx hardhat run scripts/deploy.js --network polygon
+
+# Polygon zkEVM / Arbitrum
+npx hardhat run scripts/deploy.js --network zkevm
+npx hardhat run scripts/deploy.js --network arbitrum
 ```
 
 ---
@@ -429,14 +435,23 @@ Smart_PUC/
 │   ├── EmissionRegistry.sol     # On-chain CES, nonce replay, bytes32 optimization
 │   ├── PUCCertificate.sol       # ERC-721 NFT certs, IPFS tokenURI, base URI
 │   └── GreenToken.sol           # ERC-20 rewards, burn-to-redeem marketplace
-├── migrations/
-│   └── 1_initial_migration.js   # Deploys all 3 contracts + wires them together
+├── scripts/
+│   ├── deploy.js                # Hardhat deployment script (UUPS proxies)
+│   ├── flatten_artifacts.js     # Flattens Hardhat artifacts into Truffle-compat build/contracts/
+│   ├── measure_gas.js           # Per-operation gas measurement harness
+│   ├── bench_latency.py         # End-to-end latency benchmark
+│   ├── bench_throughput.py      # Concurrent throughput sweep
+│   └── compute_sri.py           # SRI hash injector for frontend CDN assets
 ├── test/
-│   └── TestEmission.js          # 30 Truffle tests across all 3 contracts
+│   └── SmartPUC.test.js         # 33+ Hardhat/ethers tests across all 3 contracts + UUPS semantics
 ├── obd_node/
 │   └── obd_device.py            # Node 1: OBD device simulator + ECDSA signing
 ├── backend/
-│   ├── app.py                   # Node 2: Flask API (27+ endpoints, JWT, analytics)
+│   ├── main.py                  # Node 2: FastAPI app (27+ endpoints, JWT, analytics)
+│   ├── schemas.py               # Pydantic request/response models
+│   ├── dependencies.py          # Auth + rate-limit FastAPI dependencies
+│   ├── persistence.py           # SQLite store (rate limit, notifications, Merkle batches)
+│   ├── merkle_batch.py          # Keccak256 Merkle tree + batcher for hot/cold path
 │   ├── blockchain_connector.py  # Multi-contract Web3.py connector
 │   ├── emission_engine.py       # Multi-pollutant BSVI emission calculator
 │   └── simulator.py             # WLTC Class 3b driving cycle generator
@@ -475,8 +490,8 @@ Smart_PUC/
 ├── Dockerfile.backend           # Testing Station container
 ├── Dockerfile.obd               # OBD Device container
 ├── Dockerfile.deploy            # Contract deployment container
-├── truffle-config.js            # Ganache + Sepolia + Polygon config
-├── package.json                 # Node.js dependencies (v3.0.0)
+├── hardhat.config.js            # Hardhat + 8 network entries (Ganache, Sepolia, Polygon, Amoy, zkEVM, Arbitrum, etc.)
+├── package.json                 # Node.js dependencies (v3.1.0)
 ├── requirements.txt             # Python dependencies
 └── run_project.bat              # Windows one-click setup
 ```
@@ -489,10 +504,12 @@ Smart_PUC/
 |-------|-----------|---------|
 | **Blockchain** | Solidity 0.8.21 | Smart contract language |
 | **Blockchain** | OpenZeppelin 4.9.6 | ERC-721, ERC-20, ReentrancyGuard, ECDSA |
-| **Blockchain** | Truffle | Compilation, migration, testing framework |
+| **Blockchain** | Hardhat + ethers v6 | Compilation, deployment, testing framework |
+| **Blockchain** | OpenZeppelin Upgrades (UUPS) | Proxy-based contract upgradeability |
 | **Blockchain** | Ganache | Local Ethereum development blockchain |
 | **Backend** | Python 3.10+ | Testing Station server runtime |
-| **Backend** | Flask 3.0 | REST API framework |
+| **Backend** | FastAPI 0.115 + uvicorn | REST API framework (async, auto-generated OpenAPI at /docs) |
+| **Backend** | Pydantic v2 | Request / response validation |
 | **Backend** | Web3.py 6.15 | Ethereum blockchain interaction |
 | **Backend** | PyJWT 2.8 | JWT token authentication |
 | **Backend** | scikit-learn 1.4 | Isolation Forest fraud detection |
@@ -547,14 +564,9 @@ pilot operators should understand the boundaries of what it claims.
 - **In-memory rate limiting and notifications** have been replaced by
   SQLite persistence in v3.1. Horizontal scaling beyond a single process
   still requires Redis or Postgres — see [docs/ARCHITECTURE_TRADEOFFS.md](docs/ARCHITECTURE_TRADEOFFS.md).
-- **Truffle is deprecated.** The toolchain works but ConsenSys sunset
-  Truffle in 2023. A migration to Hardhat is planned and documented in
-  [docs/ARCHITECTURE_TRADEOFFS.md §2](docs/ARCHITECTURE_TRADEOFFS.md).
-- **Contracts are not upgradeable.** A UUPS proxy migration is planned.
-  For now, bugs require redeploy + data migration.
 - **Single-chain deployment.** Polygon PoS is the default. zkEVM and
-  Arbitrum network entries are in `truffle-config.js` but have not been
-  end-to-end tested.
+  Arbitrum network entries are in `hardhat.config.js` but have not been
+  end-to-end tested on those chains.
 - **No admin multisig yet.** The `admin` role in every contract is a single
   EOA in the current deployment. Production must use a 2-of-3 (or better)
   multisig.

@@ -1,0 +1,1243 @@
+"""
+Smart PUC — Testing Station Backend (FastAPI + Pydantic)
+=========================================================
+
+Node 2 of the 3-node architecture. Replaces the legacy Flask `app.py`
+with a FastAPI application that:
+
+  * Uses Pydantic models for request validation.
+  * Exposes an automatic OpenAPI / Swagger UI at ``/docs``.
+  * Runs asynchronously under ``uvicorn``.
+  * Preserves every endpoint path and response shape from the Flask
+    version, so the frontend, OBD simulator, and benchmark scripts work
+    unchanged.
+
+Run in development::
+
+    cd backend && uvicorn main:app --host 0.0.0.0 --port 5000 --reload
+
+Run in Docker: see Dockerfile.backend.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json as _json
+import os
+import sys
+import time
+import traceback
+from typing import Any, Optional
+
+import numpy as _np
+import jwt
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+# Add the repo root to sys.path (so physics/ml/integrations imports resolve)
+# AND the backend directory itself (so sibling modules like simulator,
+# emission_engine, blockchain_connector, persistence import cleanly whether
+# the app is started via `uvicorn backend.main:app` or `python -m uvicorn
+# main:app` from inside the backend directory).
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.join(_BACKEND_DIR, "..")
+for _p in (_REPO_ROOT, _BACKEND_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from simulator import WLTCSimulator  # noqa: E402
+from emission_engine import calculate_emissions  # noqa: E402
+from blockchain_connector import BlockchainConnector  # noqa: E402
+from persistence import PersistenceStore  # noqa: E402
+
+from dependencies import (  # noqa: E402
+    AUTH_PASSWORD,
+    AUTH_USERNAME,
+    JWT_ALGORITHM,
+    JWT_EXPIRY_HOURS,
+    JWT_SECRET,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_WINDOW,
+    auth_is_configured,
+    rate_limit_middleware,
+    require_api_key,
+    require_auth,
+    verify_credentials,
+)
+from schemas import (  # noqa: E402
+    EmissionRecordRequest,
+    IssueCertificateRequest,
+    LoginRequest,
+    LoginResponse,
+    RedeemTokensRequest,
+    RevokeCertificateRequest,
+)
+
+
+# ────────────────────────── Env / optional modules ───────────────────────
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+DEFAULT_VEHICLE_ID = os.getenv("DEFAULT_VEHICLE_ID", "MH12AB1234")
+
+# Optional physics module
+try:
+    from physics.vsp_model import calculate_vsp, get_operating_mode_bin
+    vsp_available = True
+except ImportError:
+    vsp_available = False
+
+# Optional VAHAN bridge (simulated integration point — see integrations/vaahan_bridge.py)
+try:
+    from integrations.vaahan_bridge import VaahanBridge
+    vaahan = VaahanBridge(use_mock=True)
+    vaahan_available = True
+except ImportError:
+    vaahan = None
+    vaahan_available = False
+
+# Optional software OBD frame parser
+try:
+    from integrations.obd_adapter import parse_obd_frame  # noqa: F401
+    obd_adapter_available = True
+except ImportError:
+    obd_adapter_available = False
+
+# Optional real OBD-II hardware (python-obd + ELM327)
+try:
+    import obd as obd_lib
+    obd_hardware_available = True
+except ImportError:
+    obd_lib = None
+    obd_hardware_available = False
+
+# Optional ML fraud detector
+try:
+    from ml.fraud_detector import FraudDetector
+    fraud_detector = FraudDetector()
+    fraud_available = True
+    _baseline_data: list = []
+    _training_data_path = os.path.join(os.path.dirname(__file__), "..", "ml", "training_data.npy")
+    if os.path.exists(_training_data_path):
+        _raw = _np.load(_training_data_path)
+        for row in _raw[:600]:
+            _baseline_data.append({
+                "speed": float(row[0]), "rpm": float(row[1]),
+                "fuel_rate": float(row[2]), "acceleration": float(row[3]),
+                "co2": float(row[4]), "vsp": float(row[6]),
+            })
+    else:
+        _tmp_sim = WLTCSimulator(vehicle_id="IF_TRAINING", dt=1.0)
+        for _ in range(600):
+            _r = _tmp_sim.generate_reading()
+            _baseline_data.append({
+                "speed": _r["speed"], "rpm": float(_r["rpm"]),
+                "fuel_rate": _r["fuel_rate"], "acceleration": _r.get("acceleration", 0.0),
+                "co2": 130.0, "vsp": 5.0,
+            })
+        del _tmp_sim
+    fraud_detector.fit(_baseline_data)
+    del _baseline_data
+except ImportError:
+    fraud_detector = None
+    fraud_available = False
+
+# Optional LSTM / linear emission predictor
+try:
+    from ml.lstm_predictor import create_predictor
+    predictor = create_predictor(use_lstm=False)
+    predictor_available = True
+except ImportError:
+    predictor = None
+    predictor_available = False
+
+
+_PHASE_TO_INT = {"Low": 0, "Medium": 1, "High": 2, "Extra High": 3}
+
+
+# ────────────────────────── Numpy-safe JSON encoder ──────────────────────
+
+def _clean_numpy(obj: Any) -> Any:
+    """Recursively convert numpy types to native Python so that
+    FastAPI's default JSON encoder accepts the payload."""
+    if isinstance(obj, dict):
+        return {k: _clean_numpy(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_clean_numpy(v) for v in obj]
+    if isinstance(obj, (_np.integer,)):
+        return int(obj)
+    if isinstance(obj, (_np.floating,)):
+        return float(obj)
+    if isinstance(obj, (_np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, _np.ndarray):
+        return obj.tolist()
+    return obj
+
+
+def ok(payload: Optional[dict] = None, **kwargs) -> JSONResponse:
+    """Return a success JSON response with the legacy envelope shape."""
+    data = {"success": True}
+    if payload:
+        data.update(payload)
+    if kwargs:
+        data.update(kwargs)
+    return JSONResponse(_clean_numpy(data))
+
+
+def err(message: str, status_code: int = 500) -> JSONResponse:
+    return JSONResponse({"success": False, "error": message}, status_code=status_code)
+
+
+# ────────────────────────── FastAPI app ──────────────────────────────────
+
+app = FastAPI(
+    title="Smart PUC — Testing Station API",
+    version="3.1.0",
+    description="Node 2 of the Smart PUC 3-node trust architecture. Serves "
+                "signed emission telemetry from OBD devices and writes it to "
+                "on-chain EmissionRegistry / PUCCertificate / GreenToken "
+                "contracts. See /docs for the full OpenAPI schema.",
+)
+
+# CORS
+_cors_origins = os.getenv("CORS_ORIGINS", "*")
+if _cors_origins == "*":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=False,
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in _cors_origins.split(",") if o.strip()],
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=True,
+    )
+
+# Rate-limit middleware
+app.middleware("http")(rate_limit_middleware)
+
+
+# ────────────────────────── Persistence store ────────────────────────────
+
+_persistence_path = os.getenv("PERSISTENCE_DB", "").strip()
+if _persistence_path and not os.path.isabs(_persistence_path):
+    _persistence_path = os.path.join(os.path.dirname(__file__), "..", _persistence_path)
+store = PersistenceStore(_persistence_path or None)
+app.state.store = store  # exposed to the rate-limit middleware
+
+
+# ────────────────────────── Backend state ────────────────────────────────
+
+simulator = WLTCSimulator(vehicle_id=DEFAULT_VEHICLE_ID)
+
+try:
+    blockchain: Optional[BlockchainConnector] = BlockchainConnector()
+    blockchain_connected = True
+except Exception as _e:  # noqa: BLE001
+    print(f"Blockchain connection failed: {_e}")
+    print("   API will run in offline mode (no on-chain writes).")
+    blockchain = None
+    blockchain_connected = False
+
+_engine_start_time = time.time()
+readings_count = 0
+
+# Optional ELM327 hardware connection
+_obd_connection = None
+if obd_hardware_available:
+    try:
+        _obd_connection = obd_lib.OBD()
+        if not _obd_connection.is_connected():
+            _obd_connection = None
+            print("  OBD-II: No ELM327 device detected (will use simulator).")
+        else:
+            print(f"  OBD-II: Connected to {_obd_connection.port_name()}")
+    except Exception as exc:
+        _obd_connection = None
+        print(f"  OBD-II: Connection attempt failed: {exc}")
+
+
+# Notifications (in-memory mirror backed by SQLite via `store`)
+import threading  # noqa: E402
+
+_notifications_lock = threading.Lock()
+_notifications: list = []
+_MAX_NOTIFICATIONS = 100
+
+
+def _add_notification(notif_type: str, message: str, vehicle_id: str = "", severity: str = "info") -> None:
+    notif = {
+        "timestamp": int(time.time()),
+        "type": notif_type,
+        "message": message,
+        "vehicle_id": vehicle_id,
+        "severity": severity,
+    }
+    with _notifications_lock:
+        _notifications.append(notif)
+        if len(_notifications) > _MAX_NOTIFICATIONS:
+            del _notifications[:-_MAX_NOTIFICATIONS]
+    try:
+        store.add_notification(notif_type, message, vehicle_id=vehicle_id, severity=severity)
+    except Exception:
+        pass
+
+
+def _check_cert_expiry_notifications() -> None:
+    if not blockchain_connected or not blockchain:
+        return
+    try:
+        vehicles = blockchain.get_registered_vehicles()
+        now = int(time.time())
+        seven_days = 7 * 24 * 3600
+        for vid in vehicles:
+            try:
+                cert = blockchain.check_certificate(vid)
+                if cert.get("valid") and cert.get("expiry_timestamp"):
+                    remaining = cert["expiry_timestamp"] - now
+                    if 0 < remaining < seven_days:
+                        days_left = remaining // 86400
+                        _add_notification(
+                            "cert_expiry_warning",
+                            f"PUC certificate for {vid} expires in {days_left} day(s)",
+                            vehicle_id=vid,
+                            severity="warning",
+                        )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+# ────────────────────────── Emission helper ──────────────────────────────
+
+def compute_full_emission(speed, rpm, fuel_rate, fuel_type="petrol",
+                          acceleration=0.0, ambient_temp=25.0, altitude=0.0):
+    speed_mps = speed / 3.6
+    vsp_value = 0.0
+    op_mode_bin = 11
+    if vsp_available:
+        vsp_value = calculate_vsp(speed_mps, acceleration)
+        op_mode_bin = get_operating_mode_bin(vsp_value, speed_mps)
+    cold_start = (time.time() - _engine_start_time) < 180.0
+    emission = calculate_emissions(
+        speed_kmh=speed, acceleration=acceleration, rpm=rpm,
+        fuel_rate=fuel_rate, fuel_type=fuel_type,
+        operating_mode_bin=op_mode_bin, ambient_temp=ambient_temp,
+        altitude=altitude, cold_start=cold_start,
+    )
+    emission["vsp"] = round(vsp_value, 3)
+    emission["operating_mode_bin"] = op_mode_bin
+    return emission
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  ROUTES
+# ════════════════════════════════════════════════════════════════════════
+
+# ─────────────── Health / Auth ───────────────────────────────────────────
+
+@app.get("/health")
+def healthz() -> dict:
+    """Lightweight liveness probe used by docker-compose healthchecks."""
+    return {"status": "ok", "version": app.version}
+
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+def auth_login(req: LoginRequest):
+    if not auth_is_configured():
+        raise HTTPException(status_code=503,
+                            detail="Authority auth is not configured on this server")
+    if not verify_credentials(req.username, req.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    payload = {
+        "sub": req.username,
+        "iat": now,
+        "exp": now + datetime.timedelta(hours=JWT_EXPIRY_HOURS),
+        "role": "authority",
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return LoginResponse(token=token, expires_in=JWT_EXPIRY_HOURS * 3600, username=req.username)
+
+
+# ─────────────── Core pipeline ───────────────────────────────────────────
+
+@app.get("/api/simulate")
+def simulate(vehicle_id: str = Query(DEFAULT_VEHICLE_ID)):
+    try:
+        simulator.vehicle_id = vehicle_id
+        reading = simulator.generate_reading()
+        emission = compute_full_emission(
+            speed=reading["speed"], rpm=reading["rpm"],
+            fuel_rate=reading["fuel_rate"],
+            acceleration=reading.get("acceleration", 0.0),
+        )
+        return ok(data={**reading, **emission})
+    except Exception as exc:
+        traceback.print_exc()
+        return err(str(exc))
+
+
+@app.post("/api/record", dependencies=[Depends(require_api_key)])
+def record(body: EmissionRecordRequest):
+    global readings_count
+    try:
+        data = body.model_dump()
+        vehicle_id = data.get("vehicle_id") or DEFAULT_VEHICLE_ID
+
+        # Step 0: VAHAN lookup (non-blocking)
+        vehicle_info = None
+        if vaahan_available and vaahan:
+            try:
+                eligibility = vaahan.validate_for_emission_test(vehicle_id)
+                vehicle_info = eligibility.get("vehicle_info")
+                if not eligibility.get("eligible"):
+                    print(f"  VAHAN: Vehicle {vehicle_id} not eligible: {eligibility.get('reason')}")
+            except Exception:
+                pass
+
+        # Step 1: Telemetry
+        device_signature = data.get("device_signature") or ""
+        device_address = data.get("device_address") or ""
+
+        if data.get("speed") is not None and data.get("fuel_rate") is not None:
+            fuel_rate = max(0.0, min(float(data["fuel_rate"]), 50.0))
+            speed = max(0.0, min(float(data["speed"]), 250.0))
+            rpm = max(0, min(int(data.get("rpm") or 2000), 8000))
+            fuel_type = data.get("fuel_type") or "petrol"
+            if fuel_type not in ("petrol", "diesel"):
+                fuel_type = "petrol"
+            acceleration = max(-10.0, min(float(data.get("acceleration") or 0.0), 10.0))
+        else:
+            reading = simulator.generate_reading()
+            fuel_rate = reading["fuel_rate"]
+            speed = reading["speed"]
+            rpm = reading["rpm"]
+            fuel_type = reading.get("fuel_type", "petrol")
+            acceleration = reading.get("acceleration", 0.0)
+
+        wltc_phase = int(data.get("wltc_phase") or 0)
+        if wltc_phase == 0 and hasattr(simulator, "_current_time"):
+            phase_obj = simulator.get_phase(simulator._current_time)
+            phase_str = phase_obj.value if hasattr(phase_obj, "value") else str(phase_obj)
+            wltc_phase = _PHASE_TO_INT.get(phase_str, 0)
+
+        timestamp = int(data.get("timestamp") or time.time())
+
+        # Step 2: Emission calculation
+        emission = compute_full_emission(
+            speed=speed, rpm=rpm, fuel_rate=fuel_rate,
+            fuel_type=fuel_type, acceleration=acceleration,
+        )
+        readings_count += 1
+
+        # Step 3: Fraud detection
+        fraud_result: dict = {"fraud_score": 0.0, "is_fraud": False, "severity": "LOW", "violations": []}
+        if fraud_available and fraud_detector:
+            reading_for_fraud = {
+                "speed": speed, "rpm": rpm, "fuel_rate": fuel_rate,
+                "acceleration": acceleration,
+                "co2": emission.get("co2_g_per_km", 0),
+                "vsp": emission.get("vsp", 0),
+            }
+            fraud_result = fraud_detector.analyze(reading_for_fraud)
+
+        if fraud_result.get("is_fraud"):
+            _add_notification(
+                "fraud_alert",
+                f"Fraud detected for {vehicle_id}: score={fraud_result['fraud_score']:.2f}, "
+                f"severity={fraud_result.get('severity', 'UNKNOWN')}",
+                vehicle_id=vehicle_id, severity="critical",
+            )
+        if emission.get("status") == "FAIL":
+            _add_notification(
+                "violation_alert",
+                f"Emission violation for {vehicle_id}: CES={emission.get('ces_score', 0):.3f}, status=FAIL",
+                vehicle_id=vehicle_id, severity="high",
+            )
+
+        # Step 4: Optional emission forecast
+        predictions = None
+        if predictor_available and predictor:
+            predictor.update({
+                "speed": speed, "rpm": rpm, "fuel_rate": fuel_rate,
+                "acceleration": acceleration,
+                "co2": emission.get("co2_g_per_km", 0),
+                "nox": emission.get("nox_g_per_km", 0),
+                "vsp": emission.get("vsp", 0),
+                "ces_score": emission.get("ces_score", 0),
+            })
+            try:
+                predictions = predictor.predict_next()
+            except Exception:
+                predictions = None
+
+        # Step 5: Blockchain write
+        tx_result: dict = {"tx_hash": None, "status": "offline", "block_number": None, "gas_used": 0}
+        if blockchain_connected and blockchain:
+            try:
+                tx_result = blockchain.store_emission(
+                    vehicle_id=vehicle_id,
+                    co2=emission.get("co2_g_per_km", 0),
+                    co=emission.get("co_g_per_km", 0),
+                    nox=emission.get("nox_g_per_km", 0),
+                    hc=emission.get("hc_g_per_km", 0),
+                    pm25=emission.get("pm25_g_per_km", 0),
+                    fraud_score=fraud_result.get("fraud_score", 0),
+                    vsp=emission.get("vsp", 0),
+                    wltc_phase=wltc_phase,
+                    timestamp=timestamp,
+                    device_signature=device_signature,
+                )
+            except Exception as exc:
+                print(f"Blockchain write failed: {exc}")
+                tx_result = {"tx_hash": None, "status": "failed", "block_number": None, "gas_used": 0}
+
+        # Step 6 / 7: Certificate eligibility + vehicle stats
+        cert_eligible = None
+        vehicle_stats = None
+        if blockchain_connected and blockchain:
+            try:
+                cert_eligible = blockchain.is_certificate_eligible(vehicle_id)
+            except Exception:
+                pass
+            try:
+                vehicle_stats = blockchain.get_vehicle_stats(vehicle_id)
+            except Exception:
+                pass
+
+        response_data = {
+            "vehicle_id": vehicle_id,
+            "txHash": tx_result.get("tx_hash"),
+            "blockNumber": tx_result.get("block_number"),
+            "tx_status": tx_result.get("status"),
+            "gas_used": tx_result.get("gas_used", 0),
+            "speed": speed,
+            "rpm": rpm,
+            "fuel_rate": fuel_rate,
+            "fuel_type": fuel_type,
+            "acceleration": round(acceleration, 3),
+            "co2_g_per_km": emission.get("co2_g_per_km", 0),
+            "co_g_per_km": emission.get("co_g_per_km", 0),
+            "nox_g_per_km": emission.get("nox_g_per_km", 0),
+            "hc_g_per_km": emission.get("hc_g_per_km", 0),
+            "pm25_g_per_km": emission.get("pm25_g_per_km", 0),
+            "ces_score": emission.get("ces_score", 0),
+            "status": emission.get("status", "UNKNOWN"),
+            "compliance": emission.get("compliance", {}),
+            "vsp": emission.get("vsp", 0),
+            "operating_mode_bin": emission.get("operating_mode_bin", 0),
+            "wltc_phase": wltc_phase,
+            "fraud_score": fraud_result.get("fraud_score", 0),
+            "fraud_status": {
+                "is_fraud": fraud_result.get("is_fraud", False),
+                "severity": fraud_result.get("severity", "LOW"),
+                "violations": fraud_result.get("violations", []),
+            },
+            "device_address": device_address,
+            "device_signed": bool(device_signature),
+            "certificate_eligible": cert_eligible,
+            "predictions": predictions,
+            "vehicle_info": {
+                "fuel_type": vehicle_info.get("fuel_type") if vehicle_info else None,
+                "bs_norm": vehicle_info.get("bs_norm") if vehicle_info else None,
+                "manufacturer": vehicle_info.get("manufacturer") if vehicle_info else None,
+                "model": vehicle_info.get("model") if vehicle_info else None,
+            } if vehicle_info else None,
+            "vehicle_stats": vehicle_stats,
+            "timestamp": timestamp,
+        }
+        return ok(data=response_data)
+    except Exception as exc:
+        traceback.print_exc()
+        return err(str(exc))
+
+
+# ─────────────── Vehicle data (no auth) ──────────────────────────────────
+
+@app.get("/api/history/{vehicle_id}")
+def history(vehicle_id: str, page: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        records = blockchain.get_history_paginated(vehicle_id, page * limit, limit)
+        total = blockchain.get_record_count(vehicle_id)
+        return ok(vehicle_id=vehicle_id, count=total, page=page, limit=limit, records=records)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/violations")
+def violations():
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        all_violations: list = []
+        for vid in blockchain.get_registered_vehicles():
+            all_violations.extend(blockchain.get_violations(vid))
+        all_violations.sort(key=lambda x: x["timestamp"], reverse=True)
+        return ok(count=len(all_violations), violations=all_violations)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/vehicle-stats/{vehicle_id}")
+def vehicle_stats_ep(vehicle_id: str):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        stats = blockchain.get_vehicle_stats(vehicle_id)
+        stats["certificate_eligible"] = blockchain.is_certificate_eligible(vehicle_id)
+        return ok(stats=stats)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Certificates ────────────────────────────────────────────
+
+@app.get("/api/certificate/{vehicle_id}")
+def certificate(vehicle_id: str):
+    try:
+        if blockchain_connected and blockchain:
+            return ok(certificate=blockchain.check_certificate(vehicle_id))
+        return ok(certificate={"valid": False, "token_id": 0})
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.post("/api/certificate/issue")
+def issue_certificate(body: IssueCertificateRequest, auth_user: str = Depends(require_auth)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        kwargs: dict = {"vehicle_id": body.vehicle_id, "vehicle_owner": body.vehicle_owner}
+        if body.metadata_uri:
+            kwargs["metadata_uri"] = body.metadata_uri
+        result = blockchain.issue_certificate(**kwargs)
+        _add_notification(
+            "cert_issued",
+            f"PUC certificate issued for {body.vehicle_id} by {auth_user}",
+            vehicle_id=body.vehicle_id, severity="info",
+        )
+        return ok(result=result)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.post("/api/certificate/revoke")
+def revoke_certificate(body: RevokeCertificateRequest, _auth=Depends(require_auth)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        result = blockchain.revoke_certificate(body.token_id, body.reason)
+        _add_notification(
+            "cert_revoked",
+            f"PUC certificate #{body.token_id} revoked: {body.reason}",
+            severity="high",
+        )
+        return ok(result=result)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Public verification ─────────────────────────────────────
+
+@app.get("/api/verify/{vehicle_id}")
+def verify(vehicle_id: str):
+    if not (blockchain_connected and blockchain):
+        return err("Blockchain not connected", 503)
+    try:
+        verification = blockchain.get_verification_data(vehicle_id)
+        stats = blockchain.get_vehicle_stats(vehicle_id)
+        return ok(
+            verification=verification,
+            stats={
+                "total_records": stats["total_records"],
+                "violations": stats["violations"],
+                "avg_ces": stats["avg_ces"],
+            },
+        )
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Green token marketplace ─────────────────────────────────
+
+@app.get("/api/green-tokens/{address}")
+def green_tokens(address: str):
+    if not (blockchain_connected and blockchain):
+        return err("Blockchain not connected", 503)
+    try:
+        return ok(tokens=blockchain.get_green_token_balance(address))
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.post("/api/tokens/redeem")
+def redeem_tokens(body: RedeemTokensRequest, _auth=Depends(require_auth)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        result = blockchain.redeem_tokens(body.reward_type, body.from_address)
+        _add_notification(
+            "token_redemption",
+            f"Token redemption: {body.reward_type} by {body.from_address[:10]}...",
+            severity="info",
+        )
+        return ok(result=result)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/tokens/rewards")
+def token_rewards():
+    try:
+        reward_types = ["toll_discount", "tax_rebate", "insurance_discount",
+                        "parking_credit", "fuel_voucher"]
+        rewards = []
+        for rtype in reward_types:
+            cost = 0
+            if blockchain_connected and blockchain:
+                try:
+                    cost = blockchain.get_reward_cost(rtype)
+                except Exception:
+                    cost = 0
+            rewards.append({
+                "reward_type": rtype,
+                "display_name": rtype.replace("_", " ").title(),
+                "cost_tokens": cost,
+                "available": cost > 0,
+            })
+        return ok(rewards=rewards)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/tokens/history/{address}")
+def token_history(address: str):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        return ok(address=address, stats=blockchain.get_redemption_stats(address))
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Analytics ───────────────────────────────────────────────
+
+@app.get("/api/analytics/trends/{vehicle_id}")
+def analytics_trends(vehicle_id: str):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        records = blockchain.get_history(vehicle_id)
+        trends = []
+        for rec in records:
+            trends.append({
+                "timestamp": rec.get("timestamp", 0),
+                "co2": rec.get("co2Level", 0),
+                "co": rec.get("coLevel", 0),
+                "nox": rec.get("noxLevel", 0),
+                "hc": rec.get("hcLevel", 0),
+                "pm25": rec.get("pm25Level", 0),
+                "ces_score": rec.get("cesScore", 0),
+                "fraud_score": rec.get("fraudScore", 0),
+                "vsp": rec.get("vspValue", 0),
+                "wltc_phase": rec.get("wltcPhase", 0),
+                "status": rec.get("status", "UNKNOWN"),
+            })
+        trends.sort(key=lambda x: x["timestamp"])
+        return ok(vehicle_id=vehicle_id, count=len(trends), trends=trends)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/analytics/fleet")
+def analytics_fleet():
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        vehicles = blockchain.get_registered_vehicles()
+        total_records = 0
+        total_violations = 0
+        ces_sum = 0.0
+        ces_count = 0
+        vehicle_stats_list: list = []
+        for vid in vehicles:
+            try:
+                stats = blockchain.get_vehicle_stats(vid)
+                tr = stats.get("total_records", 0)
+                viol = stats.get("violations", 0)
+                avg_ces = stats.get("avg_ces", 0.0)
+                total_records += tr
+                total_violations += viol
+                if tr > 0:
+                    ces_sum += avg_ces
+                    ces_count += 1
+                vehicle_stats_list.append({
+                    "vehicle_id": vid, "total_records": tr,
+                    "violations": viol, "avg_ces": avg_ces,
+                })
+            except Exception:
+                pass
+        fleet_avg_ces = ces_sum / ces_count if ces_count > 0 else 0.0
+        compliant = sum(1 for vs in vehicle_stats_list if vs["avg_ces"] < 1.0 and vs["total_records"] > 0)
+        vehicles_with_records = sum(1 for vs in vehicle_stats_list if vs["total_records"] > 0)
+        compliance_rate = (compliant / vehicles_with_records * 100) if vehicles_with_records > 0 else 0.0
+        worst = sorted(vehicle_stats_list, key=lambda x: x["avg_ces"], reverse=True)[:10]
+        return ok(fleet={
+            "total_vehicles": len(vehicles),
+            "total_records": total_records,
+            "total_violations": total_violations,
+            "avg_ces": round(fleet_avg_ces, 4),
+            "compliance_rate": round(compliance_rate, 2),
+            "worst_performers": worst,
+        })
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/analytics/distribution")
+def analytics_distribution():
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        vehicles = blockchain.get_registered_vehicles()
+        buckets = {
+            "0.00-0.25": 0, "0.25-0.50": 0, "0.50-0.75": 0,
+            "0.75-1.00": 0, "1.00+": 0,
+        }
+        total_samples = 0
+        for vid in vehicles:
+            try:
+                stats = blockchain.get_vehicle_stats(vid)
+                if stats.get("total_records", 0) == 0:
+                    continue
+                avg_ces = stats.get("avg_ces", 0.0)
+                total_samples += 1
+                if avg_ces < 0.25:
+                    buckets["0.00-0.25"] += 1
+                elif avg_ces < 0.50:
+                    buckets["0.25-0.50"] += 1
+                elif avg_ces < 0.75:
+                    buckets["0.50-0.75"] += 1
+                elif avg_ces < 1.00:
+                    buckets["0.75-1.00"] += 1
+                else:
+                    buckets["1.00+"] += 1
+            except Exception:
+                pass
+        histogram = [
+            {
+                "bucket": k, "count": v,
+                "percentage": round(v / total_samples * 100, 1) if total_samples > 0 else 0.0,
+            }
+            for k, v in buckets.items()
+        ]
+        return ok(total_vehicles=total_samples, distribution=histogram)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/analytics/phase-breakdown/{vehicle_id}")
+def analytics_phase_breakdown(vehicle_id: str):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        records = blockchain.get_history(vehicle_id)
+        phase_names = {0: "Low", 1: "Medium", 2: "High", 3: "Extra High"}
+        phase_data = {
+            i: {
+                "name": phase_names[i], "count": 0,
+                "co2_sum": 0.0, "co_sum": 0.0, "nox_sum": 0.0,
+                "hc_sum": 0.0, "pm25_sum": 0.0, "ces_sum": 0.0, "violations": 0,
+            } for i in range(4)
+        }
+        for rec in records:
+            phase = rec.get("wltcPhase", 0)
+            if phase not in phase_data:
+                phase = 0
+            pd = phase_data[phase]
+            pd["count"] += 1
+            pd["co2_sum"] += rec.get("co2Level", 0)
+            pd["co_sum"] += rec.get("coLevel", 0)
+            pd["nox_sum"] += rec.get("noxLevel", 0)
+            pd["hc_sum"] += rec.get("hcLevel", 0)
+            pd["pm25_sum"] += rec.get("pm25Level", 0)
+            pd["ces_sum"] += rec.get("cesScore", 0)
+            if rec.get("status") == "FAIL":
+                pd["violations"] += 1
+        breakdown = []
+        for i in range(4):
+            pd = phase_data[i]
+            c = pd["count"]
+            breakdown.append({
+                "phase": i, "phase_name": pd["name"], "record_count": c,
+                "avg_co2": round(pd["co2_sum"] / c, 2) if c > 0 else 0.0,
+                "avg_co": round(pd["co_sum"] / c, 2) if c > 0 else 0.0,
+                "avg_nox": round(pd["nox_sum"] / c, 2) if c > 0 else 0.0,
+                "avg_hc": round(pd["hc_sum"] / c, 2) if c > 0 else 0.0,
+                "avg_pm25": round(pd["pm25_sum"] / c, 2) if c > 0 else 0.0,
+                "avg_ces": round(pd["ces_sum"] / c, 4) if c > 0 else 0.0,
+                "violations": pd["violations"],
+            })
+        return ok(vehicle_id=vehicle_id, total_records=len(records), phase_breakdown=breakdown)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Fleet management ────────────────────────────────────────
+
+@app.get("/api/fleet/vehicles")
+def fleet_vehicles(_auth=Depends(require_auth)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        vehicles = blockchain.get_registered_vehicles()
+        out = []
+        for vid in vehicles:
+            try:
+                stats = blockchain.get_vehicle_stats(vid)
+                cert = blockchain.check_certificate(vid)
+                out.append({
+                    "vehicle_id": vid,
+                    "total_records": stats.get("total_records", 0),
+                    "violations": stats.get("violations", 0),
+                    "fraud_alerts": stats.get("fraud_alerts", 0),
+                    "avg_ces": stats.get("avg_ces", 0.0),
+                    "status": "PASS" if stats.get("avg_ces", 0) < 1.0 and stats.get("total_records", 0) > 0 else "FAIL",
+                    "certificate_valid": cert.get("valid", False),
+                    "certificate_expiry": cert.get("expiry_timestamp", 0),
+                })
+            except Exception:
+                out.append({
+                    "vehicle_id": vid, "total_records": 0, "violations": 0,
+                    "fraud_alerts": 0, "avg_ces": 0.0, "status": "UNKNOWN",
+                    "certificate_valid": False, "certificate_expiry": 0,
+                })
+        return ok(count=len(out), vehicles=out)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/fleet/alerts")
+def fleet_alerts(_auth=Depends(require_auth)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        vehicles = blockchain.get_registered_vehicles()
+        alerts = []
+        for vid in vehicles:
+            try:
+                stats = blockchain.get_vehicle_stats(vid)
+                viol = stats.get("violations", 0)
+                fraud = stats.get("fraud_alerts", 0)
+                avg_ces = stats.get("avg_ces", 0.0)
+                if viol == 0 and fraud == 0:
+                    continue
+                severity_score = viol * 2 + fraud * 3 + (avg_ces * 5 if avg_ces > 1.0 else 0)
+                if fraud > 0:
+                    severity = "critical"
+                elif viol > 3:
+                    severity = "high"
+                elif viol > 0:
+                    severity = "medium"
+                else:
+                    severity = "low"
+                alerts.append({
+                    "vehicle_id": vid, "violations": viol,
+                    "fraud_alerts": fraud, "avg_ces": avg_ces,
+                    "severity": severity, "severity_score": severity_score,
+                })
+            except Exception:
+                pass
+        alerts.sort(key=lambda x: x["severity_score"], reverse=True)
+        return ok(count=len(alerts), alerts=alerts)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── RTO integration ─────────────────────────────────────────
+
+@app.get("/api/rto/check/{vehicle_id}")
+def rto_check(vehicle_id: str, _auth=Depends(require_auth)):
+    try:
+        result: dict = {
+            "vehicle_id": vehicle_id,
+            "vahan_status": None,
+            "blockchain_status": None,
+            "certificate_status": None,
+            "renewal_eligible": False,
+            "issues": [],
+        }
+        if vaahan_available and vaahan:
+            try:
+                vahan_result = vaahan.validate_for_emission_test(vehicle_id)
+                result["vahan_status"] = {
+                    "eligible": vahan_result.get("eligible", False),
+                    "reason": vahan_result.get("reason", ""),
+                    "vehicle_info": vahan_result.get("vehicle_info"),
+                }
+                if not vahan_result.get("eligible"):
+                    result["issues"].append(f"VAHAN: {vahan_result.get('reason', 'Not eligible')}")
+            except Exception as exc:
+                result["issues"].append(f"VAHAN check failed: {exc}")
+        else:
+            result["issues"].append("VAHAN bridge not available")
+
+        if blockchain_connected and blockchain:
+            try:
+                stats = blockchain.get_vehicle_stats(vehicle_id)
+                result["blockchain_status"] = stats
+                if stats.get("total_records", 0) == 0:
+                    result["issues"].append("No emission records on blockchain")
+                if stats.get("violations", 0) > 0:
+                    result["issues"].append(f"{stats['violations']} emission violation(s) on record")
+                if stats.get("fraud_alerts", 0) > 0:
+                    result["issues"].append(f"{stats['fraud_alerts']} fraud alert(s) on record")
+            except Exception as exc:
+                result["issues"].append(f"Blockchain check failed: {exc}")
+            try:
+                cert = blockchain.check_certificate(vehicle_id)
+                result["certificate_status"] = cert
+                if not cert.get("valid"):
+                    result["issues"].append("No valid PUC certificate")
+                else:
+                    expiry = cert.get("expiry_timestamp", 0)
+                    if expiry and expiry < int(time.time()):
+                        result["issues"].append("PUC certificate has expired")
+            except Exception as exc:
+                result["issues"].append(f"Certificate check failed: {exc}")
+        else:
+            result["issues"].append("Blockchain not connected")
+        result["renewal_eligible"] = len(result["issues"]) == 0
+        return ok(rto_check=result)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/rto/flagged")
+def rto_flagged(_auth=Depends(require_auth)):
+    if not blockchain_connected:
+        return err("Blockchain not connected", 503)
+    try:
+        vehicles = blockchain.get_registered_vehicles()
+        flagged = []
+        now = int(time.time())
+        for vid in vehicles:
+            try:
+                reasons = []
+                stats = blockchain.get_vehicle_stats(vid)
+                cert = blockchain.check_certificate(vid)
+                if not cert.get("valid"):
+                    reasons.append("no_valid_certificate")
+                elif cert.get("expiry_timestamp", 0) < now:
+                    reasons.append("certificate_expired")
+                if stats.get("violations", 0) >= 3:
+                    reasons.append("multiple_violations")
+                if stats.get("fraud_alerts", 0) > 0:
+                    reasons.append("fraud_detected")
+                if stats.get("avg_ces", 0) > 1.5 and stats.get("total_records", 0) > 0:
+                    reasons.append("high_emissions")
+                if reasons:
+                    flagged.append({
+                        "vehicle_id": vid, "reasons": reasons,
+                        "violations": stats.get("violations", 0),
+                        "fraud_alerts": stats.get("fraud_alerts", 0),
+                        "avg_ces": stats.get("avg_ces", 0.0),
+                        "certificate_valid": cert.get("valid", False),
+                        "certificate_expiry": cert.get("expiry_timestamp", 0),
+                    })
+            except Exception:
+                pass
+        flagged.sort(key=lambda x: len(x["reasons"]), reverse=True)
+        return ok(count=len(flagged), flagged_vehicles=flagged)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Notifications ───────────────────────────────────────────
+
+@app.get("/api/notifications")
+def get_notifications(
+    type: str = Query("", alias="type"),
+    limit: int = Query(50, ge=1, le=100),
+    since: int = Query(0, ge=0),
+    _auth=Depends(require_auth),
+):
+    try:
+        _check_cert_expiry_notifications()
+        # Prefer the durable persistence store when enabled
+        if store.enabled:
+            result = store.recent_notifications(limit=500)
+        else:
+            with _notifications_lock:
+                result = list(_notifications)
+        if type:
+            result = [n for n in result if n.get("type") == type]
+        if since > 0:
+            ts_key = "created_at" if (result and "created_at" in result[0]) else "timestamp"
+            result = [n for n in result if (n.get(ts_key) or 0) > since]
+        ts_key = "created_at" if (result and "created_at" in result[0]) else "timestamp"
+        result.sort(key=lambda x: (x.get(ts_key) or 0), reverse=True)
+        result = result[:limit]
+        return ok(count=len(result), notifications=result)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── OBD-II hardware ─────────────────────────────────────────
+
+@app.get("/api/obd/status")
+def obd_status():
+    try:
+        hw_connected = False
+        port_name = None
+        protocol = None
+        dtcs: list = []
+        if obd_hardware_available and _obd_connection and _obd_connection.is_connected():
+            hw_connected = True
+            port_name = _obd_connection.port_name()
+            protocol = str(_obd_connection.protocol_name()) if hasattr(_obd_connection, "protocol_name") else None
+            try:
+                dtc_response = _obd_connection.query(obd_lib.commands.GET_DTC)
+                if dtc_response and not dtc_response.is_null():
+                    dtcs = [{"code": c, "description": d} for c, d in dtc_response.value]
+            except Exception:
+                pass
+        return ok(obd={
+            "hardware_available": obd_hardware_available,
+            "connected": hw_connected,
+            "port": port_name,
+            "protocol": protocol,
+            "adapter_module": obd_adapter_available,
+            "dtc_count": len(dtcs),
+            "dtcs": dtcs,
+        })
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.post("/api/obd/read", dependencies=[Depends(require_api_key)])
+def obd_read():
+    try:
+        if not obd_hardware_available:
+            return err("python-obd library not installed", 503)
+        if not _obd_connection or not _obd_connection.is_connected():
+            return err("No OBD-II device connected", 503)
+        frame: dict = {}
+        pid_map = {
+            "speed": obd_lib.commands.SPEED,
+            "rpm": obd_lib.commands.RPM,
+            "coolant_temp": obd_lib.commands.COOLANT_TEMP,
+            "intake_temp": obd_lib.commands.INTAKE_TEMP,
+            "throttle_pos": obd_lib.commands.THROTTLE_POS,
+            "engine_load": obd_lib.commands.ENGINE_LOAD,
+            "fuel_pressure": obd_lib.commands.FUEL_PRESSURE,
+            "maf": obd_lib.commands.MAF,
+        }
+        for key, cmd in pid_map.items():
+            try:
+                response = _obd_connection.query(cmd)
+                if response and not response.is_null():
+                    frame[key] = (response.value.magnitude
+                                  if hasattr(response.value, "magnitude")
+                                  else float(response.value))
+                else:
+                    frame[key] = None
+            except Exception:
+                frame[key] = None
+        if frame.get("maf") is not None and frame.get("maf", 0) > 0:
+            frame["fuel_rate_estimated"] = round(frame["maf"] / 14.7 / 750 * 3600, 3)
+        frame["timestamp"] = int(time.time())
+        frame["source"] = "hardware"
+        return ok(data=frame)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Vehicle verification ────────────────────────────────────
+
+@app.get("/api/vehicle/verify/{registration}")
+def verify_vehicle(registration: str):
+    try:
+        if vaahan_available and vaahan:
+            return ok(result=vaahan.validate_for_emission_test(registration))
+        return err("VAHAN bridge not available", 503)
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ─────────────── Status ──────────────────────────────────────────────────
+
+@app.get("/api/status")
+def status_ep():
+    try:
+        bc_status = blockchain.get_status() if (blockchain_connected and blockchain) else {}
+        return ok(
+            connected=bc_status.get("connected", False),
+            blockNumber=bc_status.get("block_number"),
+            registryAddress=bc_status.get("registry_address"),
+            pucCertAddress=bc_status.get("puc_cert_address"),
+            greenTokenAddress=bc_status.get("green_token_address"),
+            account=bc_status.get("account"),
+            networkId=bc_status.get("network_id"),
+            modules={
+                "vsp": vsp_available,
+                "fraud_detector": fraud_available,
+                "lstm_predictor": predictor_available,
+                "vaahan_bridge": vaahan_available,
+                "obd_adapter": obd_adapter_available,
+                "obd_hardware": obd_hardware_available,
+                "obd_connected": bool(_obd_connection and _obd_connection.is_connected())
+                                  if obd_hardware_available else False,
+                "jwt_auth": auth_is_configured(),
+                "persistence": store.enabled,
+            },
+            architecture="3-node",
+            node="testing-station",
+        )
+    except Exception as exc:
+        return err(str(exc))
+
+
+# ────────────────────────── Startup banner ───────────────────────────────
+
+@app.on_event("startup")
+def _startup_banner():
+    print("=" * 65)
+    print("Smart PUC — Testing Station Backend (Node 2 of 3)")
+    print("=" * 65)
+    print(f"  Framework        : FastAPI {app.version}")
+    print(f"  Blockchain       : {'Connected' if blockchain_connected else 'Offline'}")
+    if blockchain_connected:
+        try:
+            s = blockchain.get_status()
+            print(f"  EmissionRegistry : {s.get('registry_address', 'N/A')}")
+            print(f"  PUCCertificate   : {s.get('puc_cert_address', 'N/A')}")
+            print(f"  GreenToken       : {s.get('green_token_address', 'N/A')}")
+            print(f"  Station Account  : {s.get('account', 'N/A')}")
+        except Exception:
+            pass
+    print(f"  VSP Model        : {'Available' if vsp_available else 'Not loaded'}")
+    print(f"  Fraud Detector   : {'Available' if fraud_available else 'Not loaded'}")
+    print(f"  LSTM Predictor   : {'Available' if predictor_available else 'Not loaded'}")
+    print(f"  VAHAN Bridge     : {'Available (simulated)' if vaahan_available else 'Not loaded'}")
+    print(f"  OBD Adapter      : {'Available' if obd_adapter_available else 'Not loaded'}")
+    print(f"  OBD Hardware     : {'Connected' if (_obd_connection and _obd_connection.is_connected()) else 'Not connected' if obd_hardware_available else 'Not installed'}")
+    print(f"  JWT Auth         : {'Configured' if auth_is_configured() else 'Disabled (not configured)'}")
+    print(f"  Persistence      : {'SQLite' if store.enabled else 'in-memory'}")
+    print(f"  Rate Limit       : {RATE_LIMIT_MAX} req/{RATE_LIMIT_WINDOW}s per IP")
+    print(f"  OpenAPI / Swagger: http://localhost:5000/docs")
+    print("=" * 65)
