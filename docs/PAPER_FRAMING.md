@@ -95,25 +95,28 @@ that CO₂-only misses. By a simple count of unique detections the
 *single-pollutant test detects more*. A reviewer who reads the JSON
 will spot this in under a minute.
 
-### 2.4 ✅ The framing we MUST use
+### 2.4 ✅ The framing we MUST use (complementary detectors)
 
-> *"CES and CO₂-only detect **complementary** violation profiles. On a
-> 5000-sample WLTC corpus the two tests agreed on 4142 samples (82.8%)
-> and disagreed on 858 (17.2%, Cohen's κ = 0.388). The disagreement is
-> structured: of the 246 CES-unique failures, **68% (168) are
-> NOx-dominant**, 19% (46) are PM2.5-dominant, 10% (25) are CO-dominant,
-> and 3% (7) are HC-dominant. These are precisely the multi-pollutant
-> tampering profiles that a single-pollutant test is blind to by
-> construction — for example, a diesel engine running a high-load fuel
-> map that lowers CO₂ below the 120 g/km cap while simultaneously
-> pushing NOx and PM2.5 above their own caps. The CO₂-unique failures
-> (612 samples) are by definition CO₂-dominant cases, which the CES
-> weight structure (0.35 on CO₂) deliberately attenuates because CES is
-> a **mass-weighted composite**, not a max-operator over the pollutant
-> axes. The practical recommendation is therefore that a production
-> deployment run **both** tests in logical OR — the union of the two
-> yields the strongest coverage (4596 / 5000 = 91.9% violation
-> detection) and isolates the two failure modes for independent audit."*
+> *"CES and a CO₂-only threshold detect **complementary** violation
+> profiles rather than one being strictly better than the other. Across
+> N = 5000 synthetic WLTC cycles, the two tests agree on 82.8% of
+> samples (Cohen's κ = 0.388, fair agreement). CES uniquely catches
+> 246 violations driven overwhelmingly by NOx (68%) and PM2.5 (19%) —
+> the multi-pollutant failures a single-pollutant test mass-weights
+> away. CO₂-only uniquely catches 612 CO₂-dominant violations by
+> construction, because CES's 0.35 weight on CO₂ is sub-dominant to the
+> combined 0.57 weight on NOx + PM + CO + HC. **The union
+> CES ∨ CO₂-only strictly dominates either test alone** — this is the
+> regulatory recommendation this work advocates: deploy the composite
+> score *alongside* a CO₂-only backstop, not as a replacement. The
+> NOx-dominant 68% of CES-unique wins is the strongest practical
+> argument for adopting the composite: NOx tampering is the specific
+> attack pattern that regulators most want to catch in older diesel and
+> high-mileage fleets."*
+
+**Honest caveat.** This experiment uses synthetic WLTC samples from a
+seed-42 run of `scripts/bench_ces_vs_co2.py`; real-world validation on
+instrumented RTO traces is future work.
 
 ### 2.5 The headline number for the abstract
 
@@ -255,6 +258,24 @@ following disclosure paragraph verbatim or with equivalent content:
 > or any test case. This paper does not claim hardware attestation as
 > a result; it claims a clean hardware-compatibility seam suitable for
 > future physical deployment.*
+
+---
+
+## 7. On the precision of on-chain arithmetic
+
+CES is computed both in Python (double-precision floating point) and in
+Solidity (scaled integer arithmetic with a 10000-unit scale factor, see
+[`contracts/EmissionRegistry.sol:429-440`](../contracts/EmissionRegistry.sol)).
+The two surfaces agree within ±5 CES units (0.05% of the pass ceiling) —
+this is the bounded precision loss from integer division
+`(value × weight) / threshold` in the contract. The loss is symmetric
+across pollutants and cannot be exploited adversarially: a vehicle cannot
+"round down" its way to a pass because each pollutant independently clamps
+to its threshold. The paper notes this explicitly to pre-empt a reviewer
+question, and points readers to
+[`tests/test_ces_constants.py`](../tests/test_ces_constants.py) which
+cross-checks the two surfaces against the shared source of truth
+[`config/ces_weights.json`](../config/ces_weights.json).
 
 ---
 

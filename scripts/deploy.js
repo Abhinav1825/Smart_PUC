@@ -32,6 +32,30 @@
  *     npx hardhat run scripts/deploy.js --network localhost
  *     npx hardhat run scripts/deploy.js --network amoy
  *     npx hardhat run scripts/deploy.js --network polygon
+ *
+ * Optional: deploy a 2-of-3 MultiSigAdmin and hand over admin rights to it
+ * in the same deployment. Because `npx hardhat run` does not forward custom
+ * CLI flags to the script, we gate this behaviour on an environment
+ * variable so it works identically on Linux, macOS, and Windows:
+ *
+ *     # Linux / macOS:
+ *     USE_MULTISIG=1 npx hardhat run scripts/deploy.js --network localhost
+ *
+ *     # Windows (cmd.exe):
+ *     set USE_MULTISIG=1 && npx hardhat run scripts/deploy.js --network localhost
+ *
+ *     # Windows (PowerShell):
+ *     $env:USE_MULTISIG=1; npx hardhat run scripts/deploy.js --network localhost
+ *
+ * When USE_MULTISIG=1, the script additionally:
+ *   - Deploys MultiSigAdmin([deployer, signer1, signer2], threshold=2)
+ *   - Transfers admin on EmissionRegistry + GreenToken to the multisig
+ *   - Transfers authority on PUCCertificate to the multisig
+ *   - Records the multisig address under the current chainId in
+ *     docs/DEPLOYED_ADDRESSES.json (additive; existing entries preserved).
+ *
+ * If USE_MULTISIG is unset, "0", or empty, the legacy behaviour is
+ * preserved byte-for-byte.
  */
 
 const hre = require("hardhat");
@@ -182,12 +206,82 @@ async function main() {
     console.warn("  Could not write DEPLOYED_ADDRESSES.json:", err.message);
   }
 
+  // ── Optional Step 6: MultiSigAdmin handoff (USE_MULTISIG=1) ────────
+  const useMultisig = ["1", "true", "yes", "on"].includes(
+    String(process.env.USE_MULTISIG || "").toLowerCase()
+  );
+  let multisigAddress = null;
+  if (useMultisig) {
+    console.log("\n[USE_MULTISIG=1] Deploying MultiSigAdmin and handing over admin roles...");
+
+    // Pick 3 distinct signers. On mainnet / amoy where only one account is
+    // funded, fall back to the dedicated deploy_multisig.js script instead.
+    if (signers.length < 3) {
+      throw new Error(
+        "USE_MULTISIG=1 requires at least 3 signers in the network account set. " +
+        "On single-account networks, run scripts/deploy_multisig.js separately."
+      );
+    }
+    const [, signer1, signer2] = signers;
+    const msSignerSet = [admin.address, signer1.address, signer2.address];
+    const threshold = 2;
+
+    const MultiSigAdmin = await ethers.getContractFactory("MultiSigAdmin", admin);
+    const multisig = await MultiSigAdmin.deploy(msSignerSet, threshold);
+    await multisig.waitForDeployment();
+    multisigAddress = await multisig.getAddress();
+    console.log(`  MultiSigAdmin deployed  : ${multisigAddress}`);
+    console.log(`  Signers                 : ${msSignerSet.join(", ")}`);
+    console.log(`  Threshold               : ${threshold}-of-${msSignerSet.length}`);
+
+    const txER = await registry.transferAdmin(multisigAddress);
+    await txER.wait();
+    console.log(`  EmissionRegistry.transferAdmin  tx: ${txER.hash}`);
+
+    const txGT = await greenToken.transferAdmin(multisigAddress);
+    await txGT.wait();
+    console.log(`  GreenToken.transferAdmin        tx: ${txGT.hash}`);
+
+    const txPUC = await puc.transferAuthority(multisigAddress);
+    await txPUC.wait();
+    console.log(`  PUCCertificate.transferAuthority tx: ${txPUC.hash}`);
+
+    // Additively record the multisig in DEPLOYED_ADDRESSES.json without
+    // clobbering anything already written for this chainId.
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const outFile = path.join(__dirname, "..", "docs", "DEPLOYED_ADDRESSES.json");
+      let existing = {};
+      if (fs.existsSync(outFile)) {
+        try { existing = JSON.parse(fs.readFileSync(outFile, "utf8")); } catch (_) {}
+      }
+      const key = String(chainId);
+      if (!existing[key]) existing[key] = { chainId, contracts: {} };
+      if (!existing[key].contracts) existing[key].contracts = {};
+      existing[key].contracts.MultiSigAdmin = multisigAddress;
+      existing[key].multisig = {
+        address: multisigAddress,
+        signers: msSignerSet,
+        threshold,
+        attachedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(outFile, JSON.stringify(existing, null, 2) + "\n");
+      console.log("  MultiSigAdmin saved to docs/DEPLOYED_ADDRESSES.json");
+    } catch (err) {
+      console.warn("  Could not update DEPLOYED_ADDRESSES.json with multisig:", err.message);
+    }
+  }
+
   console.log("\n========================================");
   console.log("Deployment Complete!");
   console.log("========================================");
   console.log(`  GreenToken       : ${greenTokenAddress}`);
   console.log(`  EmissionRegistry : ${registryAddress}`);
   console.log(`  PUCCertificate   : ${pucAddress}`);
+  if (multisigAddress) {
+    console.log(`  MultiSigAdmin    : ${multisigAddress}`);
+  }
   console.log("========================================\n");
 }
 

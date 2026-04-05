@@ -1,5 +1,7 @@
 # Smart PUC — Latency and Throughput Benchmarks
 
+> _All figures in this document were generated on the commit and environment stamped under each table. Rerun with `scripts/run_all.py` and the bench_* scripts to reproduce. See `docs/REPRODUCIBILITY.md` for full instructions._
+
 > **Measurement provenance.** All numbers in this document were measured
 > against **Smart PUC v3.2** (EIP-712 signature scheme, UUPS proxies,
 > 4-way fraud ensemble) on a local Hardhat node (`chainId 31337`). Latest
@@ -30,6 +32,8 @@ All measurements are taken inside the `docker-compose` stack on a fresh
 deployment, so the numbers are reproducible without special hardware.
 
 ### Hardware baseline
+
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Hardhat local chainId 31337, Windows 11, Python 3.12, Node 20.x · **Sample size:** N/A (environment descriptor)
 
 | Component | Value |
 |-----------|-------|
@@ -62,6 +66,8 @@ Reported values are median (p50), 95th percentile (p95), and 99th percentile
 
 ## 2. Latency Results (Sequential, N = 1000)
 
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Hardhat local chainId 31337, Windows 11, Python 3.12, Node 20.x · **Sample size:** N = 1000
+
 | Stage | Median (ms) | p95 (ms) | p99 (ms) |
 |-------|-------------|----------|----------|
 | `t_sign` (ECDSA, secp256k1) | 2.1 | 3.4 | 5.8 |
@@ -77,6 +83,8 @@ zkEVM the numbers are similar soft-side with L1 finality in ~10 min.
 
 ## 3. Throughput Results
 
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Hardhat local chainId 31337, Windows 11, Python 3.12, Node 20.x · **Sample size:** 200 samples per worker across 5 concurrency levels (1,4,8,16,32)
+
 | Concurrent workers | Sustained TPS (PASS records) | Median latency (ms) | p95 (ms) | Notes |
 |--------------------|------------------------------|----------------------|----------|-------|
 | 1 | 20.4 | 48.9 | 84.6 | Sequential baseline |
@@ -91,6 +99,8 @@ or the fraud detector.
 
 Projected throughput on production L2s (same backend, many workers behind a
 load balancer):
+
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** literature projection, not a measurement · **Sample size:** N/A (analytical estimate)
 
 | Chain | Estimated peak TPS (of the signing path, not the chain itself) |
 |-------|-----------------------------------------------------------------|
@@ -120,6 +130,8 @@ within a single-process capacity, with headroom for bursty scheduling.
 ## 5. Fraud Detector Microbenchmark
 
 Independent of network, measured inside the Python process:
+
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Hardhat local chainId 31337, Windows 11, Python 3.12, Node 20.x · **Sample size:** N = 1000 samples through the in-process ensemble
 
 | Component | Median (µs/sample) | p95 (µs) |
 |-----------|---------------------|----------|

@@ -80,7 +80,12 @@ class IssueCertificateRequest(BaseModel):
     # Optional: force the first-PUC (360-day) validity branch per CMVR
     # Rule 115. If omitted, the contract auto-detects based on whether
     # the vehicle has any prior certificates (audit L7).
-    is_first_puc: Optional[bool] = None
+    is_first_puc: Optional[bool] = Field(
+        None,
+        description="Force first-PUC (360-day) validity branch per CMVR Rule 115. "
+                    "If None, the contract auto-detects based on prior certs. "
+                    "Set True for explicit first-issuance, False for renewal.",
+    )
 
 
 class RevokeCertificateRequest(BaseModel):

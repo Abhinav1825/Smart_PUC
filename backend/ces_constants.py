@@ -28,7 +28,8 @@ CES_WEIGHTS: Dict[str, float] = {
     "hc": 0.12,
     "pm25": 0.08,
 }
-assert abs(sum(CES_WEIGHTS.values()) - 1.0) < 1e-9, "CES weights must sum to 1.0"
+if abs(sum(CES_WEIGHTS.values()) - 1.0) >= 1e-9:
+    raise ValueError("CES weights must sum to 1.0 (audit G6)")
 
 # ───────────────────────── Compliance constants ────────────────────────────
 CES_PASS_CEILING: float = 1.0

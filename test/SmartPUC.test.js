@@ -1040,4 +1040,88 @@ describe("MultiSigAdmin (audit S5)", () => {
     await expect(registry.connect(admin).setPerVehicleRateLimit(99))
       .to.be.revertedWith("Only admin can call this function");
   });
+
+  it("TC-73: deploy.js-style full handoff — all three contracts routed through the multisig", async () => {
+    // Mirror the USE_MULTISIG=1 path in scripts/deploy.js: deploy all three
+    // core contracts, deploy a fresh 2-of-3 multisig, and hand over
+    // admin/authority on every contract. Then verify that a call from the
+    // original deployer reverts and the same call via multisig succeeds.
+    const GT = await ethers.getContractFactory("GreenToken", admin);
+    const greenToken = await upgrades.deployProxy(GT, [], { kind: "uups", initializer: "initialize" });
+    await greenToken.waitForDeployment();
+
+    const ER = await ethers.getContractFactory("EmissionRegistry", admin);
+    const reg = await upgrades.deployProxy(ER, [], { kind: "uups", initializer: "initialize" });
+    await reg.waitForDeployment();
+
+    const PUC = await ethers.getContractFactory("PUCCertificate", admin);
+    const puc = await upgrades.deployProxy(
+      PUC,
+      [await reg.getAddress(), await greenToken.getAddress()],
+      { kind: "uups", initializer: "initialize" }
+    );
+    await puc.waitForDeployment();
+
+    const MS = await ethers.getContractFactory("MultiSigAdmin", admin);
+    const ms = await MS.deploy([admin.address, sig1.address, sig2.address], 2);
+    await ms.waitForDeployment();
+    const msAddr = await ms.getAddress();
+
+    // Hand over every admin / authority role to the multisig.
+    await (await reg.connect(admin).transferAdmin(msAddr)).wait();
+    await (await greenToken.connect(admin).transferAdmin(msAddr)).wait();
+    await (await puc.connect(admin).transferAuthority(msAddr)).wait();
+
+    expect(await reg.admin()).to.equal(msAddr);
+    expect(await greenToken.admin()).to.equal(msAddr);
+
+    // Direct call from the original deployer must now revert.
+    await expect(reg.connect(admin).setPerVehicleRateLimit(10))
+      .to.be.revertedWith("Only admin can call this function");
+
+    // Route the same call through a multisig proposal + 2 confirmations
+    // + execute. The deployer/admin is signer[0] in the multisig, so we
+    // can use (admin, sig1) as the two confirming signers.
+    const calldata = reg.interface.encodeFunctionData("setPerVehicleRateLimit", [10]);
+    await (await ms.connect(admin).propose(await reg.getAddress(), calldata, 0)).wait();
+    // Proposer auto-confirms (count=1); sig1 adds the 2nd confirmation.
+    await (await ms.connect(sig1).confirm(0)).wait();
+    await (await ms.connect(admin).execute(0)).wait();
+
+    expect(await reg.perVehicleRateLimitSeconds()).to.equal(10n);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GreenToken reentrancy modifier sanity (audit G5/S8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GreenToken.mint nonReentrant (audit G5/S8)", () => {
+  it("TC-72: authorized minter can still mint after adding nonReentrant modifier", async () => {
+    const [admin, minter, recipient] = await ethers.getSigners();
+
+    const GT = await ethers.getContractFactory("GreenToken", admin);
+    const greenToken = await upgrades.deployProxy(GT, [], {
+      kind: "uups",
+      initializer: "initialize",
+    });
+    await greenToken.waitForDeployment();
+
+    // Authorize a minter (admin is initializer in GreenToken.initialize()).
+    await (await greenToken.connect(admin).setMinter(minter.address, true)).wait();
+
+    const amount = ethers.parseUnits("25", 18);
+    const tx = await greenToken.connect(minter).mint(recipient.address, amount);
+    await tx.wait();
+
+    expect(await greenToken.balanceOf(recipient.address)).to.equal(amount);
+    expect(await greenToken.totalRewardsMinted()).to.equal(amount);
+    expect(await greenToken.rewardsEarned(recipient.address)).to.equal(amount);
+
+    // Sanity: unauthorized callers are still rejected (the original
+    // require stays before any external interaction).
+    await expect(
+      greenToken.connect(recipient).mint(recipient.address, amount)
+    ).to.be.revertedWith("Not authorized to mint");
+  });
 });

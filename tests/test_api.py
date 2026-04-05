@@ -285,3 +285,91 @@ def test_obd_status_endpoint():
 def test_vehicle_verify_endpoint():
     resp = client.get("/api/vehicle/verify/MH12AB1234")
     assert resp.status_code == 200
+
+
+# ─────────────────────────── Idempotency-Key (audit G7) ──────────────────
+
+def test_record_idempotency_key_caches_response(monkeypatch):
+    """Two POSTs with the same Idempotency-Key return identical bodies and
+    the underlying blockchain.store_emission is called at most once."""
+    call_count = {"n": 0}
+
+    def _fake_store_emission(**kwargs):
+        call_count["n"] += 1
+        return {
+            "tx_hash": "0xdeadbeef", "status": "success",
+            "block_number": 1, "gas_used": 42,
+        }
+
+    # Install a minimal fake blockchain connector so we can count calls
+    # regardless of whether a real chain is reachable in the test env.
+    class _FakeBlockchain:
+        def store_emission(self, **kwargs):
+            return _fake_store_emission(**kwargs)
+        def is_certificate_eligible(self, vid):
+            return {"eligible": False, "consecutive_passes": 0}
+        def get_vehicle_stats(self, vid):
+            return {"total_records": 0, "violations": 0, "fraud_alerts": 0, "avg_ces": 0.0}
+
+    monkeypatch.setattr(backend_main, "blockchain", _FakeBlockchain())
+    monkeypatch.setattr(backend_main, "blockchain_connected", True)
+
+    payload = {
+        "vehicle_id": "IDEMP001",
+        "speed": 55.0, "rpm": 2100, "fuel_rate": 5.5,
+        "acceleration": 0.1, "wltc_phase": 1,
+    }
+    headers = {"X-API-Key": API_KEY, "Idempotency-Key": "pytest-idem-key-123"}
+
+    r1 = client.post("/api/record", json=payload, headers=headers)
+    r2 = client.post("/api/record", json=payload, headers=headers)
+    assert r1.status_code == 200, r1.text
+    assert r2.status_code == 200, r2.text
+    assert r1.json() == r2.json(), "idempotent replays must return identical bodies"
+    assert call_count["n"] == 1, (
+        f"blockchain.store_emission should be called exactly once on "
+        f"idempotent retries, got {call_count['n']}"
+    )
+
+
+# ─────────────────────────── Rate limiter 429 (audit G12) ────────────────
+
+def test_rate_limiter_returns_429_after_limit():
+    """Hammer /api/status and assert we eventually get a 429."""
+    # Save + lower the rate limit for this test. Note that backend/main.py
+    # imports the dependencies module via the top-level name
+    # (``from dependencies import ...``) because it prepends the backend
+    # directory to sys.path. That creates a DIFFERENT module object from
+    # ``backend.dependencies``, so we must patch the top-level one — the
+    # one the rate-limit middleware actually resolves its globals against.
+    import dependencies as deps  # type: ignore
+    original_max = deps.RATE_LIMIT_MAX
+    deps.RATE_LIMIT_MAX = 5
+    deps._rate_limit_store.clear()
+    if backend_main.store is not None and getattr(backend_main.store, "enabled", False):
+        try:
+            with backend_main.store._lock, backend_main.store._conn() as _con:
+                _con.execute("DELETE FROM rate_limit")
+        except Exception:
+            pass
+    try:
+        saw_429 = False
+        saw_200 = False
+        for _ in range(30):
+            r = client.get("/api/status")
+            if r.status_code == 200:
+                saw_200 = True
+            if r.status_code == 429:
+                saw_429 = True
+                break
+        assert saw_200, "expected at least one 200 before rate limit kicked in"
+        assert saw_429, "expected a 429 after exceeding RATE_LIMIT_MAX"
+    finally:
+        deps.RATE_LIMIT_MAX = original_max
+        deps._rate_limit_store.clear()
+        if backend_main.store is not None and getattr(backend_main.store, "enabled", False):
+            try:
+                with backend_main.store._lock, backend_main.store._conn() as _con:
+                    _con.execute("DELETE FROM rate_limit")
+            except Exception:
+                pass

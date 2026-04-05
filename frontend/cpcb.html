@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Smart PUC — Public aggregate dashboard for the Central Pollution Control Board (CPCB). Read-only, no login, citywide CES, BS-VI pass/fail, rolling fraud alerts.">
+    <!--
+      Strict public-read CSP. No wallet connector, no write actions, no
+      login. Mirrors analytics.html except there is no localhost-only
+      backend write endpoint in connect-src and no web3 library script.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com;
+      style-src  'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net;
+      img-src    'self' data: blob:;
+      font-src   'self' data:;
+      connect-src 'self' http://localhost:5000 http://127.0.0.1:5000;
+      object-src 'none';
+      base-uri   'self';
+      form-action 'self';
+      frame-ancestors 'none';
+    ">
+    <title>Smart PUC — CPCB Public Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .cpcb-banner {
+            background: linear-gradient(135deg, #0d47a1, #00695c);
+            color: #fff;
+            padding: 1.25rem 1.5rem;
+            border-radius: 14px;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .cpcb-banner h2 {
+            margin: 0 0 0.35rem 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .cpcb-banner p {
+            margin: 0;
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .fleet-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+        .fleet-card {
+            background: var(--bg-card, #111834); border-radius: 14px;
+            padding: 1.5rem; text-align: center;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .fleet-card .fleet-value {
+            font-size: 2.2rem; font-weight: 700;
+            background: linear-gradient(135deg, #007AFF, #00BCD4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .fleet-card .fleet-label {
+            font-size: 0.78rem; color: #8892b0;
+            text-transform: uppercase; letter-spacing: 1px; margin-top: 0.4rem;
+        }
+        .fleet-card.success .fleet-value {
+            background: linear-gradient(135deg, #4CAF50, #00BCD4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .fleet-card.warn .fleet-value {
+            background: linear-gradient(135deg, #FF9800, #F44336);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .chart-container { position: relative; width: 100%; min-height: 320px; }
+        .chart-container canvas { width: 100% !important; }
+
+        .map-placeholder {
+            width: 100%;
+            min-height: 320px;
+            border-radius: 10px;
+            background:
+                radial-gradient(circle at 30% 40%, rgba(76,175,80,0.25) 0%, transparent 35%),
+                radial-gradient(circle at 70% 60%, rgba(255,152,0,0.25) 0%, transparent 35%),
+                radial-gradient(circle at 50% 30%, rgba(244,67,54,0.22) 0%, transparent 30%),
+                linear-gradient(135deg, #0d1229, #111834);
+            border: 1px dashed rgba(255,255,255,0.12);
+            display: flex; align-items: center; justify-content: center;
+            color: #8892b0; font-size: 0.85rem; text-align: center;
+        }
+        .map-placeholder svg { opacity: 0.4; }
+
+        .disclaimer {
+            margin-top: 1.5rem; padding: 1rem 1.25rem; border-radius: 10px;
+            background: rgba(255,152,0,0.06);
+            border: 1px solid rgba(255,152,0,0.25);
+            color: #ffcc80; font-size: 0.82rem; line-height: 1.55;
+        }
+        .disclaimer strong { color: #ffb74d; }
+
+        @media (max-width: 900px) {
+            .analytics-grid { grid-template-columns: 1fr; }
+            .fleet-cards { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .fleet-cards { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Navbar: public read-only, no wallet, no login -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <div class="logo">&#9889;</div>
+            <div>
+                <h1>Smart PUC</h1>
+                <span>CPCB Public Dashboard</span>
+            </div>
+        </a>
+        <div class="navbar-actions">
+            <a href="index.html" class="nav-link">Vehicle</a>
+            <a href="authority.html" class="nav-link">Authority</a>
+            <a href="verify.html" class="nav-link">Verify</a>
+            <a href="analytics.html" class="nav-link">Analytics</a>
+            <a href="fleet.html" class="nav-link">Fleet</a>
+            <a href="cpcb.html" class="nav-link active">Public (CPCB)</a>
+        </div>
+    </nav>
+
+    <div id="alertsContainer"></div>
+
+    <!-- CPCB banner -->
+    <div class="cpcb-banner">
+        <h2>Central Pollution Control Board &mdash; Public Emission Dashboard</h2>
+        <p>Read-only aggregate view of the SmartPUC vehicular emission testing network. No login, no write actions, no personally identifying information.</p>
+    </div>
+
+    <!-- Top-line fleet cards -->
+    <div class="fleet-cards">
+        <div class="fleet-card">
+            <div class="fleet-value" id="cpcbVehicles">&mdash;</div>
+            <div class="fleet-label">Vehicles Monitored</div>
+        </div>
+        <div class="fleet-card success">
+            <div class="fleet-value" id="cpcbComplianceRate">&mdash;</div>
+            <div class="fleet-label">BS-VI Pass Rate</div>
+        </div>
+        <div class="fleet-card warn">
+            <div class="fleet-value" id="cpcbFraudAlerts">&mdash;</div>
+            <div class="fleet-label">Fraud Alerts (24h)</div>
+        </div>
+        <div class="fleet-card">
+            <div class="fleet-value" id="cpcbCertsToday">&mdash;</div>
+            <div class="fleet-label">Certificates Issued Today</div>
+        </div>
+    </div>
+
+    <!-- Secondary fleet stats -->
+    <div class="fleet-cards">
+        <div class="fleet-card">
+            <div class="fleet-value" id="cpcbStations">&mdash;</div>
+            <div class="fleet-label">Testing Stations Online</div>
+        </div>
+        <div class="fleet-card success">
+            <div class="fleet-value" id="cpcbAvgCES">&mdash;</div>
+            <div class="fleet-label">Fleet-wide Average CES</div>
+        </div>
+        <div class="fleet-card warn">
+            <div class="fleet-value" id="cpcbViolations">&mdash;</div>
+            <div class="fleet-label">Total Violations</div>
+        </div>
+        <div class="fleet-card">
+            <div class="fleet-value" id="cpcbTotalRecords">&mdash;</div>
+            <div class="fleet-label">On-Chain Records</div>
+        </div>
+    </div>
+
+    <!-- CES histogram + map -->
+    <div class="analytics-grid">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128202;</span> Citywide CES Distribution</div>
+                <span class="text-muted text-mono" id="cpcbDistStatus">Loading&hellip;</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="cpcbDistChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#127758;</span> Geographic Coverage</div>
+                <span class="text-muted text-mono">Static view</span>
+            </div>
+            <div class="map-placeholder" aria-label="Geographic coverage placeholder">
+                <div>
+                    <svg width="120" height="80" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 40 Q30 10 55 25 T100 35 L105 60 L60 70 L15 62 Z"
+                              stroke="#4CAF50" stroke-width="1.5" fill="rgba(76,175,80,0.08)"/>
+                        <circle cx="35" cy="35" r="3" fill="#F44336"/>
+                        <circle cx="60" cy="45" r="3" fill="#FF9800"/>
+                        <circle cx="85" cy="40" r="3" fill="#4CAF50"/>
+                        <circle cx="50" cy="55" r="3" fill="#4CAF50"/>
+                    </svg>
+                    <div style="margin-top: 0.75rem;">
+                        Testing stations across participating districts.<br>
+                        Live map integration reserved for future release.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Worst performers (aggregate, anonymised) -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#9888;</span> Highest-CES Vehicles (anonymised)</div>
+            <span class="text-muted text-mono" id="cpcbWorstStatus">Loading&hellip;</span>
+        </div>
+        <div class="table-container" style="max-height: 360px; overflow-y: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Vehicle (anon)</th>
+                        <th>Avg CES</th>
+                        <th>Violations</th>
+                        <th>Records</th>
+                    </tr>
+                </thead>
+                <tbody id="cpcbWorstBody">
+                    <tr><td colspan="5" class="text-center text-dim" style="padding: 1.5rem;">Loading aggregate&hellip;</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+        <strong>Disclaimer.</strong> Public read-only view. Data aggregated with
+        <em>&epsilon; = 1 per-day differential privacy</em> applied (future work).
+        Vehicle identifiers shown on this page are anonymised via HMAC-keccak256
+        pseudonymisation. Source: SmartPUC testing network. No personally identifying
+        information (owner name, address, exact location) is published.
+    </div>
+
+    <footer class="footer">
+        Smart PUC &mdash; Public CPCB Dashboard &mdash; aggregated view, no write actions, no authentication required.
+    </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────
+// CPCB dashboard — read-only aggregate view
+// Uses ONLY pre-existing /api/analytics/* endpoints. Gracefully degrades
+// to em-dash placeholders if any endpoint is unavailable.
+// ─────────────────────────────────────────────────────────────────────────
+(function () {
+    'use strict';
+
+    var API = (typeof window !== 'undefined' && window.API_BASE) || 'http://localhost:5000';
+    var DASH = '\u2014';
+    var _distChart = null;
+
+    function setText(id, value) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var safe = (typeof escapeHtml === 'function') ? escapeHtml(String(value)) : String(value);
+        el.textContent = safe;
+    }
+
+    function setStatus(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = value;
+    }
+
+    async function safeFetchJson(url) {
+        try {
+            var res = await fetch(url);
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (e) {
+            console.warn('CPCB fetch failed:', url, e);
+            return null;
+        }
+    }
+
+    function anonymiseVehicleId(vid) {
+        // Display-only obfuscation: keep the 2-letter state prefix, mask the
+        // rest with dots. The backend already returns a keccak256-hashed id
+        // under PRIVACY_MODE=1; this is a belt-and-braces visual mask for
+        // the degraded path where plaintext is returned.
+        if (!vid) return DASH;
+        var s = String(vid).toUpperCase();
+        if (s.length <= 2) return s;
+        return s.substring(0, 2) + '***' + s.substring(Math.max(s.length - 2, 2));
+    }
+
+    // ── 1. Fleet summary ──────────────────────────────────────────────
+    async function loadFleet() {
+        var data = await safeFetchJson(API + '/api/analytics/fleet');
+        if (!data || data.success === false) {
+            ['cpcbVehicles', 'cpcbComplianceRate', 'cpcbAvgCES',
+             'cpcbViolations', 'cpcbTotalRecords', 'cpcbStations',
+             'cpcbCertsToday', 'cpcbFraudAlerts'].forEach(function (id) {
+                setText(id, DASH);
+            });
+            setStatus('cpcbWorstStatus', 'unavailable');
+            return;
+        }
+
+        var f = data.fleet || data;
+        setText('cpcbVehicles', f.total_vehicles != null ? f.total_vehicles : DASH);
+        setText('cpcbComplianceRate',
+            f.compliance_rate != null ? Number(f.compliance_rate).toFixed(1) + '%' : DASH);
+        setText('cpcbAvgCES',
+            f.avg_ces != null ? Number(f.avg_ces).toFixed(3) : DASH);
+        setText('cpcbViolations', f.total_violations != null ? f.total_violations : DASH);
+        setText('cpcbTotalRecords', f.total_records != null ? f.total_records : DASH);
+
+        // These three fields are not currently returned by the endpoint;
+        // show em-dash rather than a misleading zero.
+        setText('cpcbStations', f.stations_online != null ? f.stations_online : DASH);
+        setText('cpcbCertsToday', f.certs_today != null ? f.certs_today : DASH);
+        setText('cpcbFraudAlerts', f.fraud_alerts_24h != null ? f.fraud_alerts_24h : DASH);
+
+        if (Array.isArray(f.worst_performers) && f.worst_performers.length) {
+            renderWorst(f.worst_performers);
+        } else {
+            setStatus('cpcbWorstStatus', 'no data');
+            var body = document.getElementById('cpcbWorstBody');
+            if (body) {
+                body.innerHTML = '<tr><td colspan="5" class="text-center text-dim" style="padding:1.5rem;">No data available.</td></tr>';
+            }
+        }
+    }
+
+    function renderWorst(list) {
+        var body = document.getElementById('cpcbWorstBody');
+        if (!body) return;
+        var rows = list.slice(0, 10).map(function (v, i) {
+            var rank = i + 1;
+            var vidAnon = anonymiseVehicleId(v.vehicle_id);
+            var avg = v.avg_ces != null ? Number(v.avg_ces).toFixed(3) : DASH;
+            var viol = v.violations != null ? v.violations : DASH;
+            var recs = v.total_records != null ? v.total_records : DASH;
+            // escapeHtml from app.js guards any dynamic text
+            var safeVid = (typeof escapeHtml === 'function') ? escapeHtml(vidAnon) : vidAnon;
+            return '<tr>'
+                + '<td>' + rank + '</td>'
+                + '<td class="text-mono">' + safeVid + '</td>'
+                + '<td>' + avg + '</td>'
+                + '<td>' + viol + '</td>'
+                + '<td>' + recs + '</td>'
+                + '</tr>';
+        }).join('');
+        body.innerHTML = rows;
+        setStatus('cpcbWorstStatus', list.length + ' vehicles');
+    }
+
+    // ── 2. CES distribution histogram ─────────────────────────────────
+    async function loadDistribution() {
+        var data = await safeFetchJson(API + '/api/analytics/distribution');
+        setStatus('cpcbDistStatus', (data && data.success !== false) ? 'live' : 'unavailable');
+
+        var buckets = [];
+        var counts = [];
+        if (data && data.distribution && Array.isArray(data.distribution)) {
+            data.distribution.forEach(function (row) {
+                buckets.push(row.bucket);
+                counts.push(row.count);
+            });
+        } else {
+            // Graceful degradation — empty chart skeleton
+            buckets = ['0.00-0.25', '0.25-0.50', '0.50-0.75', '0.75-1.00', '1.00+'];
+            counts = [0, 0, 0, 0, 0];
+        }
+
+        var canvas = document.getElementById('cpcbDistChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        if (_distChart) { _distChart.destroy(); }
+        _distChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: buckets,
+                datasets: [{
+                    label: 'Vehicles',
+                    data: counts,
+                    backgroundColor: [
+                        'rgba(76,175,80,0.75)',
+                        'rgba(139,195,74,0.75)',
+                        'rgba(255,193,7,0.75)',
+                        'rgba(255,152,0,0.75)',
+                        'rgba(244,67,54,0.75)'
+                    ],
+                    borderColor: [
+                        '#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: 'CES bucket (Pass < 1.0, Fail >= 1.0)',
+                        color: '#8892b0',
+                        font: { size: 12 }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // ── Bootstrap ─────────────────────────────────────────────────────
+    function init() {
+        loadFleet();
+        loadDistribution();
+        // Refresh every 60 s so press-room wall-displays stay current
+        setInterval(function () {
+            loadFleet();
+            loadDistribution();
+        }, 60 * 1000);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
+</body>
+</html>

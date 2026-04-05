@@ -416,6 +416,30 @@ def _generate_midc_profile() -> np.ndarray:
 _MIDC_SPEED_PROFILE: np.ndarray = _generate_midc_profile()
 
 
+def default_cycle() -> str:
+    """Return the default driving-cycle name based on environment.
+
+    Resolution order (audit 13A #10, "MIDC default under STATION_COUNTRY=IN"):
+
+    1. ``SMART_PUC_DEFAULT_CYCLE`` — explicit override ("wltc" or "midc").
+    2. ``STATION_COUNTRY=IN`` → ``"MIDC"`` (Modified Indian Driving Cycle).
+    3. Fallback: ``"WLTC"``.
+
+    Returns
+    -------
+    str
+        Uppercase cycle name (``"WLTC"`` or ``"MIDC"``). Callers that want
+        the lowercase form used by :func:`get_cycle_profile` should lowercase
+        the returned value.
+    """
+    env_cycle = os.getenv("SMART_PUC_DEFAULT_CYCLE", "").strip().lower()
+    if env_cycle in ("wltc", "midc"):
+        return env_cycle.upper()
+    if os.getenv("STATION_COUNTRY", "").strip().upper() == "IN":
+        return "MIDC"
+    return "WLTC"
+
+
 def get_cycle_profile(cycle: str = "wltc") -> np.ndarray:
     """
     Return the speed-time profile for a given certification cycle.
@@ -488,14 +512,10 @@ class WLTCSimulator:
         """
         if cycle is None:
             # Env-driven default. Closes audit 13A #10 (MIDC as default
-            # for Indian deployments).
-            env_cycle = os.getenv("SMART_PUC_DEFAULT_CYCLE", "").strip().lower()
-            if env_cycle in ("wltc", "midc"):
-                cycle = env_cycle
-            elif os.getenv("STATION_COUNTRY", "").strip().upper() == "IN":
-                cycle = "midc"
-            else:
-                cycle = "wltc"
+            # for Indian deployments). Centralised in :func:`default_cycle`
+            # so the CLI, tests, and the factory agree on one resolution
+            # rule.
+            cycle = default_cycle().lower()
         self.vehicle_id: str = vehicle_id
         self.dt: float = dt
         self._current_time: int = 0

@@ -27,32 +27,32 @@ class TestPhysicsConstraintValidator(unittest.TestCase):
     def test_clean_reading_low_score(self):
         """A physically plausible reading should have low violation score."""
         reading = {"speed": 60.0, "rpm": 2500, "fuel_rate": 7.0, "acceleration": 0.5}
-        score, violations = self.validator.validate(reading)
+        score, violations, codes = self.validator.validate(reading)
         self.assertLess(score, 0.5)
 
     def test_zero_rpm_while_moving(self):
         """RPM=0 while speed>5 should be flagged."""
         reading = {"speed": 60.0, "rpm": 0, "fuel_rate": 7.0, "acceleration": 0.0}
-        score, violations = self.validator.validate(reading)
+        score, violations, codes = self.validator.validate(reading)
         self.assertGreater(score, 0.0)
         self.assertTrue(any("RPM" in v for v in violations))
 
     def test_impossible_acceleration(self):
         """Acceleration > 4 m/s^2 should be flagged."""
         reading = {"speed": 60.0, "rpm": 4000, "fuel_rate": 10.0, "acceleration": 5.0}
-        score, violations = self.validator.validate(reading)
+        score, violations, codes = self.validator.validate(reading)
         self.assertGreater(score, 0.0)
 
     def test_negative_fuel_rate(self):
         """Negative fuel rate should be flagged."""
         reading = {"speed": 30.0, "rpm": 1500, "fuel_rate": -1.0, "acceleration": 0.0}
-        score, violations = self.validator.validate(reading)
+        score, violations, codes = self.validator.validate(reading)
         self.assertGreater(score, 0.0)
 
     def test_extreme_rpm(self):
         """RPM > 7000 should be flagged."""
         reading = {"speed": 80.0, "rpm": 8000, "fuel_rate": 7.0, "acceleration": 0.0}
-        score, violations = self.validator.validate(reading)
+        score, violations, codes = self.validator.validate(reading)
         self.assertGreater(score, 0.0)
 
 

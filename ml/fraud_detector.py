@@ -1,9 +1,20 @@
 """
 Ensemble fraud detection system for OBD-II data tampering detection.
 
-This module implements a three-component ensemble approach combining
-physics-based validation, statistical anomaly detection, and temporal
-consistency checking to identify fraudulent or tampered OBD-II readings.
+This module implements a four-component ensemble (physics, Isolation
+Forest, temporal consistency, Page-Hinkley drift) for detecting
+fraudulent or tampered OBD-II readings. In addition:
+
+* :class:`FraudReasonCode` exposes machine-readable reason codes so every
+  score returned by :meth:`FraudDetector.analyze` carries an actionable
+  diagnostic list (audit §12C / 13A #2).
+* :class:`PerVINBaseline` is an **opt-in** 5th signal maintaining a
+  per-VIN EWMA baseline (audit 13A #1). It is additive: when
+  ``PER_VIN_BASELINE_ENABLED=1`` is set in the environment AND
+  ``vehicle_id`` is supplied to :meth:`FraudDetector.analyze`, a
+  per-VIN z-score ``> 3`` bumps the final fraud score by at most
+  ``+0.10``. This preserves the 4-way ensemble weight invariant
+  (0.45 + 0.30 + 0.15 + 0.10 = 1.0).
 
 References:
     Liu, F. T., Ting, K. M., & Zhou, Z.-H. (2008). "Isolation Forest."
@@ -15,8 +26,44 @@ References:
 
 from __future__ import annotations
 
+import math
+import os
 from collections import deque
-from typing import Any
+from enum import Enum
+from typing import Any, Optional
+
+
+class FraudReasonCode(str, Enum):
+    """Machine-readable reason codes describing *why* a fraud score fired.
+
+    Every call to :meth:`FraudDetector.analyze` returns a ``reason_codes``
+    list whose entries are drawn from this enum. This turns the scalar
+    fraud score into an actionable diagnostic for RTO auditors and the
+    adversarial-robustness discussion in the paper (audit §12C / 13A #2).
+    """
+
+    # Physics validator
+    PHYSICS_RPM_ZERO_SPEED_NONZERO = "PHYSICS_RPM_ZERO_SPEED_NONZERO"
+    PHYSICS_VSP_FUEL_MISMATCH = "PHYSICS_VSP_FUEL_MISMATCH"
+    PHYSICS_RPM_SPEED_BOUNDS_VIOLATION = "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION"
+    PHYSICS_ACCEL_CAP_EXCEEDED = "PHYSICS_ACCEL_CAP_EXCEEDED"
+    PHYSICS_FUEL_NEGATIVE = "PHYSICS_FUEL_NEGATIVE"
+    PHYSICS_RPM_REDLINE = "PHYSICS_RPM_REDLINE"
+    PHYSICS_SPEED_MAX = "PHYSICS_SPEED_MAX"
+    # Isolation Forest
+    ISOLATION_FOREST_OUTLIER = "ISOLATION_FOREST_OUTLIER"
+    # Temporal
+    TEMPORAL_SPEED_JUMP = "TEMPORAL_SPEED_JUMP"
+    TEMPORAL_RPM_JUMP = "TEMPORAL_RPM_JUMP"
+    TEMPORAL_FUEL_JUMP = "TEMPORAL_FUEL_JUMP"
+    TEMPORAL_REPLAY_STREAK = "TEMPORAL_REPLAY_STREAK"
+    # Drift (Page-Hinkley)
+    DRIFT_UPWARD_CES = "DRIFT_UPWARD_CES"
+    DRIFT_DOWNWARD_CES = "DRIFT_DOWNWARD_CES"
+    # Per-VIN baseline (opt-in, audit 13A #1)
+    PER_VIN_BASELINE_DRIFT = "PER_VIN_BASELINE_DRIFT"
+    # Sentinel
+    NONE = "NONE"
 
 try:
     from sklearn.ensemble import IsolationForest as _IsolationForest
@@ -35,7 +82,9 @@ class PhysicsConstraintValidator:
 
     _NUM_CHECKS = 7
 
-    def validate(self, reading: dict) -> tuple[float, list[str]]:
+    def validate(
+        self, reading: dict
+    ) -> tuple[float, list[str], list[str]]:
         """Validate a single OBD-II reading against physics constraints.
 
         Args:
@@ -44,12 +93,14 @@ class PhysicsConstraintValidator:
                 ``acceleration``, and ``prev_speed``.
 
         Returns:
-            A tuple of (violation_score, violation_descriptions) where
-            violation_score is a float in [0.0, 1.0] and
-            violation_descriptions is a list of human-readable strings
-            describing each detected violation.
+            A tuple ``(violation_score, violation_descriptions, reason_codes)``
+            where ``violation_score`` is a float in ``[0.0, 1.0]``,
+            ``violation_descriptions`` is a list of human-readable strings
+            and ``reason_codes`` is a list of :class:`FraudReasonCode`
+            string values explaining which rules fired (audit §12C).
         """
         violations: list[str] = []
+        codes: list[str] = []
 
         speed = reading.get("speed", 0.0)
         rpm = reading.get("rpm", 0.0)
@@ -62,6 +113,7 @@ class PhysicsConstraintValidator:
             violations.append(
                 f"RPM is 0 while speed is {speed} km/h (> 5 km/h)"
             )
+            codes.append(FraudReasonCode.PHYSICS_RPM_ZERO_SPEED_NONZERO.value)
 
         # 2. Fuel rate cannot be < 0.5 L/100km at VSP > 10 W/kg
         if fuel_rate < 0.5 and vsp > 10:
@@ -69,6 +121,7 @@ class PhysicsConstraintValidator:
                 f"Fuel rate {fuel_rate} L/100km is below 0.5 while "
                 f"VSP is {vsp} W/kg (> 10)"
             )
+            codes.append(FraudReasonCode.PHYSICS_VSP_FUEL_MISMATCH.value)
 
         # 3. RPM must be within bounds for speed (gear ratio check)
         if speed > 10:
@@ -79,6 +132,9 @@ class PhysicsConstraintValidator:
                     f"RPM {rpm} is out of bounds [{min_rpm}, {max_rpm}] "
                     f"for speed {speed} km/h"
                 )
+                codes.append(
+                    FraudReasonCode.PHYSICS_RPM_SPEED_BOUNDS_VIOLATION.value
+                )
 
         # 4. Speed change > 72 km/h in 5 seconds (accel > 4 m/s^2)
         if abs(acceleration) > 4:
@@ -86,25 +142,29 @@ class PhysicsConstraintValidator:
                 f"Acceleration {acceleration} m/s^2 exceeds physical "
                 f"limit of 4 m/s^2 (equivalent to 72 km/h in 5 s)"
             )
+            codes.append(FraudReasonCode.PHYSICS_ACCEL_CAP_EXCEEDED.value)
 
         # 5. Negative fuel rate
         if fuel_rate < 0:
             violations.append(f"Negative fuel rate: {fuel_rate} L/100km")
+            codes.append(FraudReasonCode.PHYSICS_FUEL_NEGATIVE.value)
 
         # 6. RPM > 7000
         if rpm > 7000:
             violations.append(f"RPM {rpm} exceeds maximum of 7000")
+            codes.append(FraudReasonCode.PHYSICS_RPM_REDLINE.value)
 
         # 7. Speed > 250 km/h
         if speed > 250:
             violations.append(f"Speed {speed} km/h exceeds maximum of 250")
+            codes.append(FraudReasonCode.PHYSICS_SPEED_MAX.value)
 
         # Score calculation
         score = len(violations) / self._NUM_CHECKS
         if violations:
             score = max(score, 0.7)
 
-        return score, violations
+        return score, violations, codes
 
 
 class IsolationForestDetector:
@@ -201,6 +261,18 @@ class IsolationForestDetector:
         anomaly_score = max(0.0, min(1.0, -raw_score))
         return anomaly_score
 
+    def reason_codes_for(self, score: float) -> list[str]:
+        """Return reason codes explaining a given Isolation Forest score.
+
+        A score ``>= 0.30`` (same threshold used by the ensemble's MEDIUM
+        severity cutoff on a single component) fires
+        :attr:`FraudReasonCode.ISOLATION_FOREST_OUTLIER`. Stateless — safe
+        to call after :meth:`predict`.
+        """
+        if score >= 0.30:
+            return [FraudReasonCode.ISOLATION_FOREST_OUTLIER.value]
+        return []
+
 
 class TemporalConsistencyChecker:
     """Check temporal consistency of sequential OBD-II readings.
@@ -214,6 +286,11 @@ class TemporalConsistencyChecker:
     def __init__(self) -> None:
         """Initialise the checker with an empty reading window."""
         self._window: deque[dict] = deque(maxlen=self._WINDOW_SIZE)
+        # Reason codes from the most recent call to ``update_and_check``.
+        # Stored as instance state (instead of widening the return tuple)
+        # so the pre-existing ``(score, issues)`` call signature used by
+        # the unit tests continues to work unchanged — audit §12C fix.
+        self._last_reason_codes: list[str] = []
 
     def update_and_check(self, reading: dict) -> tuple[float, list[str]]:
         """Add a new reading and check for temporal anomalies.
@@ -229,6 +306,7 @@ class TemporalConsistencyChecker:
             describing each detected temporal anomaly.
         """
         issues: list[str] = []
+        codes: list[str] = []
         num_checks = 4
 
         if self._window:
@@ -250,6 +328,7 @@ class TemporalConsistencyChecker:
                     f"Speed changed by {speed_change:.1f} km/h in "
                     f"{dt:.1f}s (max plausible: {max_speed_change:.1f} km/h)"
                 )
+                codes.append(FraudReasonCode.TEMPORAL_SPEED_JUMP.value)
 
             # 2. Sudden impossible RPM jump (>3000 RPM in 1 second)
             rpm_change = abs(
@@ -261,6 +340,7 @@ class TemporalConsistencyChecker:
                     f"RPM changed by {rpm_change:.0f} in {dt:.1f}s "
                     f"(max plausible: {max_rpm_change:.0f})"
                 )
+                codes.append(FraudReasonCode.TEMPORAL_RPM_JUMP.value)
 
             # 3. Fuel rate consistency (no sudden 0 to max jumps)
             fuel_change = abs(
@@ -271,6 +351,7 @@ class TemporalConsistencyChecker:
                     f"Fuel rate jumped by {fuel_change:.1f} L/100km "
                     f"in a single step"
                 )
+                codes.append(FraudReasonCode.TEMPORAL_FUEL_JUMP.value)
 
             # 4. Repeated exact identical readings (replay attack)
             identical_count = sum(
@@ -288,6 +369,7 @@ class TemporalConsistencyChecker:
                     f"last {len(self._window)} readings (possible replay "
                     f"attack)"
                 )
+                codes.append(FraudReasonCode.TEMPORAL_REPLAY_STREAK.value)
         else:
             # First reading; nothing to compare against
             pass
@@ -296,6 +378,7 @@ class TemporalConsistencyChecker:
 
         score = len(issues) / num_checks if issues else 0.0
         score = min(score, 1.0)
+        self._last_reason_codes = codes
         return score, issues
 
 
@@ -486,6 +569,151 @@ class MultiSignalPageHinkleyBank:
         return max_score, issues, per_channel
 
 
+class PerVINBaseline:
+    """Per-VIN EWMA baseline for fraud detection (audit 13A #1).
+
+    The fleet-wide IsolationForest in :class:`IsolationForestDetector` uses
+    an averaged baseline across all vehicles. That masks vehicle-specific
+    anomalies: a well-maintained 2023 hatchback and a 2005 diesel truck
+    have very different "normal" CO2, fuel-rate, and RPM distributions,
+    but both would score identically against a fleet baseline.
+
+    This class maintains a per-VIN exponentially-weighted moving average
+    (EWMA) of five features and exposes a streaming z-score. A VIN whose
+    latest reading deviates by more than ``3σ`` from its own historical
+    EWMA is flagged — something the fleet-level IsolationForest cannot
+    catch.
+
+    Feature vector (order-sensitive for :meth:`save_state`)::
+
+        [co2, fuel_rate, rpm, speed, fuel_efficiency_proxy]
+
+    where ``fuel_efficiency_proxy = co2 / speed`` when ``speed > 0``,
+    else ``0``. Requires at least ``min_samples`` observations before the
+    z-score becomes non-zero — stops the first-sample alarm problem.
+
+    Parameters
+    ----------
+    lam : float
+        EWMA decay parameter, ``0 < lam < 1``. Default ``0.99`` (slow
+        adaptation, roughly a 100-sample window).
+    min_samples : int
+        Minimum observations per VIN before :meth:`z_score` returns
+        non-zero values. Default ``20``.
+    """
+
+    _FEATURES = ("co2", "fuel_rate", "rpm", "speed", "fuel_efficiency_proxy")
+    _NUM_FEATURES = len(_FEATURES)
+
+    def __init__(self, lam: float = 0.99, min_samples: int = 20) -> None:
+        if not 0.0 < lam < 1.0:
+            raise ValueError(f"lam must be in (0, 1); got {lam}")
+        self._lam = lam
+        self._min_samples = min_samples
+        # {vid: {"n": int, "mean": [5 floats], "var": [5 floats]}}
+        self._state: dict[str, dict] = {}
+
+    @staticmethod
+    def _feature_vector(features: dict) -> list[float]:
+        speed = float(features.get("speed", 0.0))
+        co2 = float(features.get("co2", 0.0))
+        fuel_rate = float(features.get("fuel_rate", 0.0))
+        rpm = float(features.get("rpm", 0.0))
+        fuel_eff = co2 / speed if speed > 0 else 0.0
+        return [co2, fuel_rate, rpm, speed, fuel_eff]
+
+    # Per-feature absolute variance floors. These prevent a genuinely
+    # constant stream (e.g. a synthetic test rig feeding identical
+    # readings) from producing a zero denominator in :meth:`z_score`.
+    # Values correspond to ~(5% of a typical reading)^2 for the engine
+    # channels and are deliberately loose so the z-score only fires for
+    # clearly out-of-band values when the empirical variance is zero.
+    _VAR_FLOORS = (
+        36.0,   # co2 (stddev floor ~6 g/km)
+        0.25,   # fuel_rate (stddev floor ~0.5 L/100km)
+        10000.0,  # rpm (stddev floor ~100 rpm)
+        25.0,   # speed (stddev floor ~5 km/h)
+        0.01,   # fuel_efficiency_proxy (stddev floor ~0.1)
+    )
+
+    def update(self, vid: str, features: dict) -> None:
+        """Fold a new reading for ``vid`` into its EWMA baseline.
+
+        Uses the standard exponentially-weighted moving variance (EWMV)
+        recursion:
+
+            mean_t = lam * mean_{t-1} + (1 - lam) * x_t
+            var_t  = lam * (var_{t-1} + (1 - lam) * (x_t - mean_{t-1})^2)
+
+        (Roberts, 1959 / West, 1979). The ``(1 - lam)`` factor inside
+        the variance update is what makes the recursion converge to the
+        true variance under stationary inputs.
+        """
+        vec = self._feature_vector(features)
+        s = self._state.get(vid)
+        if s is None:
+            self._state[vid] = {
+                "n": 1,
+                "mean": list(vec),
+                "var": [0.0] * self._NUM_FEATURES,
+            }
+            return
+        s["n"] += 1
+        lam = self._lam
+        for i, x in enumerate(vec):
+            old_mean = s["mean"][i]
+            delta = x - old_mean
+            new_mean = lam * old_mean + (1.0 - lam) * x
+            s["var"][i] = lam * (s["var"][i] + (1.0 - lam) * delta * delta)
+            s["mean"][i] = new_mean
+
+    def z_score(self, vid: str, features: dict) -> float:
+        """Return the maximum absolute z-score across the five features.
+
+        Returns ``0.0`` if the VIN has fewer than ``min_samples``
+        observations. Capped at ``5.0`` to prevent a single pathological
+        reading from dominating the final fraud-score bump.
+
+        When the empirical EWMV for a feature is smaller than the
+        per-feature floor (e.g. a perfectly constant training stream),
+        the floor is used instead so the z-score still reflects clearly
+        out-of-band inputs.
+        """
+        s = self._state.get(vid)
+        if s is None or s["n"] < self._min_samples:
+            return 0.0
+        vec = self._feature_vector(features)
+        best = 0.0
+        for i, x in enumerate(vec):
+            var = max(s["var"][i], self._VAR_FLOORS[i])
+            if var <= 1e-12:
+                continue
+            z = abs(x - s["mean"][i]) / math.sqrt(var)
+            if z > best:
+                best = z
+        return min(best, 5.0)
+
+    def save_state(self) -> dict:
+        """Return a picklable snapshot of the per-VIN state."""
+        return {
+            "lam": self._lam,
+            "min_samples": self._min_samples,
+            "state": {
+                vid: {"n": s["n"], "mean": list(s["mean"]), "var": list(s["var"])}
+                for vid, s in self._state.items()
+            },
+        }
+
+    def load_state(self, snapshot: dict) -> None:
+        """Restore state produced by :meth:`save_state` (in-place)."""
+        self._lam = float(snapshot.get("lam", self._lam))
+        self._min_samples = int(snapshot.get("min_samples", self._min_samples))
+        self._state = {
+            vid: {"n": int(s["n"]), "mean": list(s["mean"]), "var": list(s["var"])}
+            for vid, s in snapshot.get("state", {}).items()
+        }
+
+
 class FraudDetector:
     """Ensemble fraud detector combining physics, statistical, temporal and drift checks.
 
@@ -524,6 +752,10 @@ class FraudDetector:
         self._isolation = IsolationForestDetector()
         self._temporal = TemporalConsistencyChecker()
         self._drift = PageHinkleyDriftDetector()
+        # Opt-in per-VIN baseline (audit 13A #1). Always instantiated so
+        # checkpoint round-trips are uniform, but only consulted when both
+        # PER_VIN_BASELINE_ENABLED=1 is set AND vehicle_id is supplied.
+        self._per_vin_baseline = PerVINBaseline()
         # Parallel per-pollutant drift bank (audit 13A #8). Feeds informational
         # output only — does NOT contribute to the ensemble fraud_score, so
         # adding it cannot regress any existing detection result.
@@ -644,7 +876,7 @@ class FraudDetector:
         """
         self._temporal.update_and_check(reading)
 
-    def analyze(self, reading: dict) -> dict:
+    def analyze(self, reading: dict, vehicle_id: Optional[str] = None) -> dict:
         """Analyse a single OBD-II reading for potential fraud.
 
         This method runs all three detection components, combines their
@@ -666,11 +898,15 @@ class FraudDetector:
             - **violations** (*list[str]*): All violation descriptions
               aggregated from every component.
         """
-        physics_score, physics_violations = self._physics.validate(reading)
+        physics_score, physics_violations, physics_codes = self._physics.validate(
+            reading
+        )
         isolation_score = self._isolation.predict(reading)
+        isolation_codes = self._isolation.reason_codes_for(isolation_score)
         temporal_score, temporal_issues = self._temporal.update_and_check(
             reading
         )
+        temporal_codes = list(self._temporal._last_reason_codes)
 
         # Page-Hinkley drift on the CES score (falls back to CO2 if
         # ces_score is not in the reading; falls back to 0 if neither is).
@@ -680,11 +916,16 @@ class FraudDetector:
         drift_score, drift_direction = self._drift.update(float(drift_signal))
 
         drift_issues: list[str] = []
+        drift_codes: list[str] = []
         if drift_direction != "none" and drift_score >= 1.0:
             drift_issues.append(
                 f"Page-Hinkley drift detected ({drift_direction}); "
                 f"possible gradual sensor tampering"
             )
+            if drift_direction == "upward":
+                drift_codes.append(FraudReasonCode.DRIFT_UPWARD_CES.value)
+            elif drift_direction == "downward":
+                drift_codes.append(FraudReasonCode.DRIFT_DOWNWARD_CES.value)
 
         # Per-pollutant Page-Hinkley bank (audit 13A #8). Informational
         # output only; the result is reported in ``pollutant_drift`` and
@@ -712,6 +953,29 @@ class FraudDetector:
         if physics_override:
             fraud_score = max(fraud_score, 0.55)
 
+        # ── Per-VIN baseline bump (audit 13A #1) ───────────────────────
+        # Opt-in: requires PER_VIN_BASELINE_ENABLED=1 in env AND a
+        # vehicle_id argument. The bump is additive (<= +0.10) rather
+        # than a 5th ensemble weight — this preserves the 4-way weight
+        # invariant documented in the class docstring so all existing
+        # tests continue to pass.
+        per_vin_enabled = os.environ.get("PER_VIN_BASELINE_ENABLED", "0") == "1"
+        per_vin_codes: list[str] = []
+        per_vin_z = 0.0
+        if per_vin_enabled and vehicle_id is not None:
+            per_vin_z = self._per_vin_baseline.z_score(vehicle_id, reading)
+            if per_vin_z > 3.0:
+                # Linear ramp: z=3 → +0.00, z=5 → +0.10
+                bump = min(0.10, max(0.0, (per_vin_z - 3.0) * 0.05))
+                fraud_score = min(1.0, fraud_score + bump)
+                per_vin_codes.append(
+                    FraudReasonCode.PER_VIN_BASELINE_DRIFT.value
+                )
+            # Update AFTER scoring so the current reading doesn't absorb
+            # itself into its own baseline — standard streaming-anomaly
+            # protocol.
+            self._per_vin_baseline.update(vehicle_id, reading)
+
         if fraud_score >= 0.50:
             severity = "HIGH"
         elif fraud_score >= 0.25:
@@ -725,6 +989,23 @@ class FraudDetector:
             + drift_issues
             + pollutant_drift_issues
         )
+
+        reason_codes = (
+            physics_codes
+            + isolation_codes
+            + temporal_codes
+            + drift_codes
+            + per_vin_codes
+        )
+        # Deduplicate while preserving order so the list is a clean set of
+        # reasons even if (somehow) a rule fires twice.
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for c in reason_codes:
+            if c not in seen:
+                seen.add(c)
+                deduped.append(c)
+        reason_codes = deduped if deduped else [FraudReasonCode.NONE.value]
 
         return {
             "fraud_score": fraud_score,
@@ -742,5 +1023,7 @@ class FraudDetector:
                 "max_score": round(pollutant_drift_score, 4),
                 "per_channel": pollutant_drift_detail,
             },
+            "per_vin_z_score": round(per_vin_z, 4),
+            "reason_codes": reason_codes,
             "violations": all_violations,
         }

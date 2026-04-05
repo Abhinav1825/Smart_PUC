@@ -162,7 +162,7 @@ contract GreenToken is
      * @param _to     Recipient address (vehicle owner)
      * @param _amount Number of tokens to mint (in wei, 18 decimals)
      */
-    function mint(address _to, uint256 _amount) external whenNotPaused {
+    function mint(address _to, uint256 _amount) external nonReentrant whenNotPaused {
         require(authorizedMinters[msg.sender], "Not authorized to mint");
         require(_to != address(0), "Cannot mint to zero address");
         require(_amount > 0, "Amount must be greater than zero");

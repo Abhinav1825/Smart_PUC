@@ -211,14 +211,31 @@ class BlockchainConnector:
 
     # ─────────────────── Nonce Generation ────────────────────────────
 
-    def _generate_nonce(self, vehicle_id: str, timestamp: int) -> bytes:
+    def _generate_nonce(
+        self,
+        vehicle_id: str,
+        timestamp: int,
+        idempotency_key: Optional[str] = None,
+    ) -> bytes:
         """
-        Generate a unique bytes32 nonce for an emission record.
+        Generate a bytes32 nonce for an emission record.
 
-        Combines vehicle_id, timestamp, and 16 bytes of OS randomness,
-        then hashes with Keccak-256 to produce a deterministic-length
-        32-byte value suitable for the contract's _nonce parameter.
+        When ``idempotency_key`` is provided, the nonce is derived
+        deterministically from ``keccak256(idempotency_key)[:16]``
+        (padded into the keccak input) so that a retried submission
+        with the same key produces the same on-chain nonce. The
+        EmissionRegistry's nonce-replay guard then naturally
+        deduplicates the retry (audit G7, Stripe-style idempotency).
+
+        Otherwise, 16 bytes of OS randomness are mixed in so that
+        every submission gets a fresh nonce.
         """
+        if idempotency_key:
+            # Deterministic: keccak256(idempotency_key)[:16] as suffix.
+            key_digest = Web3.keccak(text=idempotency_key)[:16]
+            return Web3.keccak(
+                text=f"{vehicle_id}{timestamp}{key_digest.hex()}"
+            )
         return Web3.keccak(text=f"{vehicle_id}{timestamp}{os.urandom(16).hex()}")
 
     def _sign_emission_eip712(
@@ -321,6 +338,7 @@ class BlockchainConnector:
         timestamp: Optional[int] = None,
         device_signature: bytes = b"",
         nonce: Optional[bytes] = None,
+        idempotency_key: Optional[str] = None,
     ) -> dict:
         """
         Store a multi-pollutant emission record with device signature.
@@ -359,7 +377,9 @@ class BlockchainConnector:
         # back to locally generated nonce only if the caller did not
         # supply one (e.g. server-generated synthetic records).
         if nonce is None:
-            nonce = self._generate_nonce(vehicle_id, timestamp)
+            nonce = self._generate_nonce(
+                vehicle_id, timestamp, idempotency_key=idempotency_key,
+            )
         elif isinstance(nonce, str):
             nonce = bytes.fromhex(nonce.replace("0x", ""))
 

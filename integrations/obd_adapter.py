@@ -26,6 +26,7 @@ from typing import Dict, Optional
 
 # Standard OBD-II PID definitions
 OBD_PIDS = {
+    0x05: {"name": "coolant_temp", "unit": "degC", "formula": "A-40", "bytes": 1},
     0x0C: {"name": "rpm", "unit": "rev/min", "formula": "((A*256)+B)/4", "bytes": 2},
     0x0D: {"name": "speed", "unit": "km/h", "formula": "A", "bytes": 1},
     0x0F: {"name": "intake_air_temp", "unit": "degC", "formula": "A-40", "bytes": 1},
@@ -33,6 +34,51 @@ OBD_PIDS = {
     0x11: {"name": "throttle", "unit": "%", "formula": "(A*100)/255", "bytes": 1},
     0x5E: {"name": "fuel_rate", "unit": "L/h", "formula": "((A*256)+B)/20", "bytes": 2},
 }
+
+
+# COPERT 5 cold-start threshold (EEA, 2023). Below this coolant
+# temperature the catalytic converter has not reached light-off and
+# emission factors must be computed with the cold-start uplift rather
+# than the hot-stabilised factor.
+COLD_START_COOLANT_THRESHOLD_C: float = 70.0
+
+
+def is_cold_start(obd_readings: dict) -> bool:
+    """Return ``True`` if the engine is in a cold-start regime.
+
+    Audit §13A #6 — originally the cold-start flag was inferred from a
+    boolean elsewhere in the pipeline; COPERT 5 (EEA, 2023) specifies
+    that a petrol/diesel catalyst is cold below ~70 °C coolant. When the
+    OBD dongle exposes PID ``0x05`` (engine coolant temperature) we can
+    use the sensor value directly. When the PID is absent we fall back
+    to whatever boolean the upstream reading already carries under the
+    key ``cold_start`` (default ``False``).
+
+    The helper accepts any dict-like structure so it can be fed either
+    a parsed PID map ``{0x05: [A]}``, a decoded dict
+    ``{"coolant_temp": 55.0}``, or a telemetry record carrying a
+    pre-computed ``cold_start`` bool.
+    """
+    # Case 1: raw PID bytes
+    if 0x05 in obd_readings:
+        try:
+            coolant = float(decode_pid(0x05, obd_readings[0x05]))
+            return coolant < COLD_START_COOLANT_THRESHOLD_C
+        except (ValueError, TypeError):
+            pass
+
+    # Case 2: decoded coolant_temp key
+    coolant_val = obd_readings.get("coolant_temp")
+    if coolant_val is None:
+        coolant_val = obd_readings.get("coolant_temp_c")
+    if coolant_val is not None:
+        try:
+            return float(coolant_val) < COLD_START_COOLANT_THRESHOLD_C
+        except (ValueError, TypeError):
+            pass
+
+    # Case 3: fallback to pre-existing boolean
+    return bool(obd_readings.get("cold_start", False))
 
 
 @dataclass
@@ -70,6 +116,8 @@ def decode_pid(pid: int, data_bytes: list[int]) -> float:
     A = data_bytes[0]
     B = data_bytes[1] if len(data_bytes) > 1 else 0
 
+    if pid == 0x05:
+        return A - 40.0
     if pid == 0x0C:
         return ((A * 256) + B) / 4.0
     elif pid == 0x0D:

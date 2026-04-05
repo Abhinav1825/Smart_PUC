@@ -62,6 +62,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+# Feature flag for station-level fraud wiring (audit G9). Defaults to "1"
+# (enabled). Set ``STATION_FRAUD_DETECTION_ENABLED=0`` (or "false", "no",
+# "off") to disable the detector without removing the import. The detector
+# is instantiated once at listener startup — not per event — because its
+# baselines depend on a multi-window view of recent records.
+def _station_fraud_flag() -> bool:
+    return os.getenv("STATION_FRAUD_DETECTION_ENABLED", "1").lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 _LISTENER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS chain_events (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,6 +107,8 @@ class PhaseListener:
         connector: Any,
         db_path: str | os.PathLike[str] = "data/smart_puc.db",
         max_blocks_per_scan: int = 5000,
+        persistence_store: Any = None,
+        station_fraud_detector: Any = None,
     ) -> None:
         """
         Args:
@@ -116,6 +129,24 @@ class PhaseListener:
         self._lock = threading.RLock()
         self._max_blocks_per_scan = int(max_blocks_per_scan)
         self._init_schema()
+
+        # ── Station-level fraud detector (audit G9) ─────────────────────
+        # Instantiate ONCE at startup (never per-event). When the feature
+        # flag is on, every successful batch scan calls
+        # ``_run_station_fraud(recent_records)`` and persists MEDIUM/HIGH
+        # risk findings as notifications via ``persistence_store``.
+        self._persistence_store = persistence_store
+        self._station_fraud_enabled = _station_fraud_flag()
+        if station_fraud_detector is not None:
+            self._station_fraud = station_fraud_detector
+        elif self._station_fraud_enabled:
+            try:
+                from ml.station_fraud_detector import StationFraudDetector
+                self._station_fraud = StationFraudDetector()
+            except Exception:  # noqa: BLE001
+                self._station_fraud = None
+        else:
+            self._station_fraud = None
 
     # ─────────────────────── SQLite helpers ───────────────────────
 
@@ -179,6 +210,7 @@ class PhaseListener:
         w3 = connector.w3
         head = int(to_block) if to_block is not None else int(w3.eth.block_number)
         inserted: Dict[str, int] = {name: 0 for name in self._EVENT_NAMES}
+        recent_records_for_fraud: List[Dict[str, Any]] = []
 
         for event_name in self._EVENT_NAMES:
             cursor = int(from_block) if from_block is not None else self._get_cursor(event_name)
@@ -204,12 +236,71 @@ class PhaseListener:
                 for log in logs:
                     if self._insert_log(event_name, log):
                         inserted[event_name] += 1
+                        rec = self._log_to_record(event_name, log)
+                        if rec is not None:
+                            recent_records_for_fraud.append(rec)
                     max_block_seen = max(max_block_seen, int(log.blockNumber))
                 start = stop + 1
 
             self._set_cursor(event_name, max_block_seen)
 
+        # Station-level fraud pass (audit G9). Feature-flagged, best-effort
+        # and never allowed to crash the sync loop.
+        if self._station_fraud is not None and recent_records_for_fraud:
+            try:
+                self._run_station_fraud(recent_records_for_fraud)
+            except Exception:  # noqa: BLE001
+                pass
+
         return inserted
+
+    def _log_to_record(self, event_name: str, log: Any) -> Optional[Dict[str, Any]]:
+        """Project a raw event log into the record shape the station
+        fraud detector expects (station_id, timestamp, status, ces_score)."""
+        try:
+            args = dict(log["args"])
+        except Exception:  # noqa: BLE001
+            return None
+        return {
+            "station_id": str(
+                args.get("issuedByStation")
+                or args.get("station_id")
+                or args.get("station_address")
+                or "UNKNOWN"
+            ),
+            "vehicle_id": str(args.get("vehicleId", "")),
+            "timestamp": int(args.get("timestamp", 0) or 0),
+            "status": str(args.get("status", "")) or None,
+            "ces_score": float(args.get("ces_score", 0.0) or 0.0),
+            "event_name": event_name,
+        }
+
+    def _run_station_fraud(self, records: List[Dict[str, Any]]) -> None:
+        """Invoke the station fraud detector and persist MEDIUM/HIGH
+        findings as notifications. Guarded by ``_station_fraud_enabled``."""
+        if not self._station_fraud_enabled or self._station_fraud is None:
+            return
+        reports = self._station_fraud.analyse(records)
+        for report in reports:
+            level = getattr(report, "risk_level", "")
+            if level not in ("MEDIUM", "HIGH"):
+                continue
+            severity = "critical" if level == "HIGH" else "warning"
+            message = (
+                f"Station {getattr(report, 'station_id', '?')} risk={level} "
+                f"score={getattr(report, 'risk_score', 0.0):.3f}"
+            )
+            ps = self._persistence_store
+            if ps is not None and hasattr(ps, "add_notification"):
+                try:
+                    ps.add_notification(
+                        "station_fraud_alert",
+                        message,
+                        vehicle_id="",
+                        severity=severity,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _insert_log(self, event_name: str, log: Any) -> bool:
         """Insert one event log into SQLite. Returns True if the row was

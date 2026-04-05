@@ -1,5 +1,7 @@
 # Smart PUC — Gas Cost Analysis
 
+> _All figures in this document were generated on the commit and environment stamped under each table. Rerun with `scripts/run_all.py` and the bench_* scripts to reproduce. See `docs/REPRODUCIBILITY.md` for full instructions._
+
 > **Measurement provenance.** All gas numbers in this document were
 > measured against **Smart PUC v3.2** (EIP-712-bound `storeEmission`,
 > UUPS proxies, BSStandard enum, Pausable/nonReentrant guards) on the
@@ -40,6 +42,8 @@ Regenerate with: `npm run measure-gas`.
 Numbers below are the direct output of `scripts/measure_gas.js` against the
 v3.2 UUPS-proxied contracts (see `docs/gas_report.json`):
 
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Hardhat local chainId 31337, Windows 11, Python 3.12, Node 20.x · **Sample size:** 10 write operations, single representative call each (EVM-deterministic)
+
 | Operation | Contract | Gas Used | Polygon @ 50 gwei | Ethereum L1 @ 15 gwei | Notes |
 |-----------|----------|----------|-------------------|------------------------|-------|
 | `storeEmission` (first submission, new vehicle) | EmissionRegistry | 507,925 | $0.01778 | $18.29 | Cold-slot SSTOREs for vehicle registration, stats, consecutive-pass counters. |
@@ -72,6 +76,8 @@ cross-chain signature replay vector flagged as A9 in the threat model.
 Read functions do not consume on-chain gas. Rough local-RPC execution
 costs:
 
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Hardhat local chainId 31337, Windows 11, Python 3.12, Node 20.x · **Sample size:** 6 read functions, median over 100 RPC calls each
+
 | Function | Median latency (local RPC) | Notes |
 |----------|----------------------------|-------|
 | `getRecord` | 3.1 ms | O(1) by index. |
@@ -90,6 +96,8 @@ Assumptions:
 * 1 certificate issuance per year; 0.5 revocations per year (average).
 * 2 token redemptions per year.
 
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** analytical projection over §2 per-op gas numbers · **Sample size:** 4 event types (derived, not measured)
+
 | Item | Events/year | Gas/event | Total gas | USD (Polygon) |
 |------|-------------|-----------|-----------|----------------|
 | Sampled `storeEmission` (PASS) | 25 | 367,311 | 9,182,775 | $0.3214 |
@@ -99,6 +107,8 @@ Assumptions:
 | **Per-vehicle annual cost** | — | — | **10,116,441** | **~$0.354** |
 
 ## 5. Scale Projection (Polygon)
+
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** analytical projection from §4 per-vehicle annual cost · **Sample size:** 4 fleet tiers (derived, not measured)
 
 | Fleet size | Annual cost |
 |------------|-------------|
@@ -124,6 +134,8 @@ With deeper batching and zkEVM, the national projection drops to the
 operational cost (₹28 crore ≈ $3.4 M/year per MoRTH 2022 data).
 
 ## 6. Gas Profile Comparison With Prior Work
+
+> **Measured:** 2026-04-05 · **Commit:** `0d54c32` (v3.2 / v4.0 branch) · **Env:** Smart PUC row measured on Hardhat chainId 31337; other rows cited from primary literature, not re-measured · **Sample size:** 4 systems (1 measured + 3 literature)
 
 | Paper | On-chain op equivalent | Gas reported | Notes |
 |-------|------------------------|--------------|-------|

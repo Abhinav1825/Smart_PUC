@@ -7,6 +7,10 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)
 ![Version](https://img.shields.io/badge/Version-v3.2-blueviolet.svg)
 
+**Version:** v4.0 ("Major makeover 4.0", commit `0d54c32`)
+**Target venue:** IEEE Transactions on Intelligent Transportation Systems (primary) / IEEE Internet of Things Journal (secondary)
+**Status:** Research prototype — publication-ready pending Polygon Amoy testnet deployment
+
 A **research prototype** of a blockchain-based real-time vehicle emission
 monitoring and compliance system for India. It implements a **3-node trust
 architecture** in which no single party can tamper with emission data,

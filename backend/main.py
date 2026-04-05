@@ -65,6 +65,7 @@ from emission_engine import calculate_emissions  # noqa: E402
 from blockchain_connector import BlockchainConnector  # noqa: E402
 from persistence import PersistenceStore  # noqa: E402
 from phase_listener import PhaseListener  # noqa: E402
+import privacy as _privacy  # noqa: E402
 
 try:
     from ml.station_fraud_detector import StationFraudDetector  # noqa: E402
@@ -122,6 +123,73 @@ from schemas import (  # noqa: E402
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 DEFAULT_VEHICLE_ID = os.getenv("DEFAULT_VEHICLE_ID", "MH12AB1234")
+
+# ─── Privacy mode (audit G4) ────────────────────────────────────────────────
+# When PRIVACY_MODE is enabled, the /api/record hot path replaces the raw
+# vehicle_id with a salted pseudonym (see backend/privacy.py) before it is
+# persisted in the SQLite telemetry mirror or forwarded to the blockchain
+# connector. Read once at import time so per-process behaviour is
+# deterministic; toggling the env var requires a restart.
+PRIVACY_MODE_ENABLED: bool = os.getenv("PRIVACY_MODE", "").lower() in (
+    "1", "true", "yes", "on",
+)
+
+
+def maybe_pseudonymize(vehicle_id: str) -> str:
+    """Return a salted pseudonym for *vehicle_id* when PRIVACY_MODE is on.
+
+    Idempotent: if the input already looks like an ``sp:`` pseudonym it is
+    returned unchanged. When PRIVACY_MODE is off this is a no-op, so the
+    function is safe to call unconditionally on the hot path.
+    """
+    if not PRIVACY_MODE_ENABLED:
+        return vehicle_id
+    if isinstance(vehicle_id, str) and vehicle_id.startswith("sp:"):
+        return vehicle_id
+    return _privacy.salted_pseudonym(vehicle_id)
+
+
+# ─── Idempotency-Key cache (audit G7, Stripe-style) ─────────────────────────
+# Small in-process LRU of (key -> (expiry_epoch, cached_json_body)) keyed on
+# the Idempotency-Key header posted against /api/record. Retried submissions
+# with the same key return the cached response instead of re-submitting to
+# the blockchain. The cache is bounded (1024 entries) and entries expire
+# after IDEMPOTENCY_TTL_SECONDS.
+import threading as _threading_early  # noqa: E402
+from collections import OrderedDict  # noqa: E402
+
+IDEMPOTENCY_MAX_ENTRIES: int = 1024
+IDEMPOTENCY_TTL_SECONDS: int = 600  # 10 minutes
+_idempotency_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_idempotency_lock = _threading_early.Lock()
+
+
+def _idempotency_lookup(key: str) -> Optional[dict]:
+    """Return the cached response body for *key* if fresh, else None."""
+    if not key:
+        return None
+    now = time.time()
+    with _idempotency_lock:
+        entry = _idempotency_cache.get(key)
+        if entry is None:
+            return None
+        expiry, body = entry
+        if expiry < now:
+            _idempotency_cache.pop(key, None)
+            return None
+        _idempotency_cache.move_to_end(key)
+        return body
+
+
+def _idempotency_store(key: str, body: dict) -> None:
+    if not key:
+        return
+    with _idempotency_lock:
+        expiry = time.time() + IDEMPOTENCY_TTL_SECONDS
+        _idempotency_cache[key] = (expiry, body)
+        _idempotency_cache.move_to_end(key)
+        while len(_idempotency_cache) > IDEMPOTENCY_MAX_ENTRIES:
+            _idempotency_cache.popitem(last=False)
 
 # Optional physics module
 try:
@@ -300,7 +368,11 @@ _PHASE_DB_PATH = os.getenv(
 )
 if blockchain_connected and blockchain is not None:
     try:
-        phase_listener = PhaseListener(blockchain, db_path=_PHASE_DB_PATH)
+        phase_listener = PhaseListener(
+            blockchain,
+            db_path=_PHASE_DB_PATH,
+            persistence_store=store,
+        )
     except Exception as _pe:  # noqa: BLE001
         print(f"  Phase listener init failed: {_pe}")
         phase_listener = None
@@ -447,11 +519,26 @@ def simulate(vehicle_id: str = Query(DEFAULT_VEHICLE_ID)):
 
 
 @app.post("/api/record", dependencies=[Depends(require_api_key_or_jwt)])
-def record(body: EmissionRecordRequest):
+def record(body: EmissionRecordRequest, request: Request):
     global readings_count
     try:
+        # Idempotency-Key short-circuit (audit G7). Return the cached
+        # response body untouched on retries within the TTL window so the
+        # blockchain is not re-submitted.
+        idempotency_key = request.headers.get("Idempotency-Key") or ""
+        if idempotency_key:
+            cached = _idempotency_lookup(idempotency_key)
+            if cached is not None:
+                return JSONResponse(_clean_numpy(cached))
+
         data = body.model_dump()
-        vehicle_id = data.get("vehicle_id") or DEFAULT_VEHICLE_ID
+        raw_vehicle_id = data.get("vehicle_id") or DEFAULT_VEHICLE_ID
+        # Privacy wiring (audit G4): when PRIVACY_MODE is enabled, replace
+        # the raw registration number with a salted pseudonym for both the
+        # SQLite mirror write and the on-chain submission. The lookup
+        # endpoints (/api/certificate/*, /api/history/*) still use the
+        # raw id.
+        vehicle_id = maybe_pseudonymize(raw_vehicle_id)
 
         # Step 0: VAHAN lookup (non-blocking)
         vehicle_info = None
@@ -558,10 +645,39 @@ def record(body: EmissionRecordRequest):
                     timestamp=timestamp,
                     device_signature=device_signature,
                     nonce=device_nonce,
+                    idempotency_key=idempotency_key or None,
                 )
             except Exception as exc:
                 print(f"Blockchain write failed: {exc}")
                 tx_result = {"tx_hash": None, "status": "failed", "block_number": None, "gas_used": 0}
+
+        # Mirror the (possibly pseudonymised) reading into the SQLite
+        # telemetry cold-store. This is the write path that audit G4
+        # expects to see honour PRIVACY_MODE.
+        try:
+            store.record_telemetry(
+                vehicle_id=vehicle_id,
+                reading={
+                    "speed": speed,
+                    "rpm": rpm,
+                    "fuel_rate": fuel_rate,
+                    "fuel_type": fuel_type,
+                    "acceleration": acceleration,
+                    "co2_g_per_km": emission.get("co2_g_per_km", 0),
+                    "co_g_per_km": emission.get("co_g_per_km", 0),
+                    "nox_g_per_km": emission.get("nox_g_per_km", 0),
+                    "hc_g_per_km": emission.get("hc_g_per_km", 0),
+                    "pm25_g_per_km": emission.get("pm25_g_per_km", 0),
+                    "ces_score": emission.get("ces_score", 0),
+                    "status": emission.get("status", "UNKNOWN"),
+                    "wltc_phase": wltc_phase,
+                    "timestamp": timestamp,
+                },
+                onchain_tx=tx_result.get("tx_hash"),
+                is_violation=emission.get("status") == "FAIL",
+            )
+        except Exception:
+            pass
 
         # Step 6 / 7: Certificate eligibility + vehicle stats
         cert_eligible = None
@@ -617,7 +733,10 @@ def record(body: EmissionRecordRequest):
             "vehicle_stats": vehicle_stats,
             "timestamp": timestamp,
         }
-        return ok(data=response_data)
+        cached_body = {"success": True, "data": response_data}
+        if idempotency_key:
+            _idempotency_store(idempotency_key, cached_body)
+        return JSONResponse(_clean_numpy(cached_body))
     except Exception as exc:
         traceback.print_exc()
         return err(str(exc))

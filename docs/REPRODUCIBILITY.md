@@ -188,3 +188,23 @@ Data Availability statement.
 
 If you build on this artifact, please cite the paper and include the artifact
 DOI. A `CITATION.cff` file is provided at the repository root.
+
+### One-command reproduction
+
+For reviewers who want a single invocation that cross-checks the CES
+constants, compiles and tests the contracts, runs the full Python test
+suite, regenerates `docs/ces_vs_co2_report.json`, and verifies byte-identity
+against the committed copy, the repository ships two self-contained
+drivers (closes audit Top-5 Addition #1 / §13B N15):
+
+| Platform                | Command                      |
+|-------------------------|------------------------------|
+| Linux / macOS / Git-Bash| `bash scripts/reproduce.sh`  |
+| Windows cmd.exe         | `scripts\reproduce.bat`      |
+
+Both scripts print the target commit hash, run steps 1–9 in order, fail
+fast with a non-zero exit code if any step diverges from the committed
+reference, and finish with a green `REPRODUCIBLE OK` banner when the
+artifact verifies cleanly. No WSL or Docker is required on the Windows
+path.
+

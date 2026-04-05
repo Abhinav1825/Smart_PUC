@@ -172,7 +172,8 @@ from typing import Dict
 CES_WEIGHTS: Dict[str, float] = {{
 {_dict_lit(w)}
 }}
-assert abs(sum(CES_WEIGHTS.values()) - 1.0) < 1e-9, "CES weights must sum to 1.0"
+if abs(sum(CES_WEIGHTS.values()) - 1.0) >= 1e-9:
+    raise ValueError("CES weights must sum to 1.0 (audit G6)")
 
 # ───────────────────────── Compliance constants ────────────────────────────
 CES_PASS_CEILING: float = {float(data["ces_pass_ceiling"])!r}
