@@ -70,21 +70,28 @@ class TestWLTCPhases(unittest.TestCase):
 class TestParseRecord(unittest.TestCase):
     """Tests for BlockchainConnector._parse_record() static method."""
 
+    # Sentinel addresses used in mock records (the Solidity struct carries
+    # deviceAddress and stationAddress as its final two fields).
+    _DEVICE_ADDR = "0xDeaDBeef00000000000000000000000000000001"
+    _STATION_ADDR = "0xCAFEbabe00000000000000000000000000000002"
+
     def test_parse_record_pass(self):
         """_parse_record() should correctly convert a Solidity tuple with status=True (PASS)."""
         mock_record = (
-            "MH12AB1234",   # [0] vehicleId
-            150000,         # [1] co2Level (150.0 * 1000)
-            1200,           # [2] coLevel (1.2 * 1000)
-            400,            # [3] noxLevel (0.4 * 1000)
-            50,             # [4] hcLevel (0.05 * 1000)
-            5,              # [5] pm25Level (0.005 * 1000)
-            8500,           # [6] cesScore (0.85 * 10000)
-            1200,           # [7] fraudScore (0.12 * 10000)
-            12500,          # [8] vspValue (12.5 * 1000)
-            2,              # [9] wltcPhase
-            1700000000,     # [10] timestamp
-            True,           # [11] status (pass)
+            "MH12AB1234",        # [0]  vehicleId
+            150000,              # [1]  co2Level (150.0 * 1000)
+            1200,                # [2]  coLevel (1.2 * 1000)
+            400,                 # [3]  noxLevel (0.4 * 1000)
+            50,                  # [4]  hcLevel (0.05 * 1000)
+            5,                   # [5]  pm25Level (0.005 * 1000)
+            8500,                # [6]  cesScore (0.85 * 10000)
+            1200,                # [7]  fraudScore (0.12 * 10000)
+            12500,               # [8]  vspValue (12.5 * 1000)
+            2,                   # [9]  wltcPhase
+            1700000000,          # [10] timestamp
+            True,                # [11] status (pass)
+            self._DEVICE_ADDR,   # [12] deviceAddress
+            self._STATION_ADDR,  # [13] stationAddress
         )
 
         result = BlockchainConnector._parse_record(mock_record)
@@ -101,6 +108,8 @@ class TestParseRecord(unittest.TestCase):
         self.assertEqual(result["wltcPhase"], 2)
         self.assertEqual(result["timestamp"], 1700000000)
         self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["deviceAddress"], self._DEVICE_ADDR)
+        self.assertEqual(result["stationAddress"], self._STATION_ADDR)
 
     def test_parse_record_fail(self):
         """_parse_record() should return status='FAIL' when the status flag is False."""
@@ -117,6 +126,8 @@ class TestParseRecord(unittest.TestCase):
             3,
             1700001000,
             False,
+            self._DEVICE_ADDR,
+            self._STATION_ADDR,
         )
 
         result = BlockchainConnector._parse_record(mock_record)
@@ -127,13 +138,16 @@ class TestParseRecord(unittest.TestCase):
 
     def test_parse_record_returns_all_keys(self):
         """_parse_record() result should contain all expected keys."""
-        mock_record = ("V1", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, True)
+        mock_record = (
+            "V1", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, True,
+            self._DEVICE_ADDR, self._STATION_ADDR,
+        )
         result = BlockchainConnector._parse_record(mock_record)
 
         expected_keys = {
             "vehicleId", "co2Level", "coLevel", "noxLevel", "hcLevel",
             "pm25Level", "cesScore", "fraudScore", "vspValue", "wltcPhase",
-            "timestamp", "status",
+            "timestamp", "status", "deviceAddress", "stationAddress",
         }
         self.assertEqual(set(result.keys()), expected_keys)
 

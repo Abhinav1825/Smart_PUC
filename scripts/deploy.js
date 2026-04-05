@@ -136,10 +136,51 @@ async function main() {
   await tx.wait();
   console.log('  PUCCertificate -> Base URI set to "ipfs://"');
 
+  // Tag the demo vehicle as BS-VI (default, but kept explicit so reviewers
+  // can see the code path is exercised at deploy time).
+  tx = await registry.setVehicleStandard("MH12AB1234", 0); // 0 = BS6
+  await tx.wait();
+  console.log("  EmissionRegistry -> Vehicle MH12AB1234 tagged as BS-VI");
+
   // ── Step 5: Write Truffle-shape artifacts ──────────────────────────
   recordAddress("GreenToken", chainId, greenTokenAddress);
   recordAddress("EmissionRegistry", chainId, registryAddress);
   recordAddress("PUCCertificate", chainId, pucAddress);
+
+  // Persist a machine-readable deployment record for the paper's
+  // "data availability" section and for the OBD device to read its
+  // EIP-712 domain parameters from.
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const outDir = path.join(__dirname, "..", "docs");
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    const outFile = path.join(outDir, "DEPLOYED_ADDRESSES.json");
+    let existing = {};
+    if (fs.existsSync(outFile)) {
+      try { existing = JSON.parse(fs.readFileSync(outFile, "utf8")); } catch (_) {}
+    }
+    existing[String(chainId)] = {
+      network: hre.network.name,
+      chainId,
+      deployedAt: new Date().toISOString(),
+      contracts: {
+        GreenToken: greenTokenAddress,
+        EmissionRegistry: registryAddress,
+        PUCCertificate: pucAddress,
+      },
+      eip712Domain: {
+        name: "SmartPUC",
+        version: "3.2",
+        chainId,
+        verifyingContract: registryAddress,
+      },
+    };
+    fs.writeFileSync(outFile, JSON.stringify(existing, null, 2) + "\n");
+    console.log(`  Deployed addresses saved to docs/DEPLOYED_ADDRESSES.json`);
+  } catch (err) {
+    console.warn("  Could not write DEPLOYED_ADDRESSES.json:", err.message);
+  }
 
   console.log("\n========================================");
   console.log("Deployment Complete!");

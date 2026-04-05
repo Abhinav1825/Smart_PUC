@@ -29,6 +29,18 @@ import time
 import traceback
 from typing import Any, Optional
 
+# Force utf-8 stdout/stderr so em-dashes and box-drawing characters in the
+# banner don't crash into Windows' default cp1252 console codec and turn
+# into `?` / replacement characters.
+for _stream_name in ("stdout", "stderr"):
+    _stream = getattr(sys, _stream_name, None)
+    _reconfigure = getattr(_stream, "reconfigure", None) if _stream is not None else None
+    if callable(_reconfigure):
+        try:
+            _reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 import numpy as _np
 import jwt
 from dotenv import load_dotenv
@@ -52,6 +64,32 @@ from simulator import WLTCSimulator  # noqa: E402
 from emission_engine import calculate_emissions  # noqa: E402
 from blockchain_connector import BlockchainConnector  # noqa: E402
 from persistence import PersistenceStore  # noqa: E402
+from phase_listener import PhaseListener  # noqa: E402
+
+try:
+    from ml.station_fraud_detector import StationFraudDetector  # noqa: E402
+    _station_fraud_available = True
+except Exception:  # noqa: BLE001
+    StationFraudDetector = None  # type: ignore[assignment,misc]
+    _station_fraud_available = False
+
+try:
+    from ml.pre_puc_predictor import PrePUCPredictor  # noqa: E402
+    _pre_puc_available = True
+except Exception:  # noqa: BLE001
+    PrePUCPredictor = None  # type: ignore[assignment,misc]
+    _pre_puc_available = False
+
+# Singleton: trained-once, re-used across requests. Training uses a fixed
+# random_state so the model is deterministic across backend restarts.
+_pre_puc_predictor: Any = None
+if _pre_puc_available and PrePUCPredictor is not None:
+    try:
+        _pre_puc_predictor = PrePUCPredictor(random_state=42)
+        _pre_puc_predictor.train_synthetic(n_samples=2000)
+    except Exception as _ex:  # noqa: BLE001
+        print(f"  PrePUCPredictor init failed: {_ex}")
+        _pre_puc_predictor = None
 
 from dependencies import (  # noqa: E402
     AUTH_PASSWORD,
@@ -64,6 +102,7 @@ from dependencies import (  # noqa: E402
     auth_is_configured,
     rate_limit_middleware,
     require_api_key,
+    require_api_key_or_jwt,
     require_auth,
     verify_credentials,
 )
@@ -74,6 +113,7 @@ from schemas import (  # noqa: E402
     LoginResponse,
     RedeemTokensRequest,
     RevokeCertificateRequest,
+    RTOEnforceRequest,
 )
 
 
@@ -248,6 +288,23 @@ except Exception as _e:  # noqa: BLE001
     blockchain = None
     blockchain_connected = False
 
+# ─────────────────── Chain event projection (phase_listener) ───────────────
+# Read-only projection of PhaseCompleted + BatchRootCommitted events into
+# SQLite. Driven by an explicit /api/chain-events/sync pull, not a
+# long-running websocket subscription — the backend stays stateless
+# enough to restart without losing anything. Closes audit Fix #10.
+phase_listener: Optional[PhaseListener] = None
+_PHASE_DB_PATH = os.getenv(
+    "PHASE_LISTENER_DB",
+    os.path.join(os.path.dirname(__file__), "..", "data", "chain_events.db"),
+)
+if blockchain_connected and blockchain is not None:
+    try:
+        phase_listener = PhaseListener(blockchain, db_path=_PHASE_DB_PATH)
+    except Exception as _pe:  # noqa: BLE001
+        print(f"  Phase listener init failed: {_pe}")
+        phase_listener = None
+
 _engine_start_time = time.time()
 readings_count = 0
 
@@ -389,7 +446,7 @@ def simulate(vehicle_id: str = Query(DEFAULT_VEHICLE_ID)):
         return err(str(exc))
 
 
-@app.post("/api/record", dependencies=[Depends(require_api_key)])
+@app.post("/api/record", dependencies=[Depends(require_api_key_or_jwt)])
 def record(body: EmissionRecordRequest):
     global readings_count
     try:
@@ -410,6 +467,7 @@ def record(body: EmissionRecordRequest):
         # Step 1: Telemetry
         device_signature = data.get("device_signature") or ""
         device_address = data.get("device_address") or ""
+        device_nonce = data.get("nonce") or None
 
         if data.get("speed") is not None and data.get("fuel_rate") is not None:
             fuel_rate = max(0.0, min(float(data["fuel_rate"]), 50.0))
@@ -499,6 +557,7 @@ def record(body: EmissionRecordRequest):
                     wltc_phase=wltc_phase,
                     timestamp=timestamp,
                     device_signature=device_signature,
+                    nonce=device_nonce,
                 )
             except Exception as exc:
                 print(f"Blockchain write failed: {exc}")
@@ -624,6 +683,8 @@ def issue_certificate(body: IssueCertificateRequest, auth_user: str = Depends(re
         kwargs: dict = {"vehicle_id": body.vehicle_id, "vehicle_owner": body.vehicle_owner}
         if body.metadata_uri:
             kwargs["metadata_uri"] = body.metadata_uri
+        if body.is_first_puc is not None:
+            kwargs["is_first_puc"] = body.is_first_puc
         result = blockchain.issue_certificate(**kwargs)
         _add_notification(
             "cert_issued",
@@ -686,13 +747,19 @@ def green_tokens(address: str):
 
 @app.post("/api/tokens/redeem")
 def redeem_tokens(body: RedeemTokensRequest, _auth=Depends(require_auth)):
+    """Burn Green Tokens server-side from the station's account to
+    redeem a reward. NOTE: this endpoint burns the STATION's tokens,
+    not the caller's — which is only the right behaviour for admin
+    / test utilities. Real end-user redemptions should call
+    ``greenToken.connect(signer).redeem(rewardType)`` directly from
+    the client via MetaMask (see frontend/marketplace.html)."""
     if not blockchain_connected:
         return err("Blockchain not connected", 503)
     try:
-        result = blockchain.redeem_tokens(body.reward_type, body.from_address)
+        result = blockchain.redeem_tokens(body.reward_type)
         _add_notification(
             "token_redemption",
-            f"Token redemption: {body.reward_type} by {body.from_address[:10]}...",
+            f"Token redemption type={body.reward_type} by station",
             severity="info",
         )
         return ok(result=result)
@@ -702,26 +769,33 @@ def redeem_tokens(body: RedeemTokensRequest, _auth=Depends(require_auth)):
 
 @app.get("/api/tokens/rewards")
 def token_rewards():
-    try:
-        reward_types = ["toll_discount", "tax_rebate", "insurance_discount",
-                        "parking_credit", "fuel_voucher"]
-        rewards = []
-        for rtype in reward_types:
-            cost = 0
-            if blockchain_connected and blockchain:
-                try:
-                    cost = blockchain.get_reward_cost(rtype)
-                except Exception:
-                    cost = 0
-            rewards.append({
-                "reward_type": rtype,
-                "display_name": rtype.replace("_", " ").title(),
-                "cost_tokens": cost,
-                "available": cost > 0,
-            })
-        return ok(rewards=rewards)
-    except Exception as exc:
-        return err(str(exc))
+    """Return the four reward types defined in contracts/GreenToken.sol
+    and their on-chain costs (in whole GCT, i.e. wei / 1e18)."""
+    # Contract enum: see contracts/GreenToken.sol:40-44
+    reward_types = [
+        {"id": 0, "name": "toll_discount",    "display_name": "Toll Discount"},
+        {"id": 1, "name": "parking_waiver",   "display_name": "Parking Waiver"},
+        {"id": 2, "name": "tax_credit",       "display_name": "Tax Credit"},
+        {"id": 3, "name": "priority_service", "display_name": "Priority Service"},
+    ]
+    rewards = []
+    for rt in reward_types:
+        cost_wei = 0
+        if blockchain_connected and blockchain:
+            try:
+                cost_wei = blockchain.get_reward_cost(rt["id"])
+            except Exception:
+                cost_wei = 0
+        cost_tokens = cost_wei // (10 ** 18) if cost_wei else 0
+        rewards.append({
+            "id":           rt["id"],
+            "reward_type":  rt["name"],
+            "display_name": rt["display_name"],
+            "cost_tokens":  int(cost_tokens),
+            "cost_wei":     int(cost_wei),
+            "available":    cost_wei > 0,
+        })
+    return ok(rewards=rewards)
 
 
 @app.get("/api/tokens/history/{address}")
@@ -1067,6 +1141,66 @@ def rto_flagged(_auth=Depends(require_auth)):
         return err(str(exc))
 
 
+# In-memory RTO enforcement action log. Durable persistence can be
+# wired in via `store.add_notification` if an operator enables the
+# persistence layer — for the research prototype an in-memory ring
+# buffer plus the notification side-effect is sufficient.
+_rto_actions: list = []
+_rto_actions_lock = threading.Lock()
+
+
+@app.post("/api/rto/enforce")
+def rto_enforce(body: RTOEnforceRequest, _auth=Depends(require_auth)):
+    """Log an RTO enforcement action against a vehicle.
+
+    Three action types are supported by the authority/RTO dashboard:
+      * ``warning``    — Issue warning notice
+      * ``retest``     — Schedule re-test
+      * ``inspection`` — Flag for inspection
+
+    The action is appended to an in-memory log (bounded to 500 entries)
+    and also surfaced as a high-severity notification so it shows up on
+    the authority dashboard.
+    """
+    action = body.action.strip().lower()
+    if action not in ("warning", "retest", "inspection"):
+        return err(f"Invalid action '{body.action}'. Expected warning|retest|inspection.", 422)
+    entry = {
+        "timestamp": int(time.time()),
+        "vehicle_id": body.vehicle_id,
+        "action": action,
+        "remarks": body.remarks,
+    }
+    with _rto_actions_lock:
+        _rto_actions.append(entry)
+        # Bounded ring: keep the most recent 500 actions
+        if len(_rto_actions) > 500:
+            del _rto_actions[: len(_rto_actions) - 500]
+    _add_notification(
+        "rto_enforcement",
+        f"RTO action '{action}' recorded for {body.vehicle_id}"
+        + (f": {body.remarks}" if body.remarks else ""),
+        vehicle_id=body.vehicle_id,
+        severity="high",
+    )
+    return ok(action=entry)
+
+
+@app.get("/api/rto/actions")
+def rto_actions_list(
+    vehicle_id: str = Query("", alias="vehicle_id"),
+    limit: int = Query(50, ge=1, le=500),
+    _auth=Depends(require_auth),
+):
+    """Return the RTO enforcement action log, newest first."""
+    with _rto_actions_lock:
+        items = list(_rto_actions)
+    if vehicle_id:
+        items = [a for a in items if a.get("vehicle_id") == vehicle_id]
+    items.sort(key=lambda a: a.get("timestamp") or 0, reverse=True)
+    return ok(count=len(items[:limit]), actions=items[:limit])
+
+
 # ─────────────── Notifications ───────────────────────────────────────────
 
 @app.get("/api/notifications")
@@ -1129,7 +1263,7 @@ def obd_status():
         return err(str(exc))
 
 
-@app.post("/api/obd/read", dependencies=[Depends(require_api_key)])
+@app.post("/api/obd/read", dependencies=[Depends(require_api_key_or_jwt)])
 def obd_read():
     try:
         if not obd_hardware_available:
@@ -1181,6 +1315,151 @@ def verify_vehicle(registration: str):
 
 # ─────────────── Status ──────────────────────────────────────────────────
 
+# ─────────────── Chain event projection (phase_listener) ───────────────────
+# Read-only dashboard endpoints for the PhaseCompleted + BatchRootCommitted
+# events emitted by EmissionRegistry v3.2. Closes audit Fix #10.
+
+@app.post("/api/chain-events/sync", dependencies=[Depends(require_auth)])
+def chain_events_sync():
+    """Pull new chain events into the SQLite projection. Auth-gated so
+    only an authorised operator can trigger a chain scan."""
+    if not phase_listener:
+        return err("Chain event listener not available", 503)
+    try:
+        inserted = phase_listener.sync_from_chain()
+        return ok(inserted=inserted, stats=phase_listener.stats())
+    except Exception as exc:  # noqa: BLE001
+        return err(str(exc))
+
+
+@app.get("/api/chain-events/status")
+def chain_events_status():
+    """Return per-event counts and last-synced block for the dashboard."""
+    if not phase_listener:
+        return ok(available=False)
+    try:
+        return ok(available=True, **phase_listener.stats())
+    except Exception as exc:  # noqa: BLE001
+        return err(str(exc))
+
+
+@app.get("/api/chain-events/phase/{vehicle_id}")
+def chain_events_phase(vehicle_id: str, limit: int = 100):
+    """Return recent PhaseCompleted events for a vehicle (newest first)."""
+    if not phase_listener:
+        return ok(events=[])
+    try:
+        events = phase_listener.get_phase_events(vehicle_id=vehicle_id, limit=limit)
+        return ok(count=len(events), events=events)
+    except Exception as exc:  # noqa: BLE001
+        return err(str(exc))
+
+
+@app.get("/api/chain-events/batch-roots/{vehicle_id}")
+def chain_events_batch_roots(vehicle_id: str, limit: int = 100):
+    """Return recent BatchRootCommitted events for a vehicle (newest first)."""
+    if not phase_listener:
+        return ok(roots=[])
+    try:
+        roots = phase_listener.get_batch_roots(vehicle_id=vehicle_id, limit=limit)
+        return ok(count=len(roots), roots=roots)
+    except Exception as exc:  # noqa: BLE001
+        return err(str(exc))
+
+
+# ─────────────── Pre-PUC failure forecast (ml/pre_puc_predictor) ───────────
+# Audit 13B #3 + F1 — transform the binary classifier into a diagnostic
+# tool by also returning SHAP contributions. Public read-only endpoint;
+# no auth required because it operates on chain-public history.
+
+@app.get("/api/predict-puc/{vehicle_id}")
+def predict_puc(vehicle_id: str, explain: bool = False):
+    """Forecast whether the given vehicle will fail its next PUC test.
+
+    Args:
+        vehicle_id: Vehicle registration number to query.
+        explain: When ``true``, also return SHAP-style per-feature
+            contributions so the frontend can show the owner *which*
+            part of their vehicle is dragging the score down.
+    """
+    if not _pre_puc_available or _pre_puc_predictor is None:
+        return err("Pre-PUC predictor not available", 503)
+    if not (blockchain_connected and blockchain is not None):
+        return err("Blockchain not connected", 503)
+    try:
+        history = blockchain.get_vehicle_history(vehicle_id) or []
+        # Normalise record shape for the predictor
+        records = []
+        for rec in history[-20:]:  # last 20 readings
+            records.append(
+                {
+                    "ces_score": float(rec.get("cesScore", 0)) / 10000.0
+                    if rec.get("cesScore") is not None
+                    else float(rec.get("ces_score", 0.0)),
+                    "co2":  float(rec.get("co2Level", 0)) / 1000.0
+                    if rec.get("co2Level") is not None
+                    else float(rec.get("co2", 0.0)),
+                    "co":   float(rec.get("coLevel", 0)) / 1000.0
+                    if rec.get("coLevel") is not None
+                    else float(rec.get("co", 0.0)),
+                    "nox":  float(rec.get("noxLevel", 0)) / 1000.0
+                    if rec.get("noxLevel") is not None
+                    else float(rec.get("nox", 0.0)),
+                    "hc":   float(rec.get("hcLevel", 0)) / 1000.0
+                    if rec.get("hcLevel") is not None
+                    else float(rec.get("hc", 0.0)),
+                    "pm25": float(rec.get("pm25Level", 0)) / 1000.0
+                    if rec.get("pm25Level") is not None
+                    else float(rec.get("pm25", 0.0)),
+                }
+            )
+        prediction = _pre_puc_predictor.predict(records)
+        payload: Dict[str, Any] = {"vehicle_id": vehicle_id, "prediction": prediction}
+        if explain:
+            payload["explanation"] = _pre_puc_predictor.explain(records, top_k=5)
+        return ok(**payload)
+    except Exception as exc:  # noqa: BLE001
+        return err(str(exc))
+
+
+# ─────────────── Station-level fraud analysis (ml/station_fraud_detector) ──
+# Exposes a dashboard endpoint for the audit report's 13B #14 suggestion.
+# Read-only aggregate analytics — a corrupted testing centre that is
+# rubber-stamping fails as passes, or manufacturing high-volume fakes,
+# should show up here even when each individual reading passes the
+# per-reading fraud detector. Auth-gated because it operates on a
+# station's entire activity profile.
+
+@app.get("/api/fraud/station-analysis", dependencies=[Depends(require_auth)])
+def fraud_station_analysis(limit: int = 500):
+    """Run station-level anomaly detection over the most recent chain
+    records and return per-station risk reports (highest-risk first)."""
+    if not _station_fraud_available or StationFraudDetector is None:
+        return err("Station fraud detector not available", 503)
+    if not (blockchain_connected and blockchain is not None):
+        return err("Blockchain not connected", 503)
+    try:
+        records = blockchain.get_all_records(limit=limit) or []
+        # The on-chain struct field that carries the station address is
+        # ``stationAddress``; normalise to ``station_id`` for the detector.
+        for rec in records:
+            if "stationAddress" in rec and "station_id" not in rec:
+                rec["station_id"] = rec["stationAddress"]
+            if "cesScore" in rec and "ces_score" not in rec:
+                try:
+                    rec["ces_score"] = float(rec["cesScore"]) / 10000.0
+                except (TypeError, ValueError):
+                    pass
+        detector = StationFraudDetector()
+        reports = detector.analyse(records)
+        return ok(
+            count=len(reports),
+            stations=[r.as_dict() for r in reports],
+        )
+    except Exception as exc:  # noqa: BLE001
+        return err(str(exc))
+
+
 @app.get("/api/status")
 def status_ep():
     try:
@@ -1204,6 +1483,9 @@ def status_ep():
                                   if obd_hardware_available else False,
                 "jwt_auth": auth_is_configured(),
                 "persistence": store.enabled,
+                "chain_events": bool(phase_listener),
+                "pre_puc_predictor": bool(_pre_puc_predictor),
+                "station_fraud_detector": bool(_station_fraud_available),
             },
             architecture="3-node",
             node="testing-station",

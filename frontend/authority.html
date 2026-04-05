@@ -172,6 +172,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="wallet.js"></script>
 <script src="app.js"></script>
 <script>
 const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
@@ -188,6 +189,15 @@ async function loadAll() {
     tb.innerHTML = '<tr><td colspan="11" class="text-center"><div class="spinner"></div></td></tr>';
 
     try {
+        // Guarantee MetaMask is on the local Hardhat chain before any read.
+        if (window.SmartPUC && window.SmartPUC.ensureChain) {
+            try { await window.SmartPUC.ensureChain(); }
+            catch (e) {
+                tb.innerHTML = '<tr><td colspan="11" class="text-center text-fail">Please switch MetaMask to ' + window.SmartPUC.LOCAL_CHAIN_NAME + ' (chainId ' + window.SmartPUC.LOCAL_CHAIN_ID_DEC + ')</td></tr>';
+                return;
+            }
+        }
+
         const contract = await getRegistryContract();
         if (!contract) { tb.innerHTML = '<tr><td colspan="11" class="text-center text-dim">Connect wallet first</td></tr>'; return; }
 

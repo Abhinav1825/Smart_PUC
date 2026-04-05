@@ -9,7 +9,7 @@ that the paper cites — without it, the ML contribution is not verifiable.
 
 Attack types
 ------------
-We synthesise six distinct attack families, each designed to stress a
+We synthesise seven distinct attack families, each designed to stress a
 different detector component:
 
 1. **Clean** — honest WLTC readings (negative class).
@@ -27,6 +27,19 @@ different detector component:
    simulating sensor tampering.
 7. **Frozen sensor** — identical readings repeated N times, simulating a
    stuck sensor or canonicalised replay. Stresses temporal consistency.
+8. **Source-aware adversary** — an attacker who has read
+   ``ml/fraud_detector.py``, knows the 0.50 decision threshold and the
+   four ensemble weights (physics 0.45, IF 0.30, temporal 0.15, drift
+   0.10), and hand-crafts a reading that (a) is physically consistent
+   (so physics_score ≈ 0); (b) lies close to the centre of the clean
+   training distribution (so IF score stays below 0.30); (c) drifts
+   within the temporal window's ±4 m/s² limit; (d) applies a tiny
+   per-step CES delta beneath the Page-Hinkley cumulative threshold.
+   The attacker's goal is to forge a faintly dirty reading whose
+   ensemble fraud_score stays below 0.50 — the worst case the audit
+   report calls out (§10, G11). This is intentionally harder than the
+   first six attack families; a detection rate well below 1.0 here is
+   expected and publishable as a discussion point, not a failure.
 
 Each attack is labelled as ``is_fraud = 1`` and the ensemble's
 ``fraud_score >= FRAUD_THRESHOLD`` is taken as the positive prediction
@@ -77,6 +90,7 @@ ATTACK_TYPES = [
     "gradual_drift",
     "sudden_spike",
     "frozen_sensor",
+    "source_aware",  # knows the ensemble weights + decision threshold
 ]
 
 
@@ -191,6 +205,56 @@ def attack_frozen_sensor(clean: dict[str, Any], rng: random.Random) -> dict[str,
     return dict(clean)
 
 
+def attack_source_aware(clean: dict[str, Any], rng: random.Random) -> dict[str, Any]:
+    """**Source-aware adversary (audit report G11).**
+
+    A motivated attacker who has read ``ml/fraud_detector.py`` knows:
+      - Ensemble weights: physics 0.45 / IF 0.30 / temporal 0.15 / drift 0.10.
+      - Decision threshold: ``fraud_score >= 0.50`` → flagged.
+      - Temporal check bounds: ``|Δv|`` up to 4 m/s², ``|Δrpm|`` bounded.
+      - Page-Hinkley δ / λ parameters (inspected in the source).
+
+    The attacker crafts a reading that satisfies ALL four component
+    constraints simultaneously:
+      1. Physically consistent (RPM scaled to speed, fuel rate plausible,
+         acceleration inside ±4 m/s²) → ``physics_score ≈ 0``.
+      2. Pollutant values shifted by at most +8 % from the clean value
+         (inside the IF training distribution's dense region) →
+         ``isolation_score`` stays ≤ 0.30.
+      3. Temporal delta < 2 m/s² (well inside ±4 m/s² bound) →
+         ``temporal_score`` stays low.
+      4. CES shift < +0.02 per sample (beneath the Page-Hinkley
+         cumulative threshold) → drift component does not trip.
+
+    The attacker's *goal* is to encode a subtly dirty vehicle (8 % above
+    the BS-VI CO₂ cap, 5 % above the NOx cap) while keeping
+    ``fraud_score < 0.50``. A detector that catches this case has
+    demonstrable robustness against an informed adversary.
+    """
+    r = dict(clean)
+    base_speed = clean["speed"]
+    # (1) Physically consistent drift: keep RPM / speed ratio in range.
+    r["speed"] = max(0.0, base_speed + rng.uniform(-1.5, 1.5))  # ±1.5 m/s
+    r["rpm"] = max(800.0, min(6000.0, clean["rpm"] + rng.uniform(-80.0, 80.0)))
+    # (2) Fuel rate nudged +6% (dirty but inside IF centre).
+    r["fuel_rate"] = max(0.2, clean["fuel_rate"] * rng.uniform(1.04, 1.08))
+    # (2) CO2 nudged +8% — crosses the BS-VI cap in aggregate but stays
+    # inside the IF learned-distribution's dense region because the clean
+    # training set's CO2 has σ ≈ 10 g/km and we shift by ~8 g/km.
+    r["co2"] = clean["co2"] * rng.uniform(1.06, 1.08)
+    # (3) Acceleration well within the ±4 m/s² temporal bound.
+    r["acceleration"] = clean["acceleration"] + rng.uniform(-0.6, 0.6)
+    # (4) VSP shifts proportionally with speed+accel — consistent with
+    # the physics engine's own formula, so the physics validator sees
+    # nothing wrong.
+    r["vsp"] = max(
+        0.0, r["speed"] / 10.0 * max(0.1, r["acceleration"] + 0.5)
+    )
+    # Timestamp strictly monotonic so the replay detector does not trip.
+    r["timestamp"] = clean["timestamp"] + rng.randint(1, 3)
+    return r
+
+
 ATTACKS = {
     "replay": attack_replay,
     "zero_pollutant": attack_zero_pollutant,
@@ -198,6 +262,7 @@ ATTACKS = {
     "gradual_drift": attack_gradual_drift,
     "sudden_spike": attack_sudden_spike,
     "frozen_sensor": attack_frozen_sensor,
+    "source_aware": attack_source_aware,
 }
 
 

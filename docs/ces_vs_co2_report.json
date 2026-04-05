@@ -1,0 +1,27 @@
+{
+  "n_samples": 5000,
+  "seed": 42,
+  "confusion_matrix": {
+    "both_pass": 404,
+    "both_fail": 3738,
+    "ces_fail_only": 246,
+    "co2_fail_only": 612
+  },
+  "rates": {
+    "ces_failure_rate": 0.7968,
+    "co2_only_failure_rate": 0.87,
+    "agreement_rate": 0.8284,
+    "cohens_kappa": 0.3879472693032017
+  },
+  "headline": {
+    "ces_violations_total": 3984,
+    "ces_violations_missed_by_co2_only": 246,
+    "fraction_ces_violations_missed_by_co2_only": 0.061746987951807226,
+    "dominant_pollutant_breakdown": {
+      "co": 25,
+      "nox": 168,
+      "hc": 7,
+      "pm25": 46
+    }
+  }
+}

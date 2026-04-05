@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
 /**
  * @title GreenToken
@@ -28,7 +30,9 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 contract GreenToken is
     Initializable,
     UUPSUpgradeable,
-    ERC20Upgradeable
+    ERC20Upgradeable,
+    ReentrancyGuardUpgradeable,
+    PausableUpgradeable
 {
 
     // ───────────────────────── Reward Types ───────────────────────────
@@ -103,6 +107,8 @@ contract GreenToken is
     function initialize() external initializer {
         __UUPSUpgradeable_init();
         __ERC20_init("Green Credit Token", "GCT");
+        __ReentrancyGuard_init();
+        __Pausable_init();
 
         admin = msg.sender;
 
@@ -136,6 +142,18 @@ contract GreenToken is
         admin = _newAdmin;
     }
 
+    /// @notice Pause mint and redeem (emergency circuit breaker).
+    function pause() external {
+        require(msg.sender == admin, "Only admin can pause");
+        _pause();
+    }
+
+    /// @notice Resume mint and redeem.
+    function unpause() external {
+        require(msg.sender == admin, "Only admin can unpause");
+        _unpause();
+    }
+
     // ───────────────────────── Minting ─────────────────────────────────
 
     /**
@@ -144,7 +162,7 @@ contract GreenToken is
      * @param _to     Recipient address (vehicle owner)
      * @param _amount Number of tokens to mint (in wei, 18 decimals)
      */
-    function mint(address _to, uint256 _amount) external {
+    function mint(address _to, uint256 _amount) external whenNotPaused {
         require(authorizedMinters[msg.sender], "Not authorized to mint");
         require(_to != address(0), "Cannot mint to zero address");
         require(_amount > 0, "Amount must be greater than zero");
@@ -163,7 +181,12 @@ contract GreenToken is
      * @param _rewardType The type of reward to redeem (0-3)
      * @return redemptionId The unique receipt ID for this redemption
      */
-    function redeem(uint8 _rewardType) external returns (uint256 redemptionId) {
+    function redeem(uint8 _rewardType)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 redemptionId)
+    {
         require(_rewardType < REWARD_TYPE_COUNT, "Invalid reward type");
 
         uint256 cost = rewardCost[_rewardType];

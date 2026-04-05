@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
@@ -42,9 +44,30 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 contract EmissionRegistry is
     Initializable,
     UUPSUpgradeable,
-    ReentrancyGuardUpgradeable
+    ReentrancyGuardUpgradeable,
+    PausableUpgradeable,
+    EIP712Upgradeable
 {
     using ECDSA for bytes32;
+
+    // ─────────────────── BS-IV / BS-VI standards ─────────────────────────
+    //
+    // India's fleet is a mix of BS-III / BS-IV / BS-VI vehicles. This
+    // contract natively supports the two most prevalent modern standards
+    // (BS-IV and BS-VI) by keying CES normalisation off a per-vehicle
+    // enum. Vehicles default to BS-VI; the admin sets the standard at
+    // registration time via setVehicleStandard().
+    enum BSStandard { BS6, BS4 }
+
+    // ─────────────────── EIP-712 type hashes ─────────────────────────────
+    // See _verifyDeviceSignature for the struct this binds.
+    bytes32 private constant EMISSION_READING_TYPEHASH = keccak256(
+        "EmissionReading(string vehicleId,uint256 co2,uint256 co,uint256 nox,uint256 hc,uint256 pm25,uint256 timestamp,bytes32 nonce)"
+    );
+
+    bytes32 private constant VEHICLE_CLAIM_TYPEHASH = keccak256(
+        "VehicleClaim(string vehicleId,address claimant)"
+    );
 
     // ───────────────────────── Roles ──────────────────────────────────────
 
@@ -74,6 +97,20 @@ contract EmissionRegistry is
 
     /// @notice Number of consecutive PASS readings required for certificate eligibility
     uint256 public constant CONSECUTIVE_PASS_REQUIRED = 3;
+
+    // ───────────────── BS-IV Threshold Constants (scaled x1000) ──────────
+    // BS-IV (Bharat Stage IV, 2010–2019) applies to roughly half of India's
+    // in-use fleet and has looser caps than BS-VI. Vehicles registered
+    // under BS-IV are normalised against these thresholds in _computeCES.
+    //
+    // Source: CMVR Rule 115 / MoRTH Notification S.O. 1114(E), 2001 and
+    // ARAI BS-IV mass emission standards for M1 petrol passenger cars.
+
+    uint256 public constant BS4_CO2  = 140000;  // 140 g/km x1000 (no BS-IV CO2 cap; using fleet-average target)
+    uint256 public constant BS4_CO   = 2300;    // 2.3 g/km x1000
+    uint256 public constant BS4_NOX  = 150;     // 0.150 g/km x1000
+    uint256 public constant BS4_HC   = 200;     // 0.200 g/km x1000 (combined HC+NOx 0.35 – BS4_NOX)
+    uint256 public constant BS4_PM25 = 25;      // 0.025 g/km x1000
 
     // ───────────────── CES Weight Constants (scaled x10000) ──────────────
 
@@ -155,6 +192,50 @@ contract EmissionRegistry is
     /// @notice Replay protection: tracks used nonces
     mapping(bytes32 => bool) public usedNonces;
 
+    // ──────────────────── v3.2 append-only state ─────────────────────────
+    // New storage slots added in v3.2 (EIP-712, BS-IV support, Merkle batch
+    // commitments, phase summaries). Appended AFTER all pre-existing state
+    // and BEFORE the storage gap, so upgrades from v3.1 proxies are safe.
+
+    /// @notice Per-vehicle BS standard. Default (slot 0) = BS6. The admin
+    ///         calls setVehicleStandard to tag BS-IV vehicles; the next
+    ///         storeEmission call will use the BS-IV threshold table.
+    mapping(bytes32 => BSStandard) private _vehicleStandard;
+
+    /// @notice Per-vehicle daily Merkle commitment: keccak256-committed
+    ///         root of a batch of off-chain telemetry readings. Used by the
+    ///         hot/cold storage separation (see backend/merkle_batch.py).
+    ///         Key is keccak256(abi.encodePacked(vehicleId, dayIndex)).
+    mapping(bytes32 => bytes32) public batchRoots;
+
+    /// @notice Number of readings committed under each batch root, for
+    ///         off-chain verification that the Merkle tree has the
+    ///         expected leaf count.
+    mapping(bytes32 => uint256) public batchRootCount;
+
+    /// @notice Per-vehicle last-write timestamp. Used by the contract-level
+    ///         rate limit below to stop a compromised testing station
+    ///         from flooding a single vehicle with synthetic readings
+    ///         (audit report G8 / S7).
+    mapping(bytes32 => uint256) private _lastWriteTimestamp;
+
+    /// @notice Minimum gap in seconds between two storeEmission writes
+    ///         for the same vehicle. Default 3s matches the fastest
+    ///         realistic OBD-II polling rate; the admin can tune this
+    ///         per-deployment via setPerVehicleRateLimit.
+    uint256 public perVehicleRateLimitSeconds;
+
+    /// @notice Optional privacy mode (audit L11 / G6). When enabled, every
+    ///         storeEmission additionally emits an EmissionStoredHashed event
+    ///         whose indexed field is the keccak256 hash of the plaintext
+    ///         vehicleId, allowing off-chain consumers to index a vehicle's
+    ///         stream by salted hash only (if the caller supplies a salted
+    ///         id string) while never exposing the plaintext through logs.
+    ///         Defaults to FALSE so existing integrators — including
+    ///         scripts/e2e_business_flow.py and the frontend's event
+    ///         listener — continue to work without any change.
+    bool public privacyMode;
+
     // ───────────────────────── Events ─────────────────────────────────────
 
     event RecordStored(
@@ -189,10 +270,50 @@ contract EmissionRegistry is
         uint256 consecutivePasses
     );
 
+    /// @notice Privacy-preserving twin of RecordStored (audit L11 / G6).
+    ///         Only emitted when privacyMode == true. Carries the hashed
+    ///         vehicle id in an indexed topic so off-chain indexers can
+    ///         filter by hash without ever seeing the plaintext registration
+    ///         number in event logs.
+    event EmissionStoredHashed(
+        bytes32 indexed vehicleIdHash,
+        uint256 recordIndex,
+        uint256 cesScore,
+        uint256 fraudScore,
+        bool    passed,
+        uint256 timestamp
+    );
+
+    /// @notice Emitted when the admin toggles privacy mode on/off.
+    event PrivacyModeSet(bool enabled);
+
     event StationUpdated(address indexed station, bool authorized);
     event DeviceUpdated(address indexed device, bool registered);
     event VehicleOwnerSet(string indexed vehicleId, address indexed owner);
     event NonceUsed(bytes32 indexed nonce);
+
+    /// @notice Emitted when the admin tags a vehicle with its BS standard.
+    event VehicleStandardSet(string indexed vehicleId, BSStandard standard);
+
+    /// @notice Emitted when a testing station reports an aggregated
+    ///         per-phase summary for a WLTC cycle. Enables phase-weighted
+    ///         compliance analysis off-chain.
+    event PhaseCompleted(
+        string  indexed vehicleId,
+        uint8   phase,
+        uint256 avgCES,
+        uint256 distanceMeters,
+        uint256 timestamp
+    );
+
+    /// @notice Emitted when a testing station commits a Merkle root of a
+    ///         batch of off-chain telemetry readings.
+    event BatchRootCommitted(
+        string  indexed vehicleId,
+        uint256 dayIndex,
+        bytes32 root,
+        uint256 count
+    );
 
     // ───────────────────────── Modifiers ──────────────────────────────────
 
@@ -212,7 +333,14 @@ contract EmissionRegistry is
     // would collide with future state added by subclasses / upgrades.
     // Append new variables BEFORE the gap and shrink the gap by the
     // corresponding number of slots.
-    uint256[50] private __gap;
+    //
+    // Layout history:
+    //   v3.2 initial gap = 50
+    //   v3.2.1 added _lastWriteTimestamp mapping (+1 slot)
+    //   v3.2.1 added perVehicleRateLimitSeconds (+1 slot)
+    //   v3.2.2 added privacyMode bool (+1 slot; packed into its own slot)
+    //   Current remaining = 47
+    uint256[47] private __gap;
 
     // ───────────────────────── Initializer (UUPS) ────────────────────────
 
@@ -228,9 +356,44 @@ contract EmissionRegistry is
     function initialize() external initializer {
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
+        __Pausable_init();
+        __EIP712_init("SmartPUC", "3.2");
         admin = msg.sender;
         // Admin is also an authorized station for initial setup/testing.
         testingStations[msg.sender] = true;
+        // Per-vehicle rate limit defaults to DISABLED (0) so that the
+        // upgrade is safe against existing integration tests and replay
+        // of historical batch imports. Production deployments MUST call
+        // setPerVehicleRateLimit(3) (or higher) immediately after deploy
+        // to close audit-report G8 / S7 ("compromised station flood
+        // attack on a single vehicle"). See docs/THREAT_MODEL.md §A7.
+        perVehicleRateLimitSeconds = 0;
+    }
+
+    /// @notice Admin tunable for the per-vehicle write rate limit.
+    /// @dev Set to 0 to disable the check (useful for integration tests
+    ///      that want to stuff many historical readings in one block).
+    function setPerVehicleRateLimit(uint256 _seconds) external onlyAdmin {
+        perVehicleRateLimitSeconds = _seconds;
+    }
+
+    /// @notice Toggle privacy mode (audit L11 / G6). When enabled,
+    ///         storeEmission will additionally emit EmissionStoredHashed
+    ///         with only the hashed vehicle id in the indexed topic,
+    ///         giving off-chain indexers a privacy-preserving channel.
+    ///         Defaults to FALSE on initialize() so no existing integrator
+    ///         is affected.
+    function setPrivacyMode(bool _enabled) external onlyAdmin {
+        privacyMode = _enabled;
+        emit PrivacyModeSet(_enabled);
+    }
+
+    /// @notice Public pure helper to compute the keccak256 hash of a
+    ///         (possibly salted) vehicle id string. Off-chain callers can
+    ///         use this as the authoritative hashing function so their
+    ///         privacy-preserving indices match the on-chain event topic.
+    function computeVehicleIdHash(string memory _vehicleId) external pure returns (bytes32) {
+        return keccak256(bytes(_vehicleId));
     }
 
     // ───────────────────────── UUPS Upgrade Auth ─────────────────────────
@@ -247,28 +410,35 @@ contract EmissionRegistry is
         return keccak256(bytes(_vehicleId));
     }
 
-    /// @dev Compute CES on-chain from raw pollutant values (all scaled x1000).
-    ///      CES = (co2/BSVI_CO2)*3500 + (nox/BSVI_NOX)*3000 + (co/BSVI_CO)*1500
-    ///            + (hc/BSVI_HC)*1200 + (pm25/BSVI_PM25)*800, all divided by 10000.
-    ///      Returns CES scaled x10000 to maintain precision.
+    /// @dev Compute CES on-chain from raw pollutant values (all scaled x1000)
+    ///      against the appropriate BS-IV or BS-VI threshold set. Returns
+    ///      CES scaled x10000; at the standard's threshold the sum equals
+    ///      CES_WEIGHT_TOTAL = 10000 = CES_PASS_CEILING.
+    ///
+    ///      Disclosure: the weight distribution (0.35/0.30/0.15/0.12/0.08)
+    ///      is a **proposed composite scoring scheme**, not an ARAI or
+    ///      MoRTH standard. See docs/ARCHITECTURE_TRADEOFFS.md for the
+    ///      design rationale.
     function _computeCES(
         uint256 _co2,
         uint256 _co,
         uint256 _nox,
         uint256 _hc,
-        uint256 _pm25
+        uint256 _pm25,
+        BSStandard _std
     ) internal pure returns (uint256) {
-        // Each term: (value * weight / threshold) gives a weighted ratio.
-        // At exactly the BSVI threshold every term equals its weight, so
-        // the sum equals CES_WEIGHT_TOTAL = 10000 = CES_PASS_CEILING. This
-        // is already in the x10000 scale — no further multiplication needed.
-        uint256 cesRaw = (_co2 * CES_WEIGHT_CO2 / BSVI_CO2)
-                       + (_nox * CES_WEIGHT_NOX / BSVI_NOX)
-                       + (_co * CES_WEIGHT_CO / BSVI_CO)
-                       + (_hc * CES_WEIGHT_HC / BSVI_HC)
-                       + (_pm25 * CES_WEIGHT_PM25 / BSVI_PM25);
-
-        return cesRaw;
+        if (_std == BSStandard.BS4) {
+            return (_co2 * CES_WEIGHT_CO2 / BS4_CO2)
+                 + (_nox * CES_WEIGHT_NOX / BS4_NOX)
+                 + (_co  * CES_WEIGHT_CO  / BS4_CO)
+                 + (_hc  * CES_WEIGHT_HC  / BS4_HC)
+                 + (_pm25 * CES_WEIGHT_PM25 / BS4_PM25);
+        }
+        return (_co2 * CES_WEIGHT_CO2 / BSVI_CO2)
+             + (_nox * CES_WEIGHT_NOX / BSVI_NOX)
+             + (_co  * CES_WEIGHT_CO  / BSVI_CO)
+             + (_hc  * CES_WEIGHT_HC  / BSVI_HC)
+             + (_pm25 * CES_WEIGHT_PM25 / BSVI_PM25);
     }
 
     // ───────────────────────── Admin Functions ────────────────────────────
@@ -303,6 +473,33 @@ contract EmissionRegistry is
         admin = _newAdmin;
     }
 
+    /// @notice Pause all state-mutating entry points (storeEmission,
+    ///         reportPhaseSummary, commitBatchRoot, claimVehicle). Used
+    ///         as an emergency circuit breaker.
+    function pause() external onlyAdmin {
+        _pause();
+    }
+
+    /// @notice Resume normal operation after a pause.
+    function unpause() external onlyAdmin {
+        _unpause();
+    }
+
+    /// @notice Tag a vehicle with its Bharat-Stage standard (BS-IV / BS-VI).
+    ///         Default for unset vehicles is BS6. Must be called before
+    ///         the vehicle's first storeEmission to take effect on that
+    ///         record.
+    function setVehicleStandard(string memory _vehicleId, BSStandard _std) external onlyAdmin {
+        require(bytes(_vehicleId).length > 0, "Empty vehicle ID");
+        _vehicleStandard[_vid(_vehicleId)] = _std;
+        emit VehicleStandardSet(_vehicleId, _std);
+    }
+
+    /// @notice Read a vehicle's applicable BS standard.
+    function vehicleStandard(string memory _vehicleId) external view returns (BSStandard) {
+        return _vehicleStandard[_vid(_vehicleId)];
+    }
+
     // ───────────────────────── Vehicle Owner ──────────────────────────────
 
     /// @notice Vehicle owner registers their wallet address for a vehicle ID
@@ -313,11 +510,33 @@ contract EmissionRegistry is
         emit VehicleOwnerSet(_vehicleId, _owner);
     }
 
-    /// @notice Vehicle owner can self-register (must be called by the owner)
-    function claimVehicle(string memory _vehicleId) external {
+    /// @notice Vehicle owner self-registration with admin-signed proof.
+    /// @dev    v3.1 had a permissionless `claimVehicle(string)` that was
+    ///         exploitable by squatters: any caller could claim any
+    ///         unclaimed vehicle ID. v3.2 requires an EIP-712 signature
+    ///         from the admin key over the tuple (vehicleId, claimant)
+    ///         as proof of off-chain authorisation (typically issued by
+    ///         the RTO after KYC).
+    /// @param _vehicleId   Vehicle registration number to claim.
+    /// @param _adminSig    EIP-712 signature of VehicleClaim(vehicleId, msg.sender)
+    ///                     by the current admin.
+    function claimVehicle(string memory _vehicleId, bytes memory _adminSig)
+        external
+        whenNotPaused
+    {
         require(bytes(_vehicleId).length > 0, "Empty vehicle ID");
         bytes32 vid = _vid(_vehicleId);
         require(_vehicleOwners[vid] == address(0), "Vehicle already claimed");
+
+        bytes32 structHash = keccak256(abi.encode(
+            VEHICLE_CLAIM_TYPEHASH,
+            keccak256(bytes(_vehicleId)),
+            msg.sender
+        ));
+        bytes32 digest = _hashTypedDataV4(structHash);
+        address signer = ECDSA.recover(digest, _adminSig);
+        require(signer == admin, "Invalid admin signature");
+
         _vehicleOwners[vid] = msg.sender;
         emit VehicleOwnerSet(_vehicleId, msg.sender);
     }
@@ -378,7 +597,7 @@ contract EmissionRegistry is
         uint256 _timestamp,
         bytes32 _nonce,
         bytes memory _deviceSignature
-    ) external onlyStation nonReentrant {
+    ) external onlyStation nonReentrant whenNotPaused {
         // Input validation
         require(bytes(_vehicleId).length > 0, "Vehicle ID cannot be empty");
         require(_timestamp > 0, "Timestamp must be greater than zero");
@@ -389,19 +608,34 @@ contract EmissionRegistry is
         usedNonces[_nonce] = true;
         emit NonceUsed(_nonce);
 
-        // Verify OBD device signature (now includes nonce)
+        bytes32 vid = _vid(_vehicleId);
+
+        // Per-vehicle contract-level rate limit (audit G8 / S7).
+        // Guards against a compromised testing station flooding a
+        // single vehicle with back-to-back synthetic readings.
+        if (perVehicleRateLimitSeconds > 0) {
+            uint256 lastWrite = _lastWriteTimestamp[vid];
+            if (lastWrite != 0) {
+                require(
+                    block.timestamp >= lastWrite + perVehicleRateLimitSeconds,
+                    "Per-vehicle rate limit: writes too frequent"
+                );
+            }
+            _lastWriteTimestamp[vid] = block.timestamp;
+        }
+
+        // Verify OBD device EIP-712 signature (chain-id bound via domain)
         address deviceAddr = _verifyDeviceSignature(
             _vehicleId, _co2, _co, _nox, _hc, _pm25, _timestamp, _nonce, _deviceSignature
         );
         require(registeredDevices[deviceAddr], "Signature from unregistered device");
 
-        // Compute CES on-chain
-        uint256 cesScore = _computeCES(_co2, _co, _nox, _hc, _pm25);
+        // Compute CES using the vehicle's applicable BS standard
+        BSStandard std = _vehicleStandard[vid];
+        uint256 cesScore = _computeCES(_co2, _co, _nox, _hc, _pm25, std);
 
         // Compliance check
         bool passed = (cesScore < CES_PASS_CEILING) && (_fraudScore < FRAUD_ALERT_THRESHOLD);
-
-        bytes32 vid = _vid(_vehicleId);
 
         // Store record with full provenance
         emissionRecords[vid].push(EmissionRecord({
@@ -457,21 +691,111 @@ contract EmissionRegistry is
             emit FraudDetected(_vehicleId, _fraudScore, _timestamp);
         }
 
-        // Emit per-pollutant violations
-        if (_co2 > BSVI_CO2) emit PollutantViolation(_vehicleId, "CO2", _co2, BSVI_CO2);
-        if (_co  > BSVI_CO)  emit PollutantViolation(_vehicleId, "CO",  _co,  BSVI_CO);
-        if (_nox > BSVI_NOX) emit PollutantViolation(_vehicleId, "NOx", _nox, BSVI_NOX);
-        if (_hc  > BSVI_HC)  emit PollutantViolation(_vehicleId, "HC",  _hc,  BSVI_HC);
-        if (_pm25 > BSVI_PM25) emit PollutantViolation(_vehicleId, "PM25", _pm25, BSVI_PM25);
+        // Emit per-pollutant violations against the appropriate standard
+        {
+            uint256 tCo2  = std == BSStandard.BS4 ? BS4_CO2  : BSVI_CO2;
+            uint256 tCo   = std == BSStandard.BS4 ? BS4_CO   : BSVI_CO;
+            uint256 tNox  = std == BSStandard.BS4 ? BS4_NOX  : BSVI_NOX;
+            uint256 tHc   = std == BSStandard.BS4 ? BS4_HC   : BSVI_HC;
+            uint256 tPm25 = std == BSStandard.BS4 ? BS4_PM25 : BSVI_PM25;
+            if (_co2 > tCo2)  emit PollutantViolation(_vehicleId, "CO2",  _co2,  tCo2);
+            if (_co  > tCo)   emit PollutantViolation(_vehicleId, "CO",   _co,   tCo);
+            if (_nox > tNox)  emit PollutantViolation(_vehicleId, "NOx",  _nox,  tNox);
+            if (_hc  > tHc)   emit PollutantViolation(_vehicleId, "HC",   _hc,   tHc);
+            if (_pm25 > tPm25) emit PollutantViolation(_vehicleId, "PM25", _pm25, tPm25);
+        }
 
         emit RecordStored(_vehicleId, recordIndex, _timestamp, msg.sender, deviceAddr);
+
+        // Privacy mode twin-event (audit L11 / G6). Only emitted when the
+        // admin has opted in via setPrivacyMode(true). Carries the hashed
+        // vehicle id so off-chain indexers can filter by hash without ever
+        // seeing the plaintext registration number in event topics.
+        if (privacyMode) {
+            emit EmissionStoredHashed(
+                vid,
+                recordIndex,
+                cesScore,
+                _fraudScore,
+                passed,
+                _timestamp
+            );
+        }
+    }
+
+    // ───────────────────────── Per-phase summary ─────────────────────────
+
+    /// @notice Commit an aggregated WLTC-phase summary for a vehicle.
+    ///         Complements per-reading submissions by emitting a single
+    ///         event per phase that off-chain auditors can use to compute
+    ///         phase-weighted compliance without replaying the full stream.
+    /// @param _vehicleId      Vehicle registration number.
+    /// @param _phase          WLTC phase (0=Low, 1=Medium, 2=High, 3=Extra High).
+    /// @param _avgCES         Average CES over the phase (scaled x10000).
+    /// @param _distanceMeters Distance covered in this phase, in metres.
+    /// @param _timestamp      Unix epoch timestamp at phase completion.
+    function reportPhaseSummary(
+        string memory _vehicleId,
+        uint8   _phase,
+        uint256 _avgCES,
+        uint256 _distanceMeters,
+        uint256 _timestamp
+    ) external onlyStation whenNotPaused {
+        require(bytes(_vehicleId).length > 0, "Empty vehicle ID");
+        require(_phase <= 3, "Invalid WLTC phase (0-3)");
+        require(_timestamp > 0, "Timestamp must be greater than zero");
+        emit PhaseCompleted(_vehicleId, _phase, _avgCES, _distanceMeters, _timestamp);
+    }
+
+    // ───────────────────────── Merkle batch commits ──────────────────────
+
+    /// @notice Commit a Merkle root of a batch of off-chain telemetry
+    ///         readings. Enables the hot/cold storage separation described
+    ///         in docs/ARCHITECTURE_TRADEOFFS.md §6: fine-grained readings
+    ///         live in a station's off-chain SQLite database, only the
+    ///         committed root is anchored on-chain, and a verifier can
+    ///         prove any individual reading was in the committed batch via
+    ///         a Merkle proof against this root.
+    /// @param _vehicleId Vehicle registration number.
+    /// @param _dayIndex  Index of the day being committed (e.g. days since epoch).
+    /// @param _root      keccak256 root of the Merkle tree over the day's readings.
+    /// @param _count     Number of leaves in the committed tree.
+    function commitBatchRoot(
+        string memory _vehicleId,
+        uint256 _dayIndex,
+        bytes32 _root,
+        uint256 _count
+    ) external onlyStation whenNotPaused {
+        require(bytes(_vehicleId).length > 0, "Empty vehicle ID");
+        require(_root != bytes32(0), "Empty Merkle root");
+        require(_count > 0, "Empty batch");
+        bytes32 key = keccak256(abi.encodePacked(_vehicleId, _dayIndex));
+        require(batchRoots[key] == bytes32(0), "Batch already committed");
+        batchRoots[key] = _root;
+        batchRootCount[key] = _count;
+        emit BatchRootCommitted(_vehicleId, _dayIndex, _root, _count);
+    }
+
+    /// @notice Look up a previously committed Merkle root for a vehicle/day.
+    function getBatchRoot(string memory _vehicleId, uint256 _dayIndex)
+        external view returns (bytes32 root, uint256 count)
+    {
+        bytes32 key = keccak256(abi.encodePacked(_vehicleId, _dayIndex));
+        return (batchRoots[key], batchRootCount[key]);
     }
 
     // ───────────────────────── Signature Verification ─────────────────────
 
     /**
-     * @dev Recover the OBD device address from its ECDSA signature.
-     *      The device signs: keccak256(vehicleId, co2, co, nox, hc, pm25, timestamp, nonce)
+     * @dev Recover the OBD device address from its EIP-712 signature.
+     *      The device signs the structured type:
+     *          EmissionReading(string vehicleId,uint256 co2,uint256 co,
+     *                          uint256 nox,uint256 hc,uint256 pm25,
+     *                          uint256 timestamp,bytes32 nonce)
+     *      under the domain ("SmartPUC", "3.2", chainId, verifyingContract).
+     *      Chain-id binding in the domain separator makes cross-chain
+     *      replay (threat A9) infeasible — a signature is valid only on
+     *      the chain the domain identifies.
      */
     function _verifyDeviceSignature(
         string memory _vehicleId,
@@ -483,16 +807,23 @@ contract EmissionRegistry is
         uint256 _timestamp,
         bytes32 _nonce,
         bytes memory _signature
-    ) internal pure returns (address) {
-        bytes32 messageHash = keccak256(abi.encodePacked(
-            _vehicleId, _co2, _co, _nox, _hc, _pm25, _timestamp, _nonce
+    ) internal view returns (address) {
+        bytes32 structHash = keccak256(abi.encode(
+            EMISSION_READING_TYPEHASH,
+            keccak256(bytes(_vehicleId)),
+            _co2, _co, _nox, _hc, _pm25,
+            _timestamp, _nonce
         ));
-        bytes32 ethSignedHash = messageHash.toEthSignedMessageHash();
-        return ethSignedHash.recover(_signature);
+        bytes32 digest = _hashTypedDataV4(structHash);
+        return ECDSA.recover(digest, _signature);
     }
 
-    /// @notice Public helper so off-chain code can compute the same hash (includes nonce)
-    function getMessageHash(
+    /// @notice Public helper so off-chain code can compute the same EIP-712
+    ///         digest the contract uses to verify device signatures. This
+    ///         replaces the legacy abi.encodePacked keccak256 that v3.1
+    ///         used — the new digest binds chain-id and contract address
+    ///         via the domain separator.
+    function getEmissionDigest(
         string memory _vehicleId,
         uint256 _co2,
         uint256 _co,
@@ -501,15 +832,32 @@ contract EmissionRegistry is
         uint256 _pm25,
         uint256 _timestamp,
         bytes32 _nonce
-    ) external pure returns (bytes32) {
-        return keccak256(abi.encodePacked(
-            _vehicleId, _co2, _co, _nox, _hc, _pm25, _timestamp, _nonce
+    ) external view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(
+            EMISSION_READING_TYPEHASH,
+            keccak256(bytes(_vehicleId)),
+            _co2, _co, _nox, _hc, _pm25,
+            _timestamp, _nonce
         ));
+        return _hashTypedDataV4(structHash);
+    }
+
+    /// @notice Public helper so off-chain code can compute the EIP-712
+    ///         digest for a VehicleClaim payload (used by claimVehicle).
+    function getVehicleClaimDigest(string memory _vehicleId, address _claimant)
+        external view returns (bytes32)
+    {
+        bytes32 structHash = keccak256(abi.encode(
+            VEHICLE_CLAIM_TYPEHASH,
+            keccak256(bytes(_vehicleId)),
+            _claimant
+        ));
+        return _hashTypedDataV4(structHash);
     }
 
     // ───────────────────────── CES Computation (Public) ──────────────────
 
-    /// @notice Compute CES from raw pollutant values (public view for off-chain use)
+    /// @notice Compute CES against BS-VI thresholds (public view for off-chain use).
     function computeCES(
         uint256 _co2,
         uint256 _co,
@@ -517,7 +865,19 @@ contract EmissionRegistry is
         uint256 _hc,
         uint256 _pm25
     ) external pure returns (uint256) {
-        return _computeCES(_co2, _co, _nox, _hc, _pm25);
+        return _computeCES(_co2, _co, _nox, _hc, _pm25, BSStandard.BS6);
+    }
+
+    /// @notice Compute CES against an explicit BS standard.
+    function computeCESForStandard(
+        uint256 _co2,
+        uint256 _co,
+        uint256 _nox,
+        uint256 _hc,
+        uint256 _pm25,
+        BSStandard _std
+    ) external pure returns (uint256) {
+        return _computeCES(_co2, _co, _nox, _hc, _pm25, _std);
     }
 
     // ───────────────────────── View Functions ─────────────────────────────

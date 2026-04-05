@@ -145,6 +145,16 @@ async function connectWallet() {
     }
     try {
         await window.ethereum.request({ method: 'eth_requestAccounts' });
+        // Ensure we're on the local Hardhat chain — otherwise every
+        // contract read against the local addresses would fail with
+        // "missing revert data".
+        if (window.SmartPUC && window.SmartPUC.ensureChain) {
+            try { await window.SmartPUC.ensureChain(); }
+            catch (e) {
+                showAlert('Please approve the network switch in MetaMask and try again.', 'warning');
+                return;
+            }
+        }
         provider = new ethers.BrowserProvider(window.ethereum);
         signer = await provider.getSigner();
         const address = await signer.getAddress();

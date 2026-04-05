@@ -109,6 +109,44 @@ def require_api_key(
         )
 
 
+def require_api_key_or_jwt(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    api_key: Optional[str] = Query(None, alias="api_key"),
+    authorization: Optional[str] = Header(None),
+) -> None:
+    """Accept either a valid X-API-Key header (device path) OR a valid
+    Bearer JWT (authority-dashboard path) for device-write endpoints.
+
+    Motivation: the frontend dashboards are legitimate operator tools
+    and should be able to POST /api/record using the operator's
+    already-authenticated JWT session. Requiring them to also obtain an
+    X-API-Key would either leak the key through the browser or force a
+    double-auth flow. With this dependency the dashboard's existing
+    Authorization: Bearer header is sufficient, while raw OBD devices
+    can still use X-API-Key as before.
+
+    If API_KEY is unset the dependency is a no-op (dev mode).
+    """
+    if not API_KEY:
+        return
+    # Path 1 — API key header/query
+    provided = x_api_key or api_key or ""
+    if provided and hmac.compare_digest(provided, API_KEY):
+        return
+    # Path 2 — Bearer JWT
+    if authorization and authorization.startswith("Bearer ") and JWT_SECRET:
+        token = authorization[7:]
+        try:
+            jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            return
+        except jwt.InvalidTokenError:
+            pass
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing or invalid credentials (X-API-Key or Bearer JWT required)",
+    )
+
+
 # ────────────────────────── JWT Auth ─────────────────────────────────────
 
 def require_auth(authorization: Optional[str] = Header(None)) -> str:

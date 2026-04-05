@@ -227,6 +227,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="wallet.js"></script>
     <script>
         const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
         let lastVehicleId = '';
@@ -417,6 +418,19 @@
             try {
                 resultDiv.innerHTML = '<p style="color:#007AFF;">Connecting to blockchain...</p>';
                 await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+                // Make sure MetaMask is pointed at the local Hardhat chain
+                // before we read — otherwise the contract address lives on a
+                // different network and ethers returns "missing revert data".
+                if (window.SmartPUC && window.SmartPUC.ensureChain) {
+                    try {
+                        await window.SmartPUC.ensureChain();
+                    } catch (chainErr) {
+                        resultDiv.innerHTML = '<p style="color:#F44336;">Please switch MetaMask to the <strong>' + window.SmartPUC.LOCAL_CHAIN_NAME + '</strong> network (chainId ' + window.SmartPUC.LOCAL_CHAIN_ID_DEC + ') and try again.</p>';
+                        return;
+                    }
+                }
+
                 const provider = new ethers.BrowserProvider(window.ethereum);
 
                 // Get contract address from backend

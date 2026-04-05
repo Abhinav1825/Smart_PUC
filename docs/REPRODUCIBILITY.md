@@ -75,7 +75,7 @@ npx hardhat compile && npx hardhat run scripts/deploy.js --network localhost
 cp .env.example .env
 # Fill in OBD_DEVICE_PRIVATE_KEY and PRIVATE_KEY from Ganache's printed accounts.
 # Ganache in --deterministic mode prints the same addresses every run.
-cd backend && python app.py
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 5000 --reload
 
 # Frontend (terminal 4)
 npx http-server frontend -p 3000 -c-1 --cors

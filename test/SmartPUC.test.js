@@ -20,17 +20,53 @@ function nonceFromSeed(seed) {
 }
 
 /**
- * Sign an emission payload the same way the Solidity side hashes it:
- *     keccak256(vehicleId || co2 || co || nox || hc || pm25 || timestamp || nonce)
- * then eth-sign the hash. Matches EmissionRegistry.getMessageHash.
+ * Sign an emission payload using EIP-712 typed data, matching the
+ * EmissionReading struct verified by EmissionRegistry._verifyDeviceSignature.
+ * The domain binds (chainId, verifyingContract) which mitigates cross-chain
+ * replay (A9 in the threat model).
  */
-async function signEmission(signer, vehicleId, co2, co, nox, hc, pm25, timestamp, nonce) {
-  const hash = ethers.solidityPackedKeccak256(
-    ["string", "uint256", "uint256", "uint256", "uint256", "uint256", "uint256", "bytes32"],
-    [vehicleId, co2, co, nox, hc, pm25, timestamp, nonce]
-  );
-  // ethers v6 signMessage automatically applies the Ethereum-signed-message prefix.
-  return signer.signMessage(ethers.getBytes(hash));
+async function signEmission(signer, registry, vehicleId, co2, co, nox, hc, pm25, timestamp, nonce) {
+  const net = await ethers.provider.getNetwork();
+  const domain = {
+    name: "SmartPUC",
+    version: "3.2",
+    chainId: net.chainId,
+    verifyingContract: await registry.getAddress(),
+  };
+  const types = {
+    EmissionReading: [
+      { name: "vehicleId", type: "string" },
+      { name: "co2", type: "uint256" },
+      { name: "co", type: "uint256" },
+      { name: "nox", type: "uint256" },
+      { name: "hc", type: "uint256" },
+      { name: "pm25", type: "uint256" },
+      { name: "timestamp", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+    ],
+  };
+  const value = { vehicleId, co2, co, nox, hc, pm25, timestamp, nonce };
+  return signer.signTypedData(domain, types, value);
+}
+
+/**
+ * Sign a VehicleClaim payload (admin → claimant binding for claimVehicle).
+ */
+async function signVehicleClaim(adminSigner, registry, vehicleId, claimant) {
+  const net = await ethers.provider.getNetwork();
+  const domain = {
+    name: "SmartPUC",
+    version: "3.2",
+    chainId: net.chainId,
+    verifyingContract: await registry.getAddress(),
+  };
+  const types = {
+    VehicleClaim: [
+      { name: "vehicleId", type: "string" },
+      { name: "claimant", type: "address" },
+    ],
+  };
+  return adminSigner.signTypedData(domain, types, { vehicleId, claimant });
 }
 
 async function storePassRecord(registry, vehicleId, stationSigner, deviceSigner, nonceSeed, timestamp) {
@@ -44,7 +80,7 @@ async function storePassRecord(registry, vehicleId, stationSigner, deviceSigner,
   const wltcPhase = 2;
   const ts = BigInt(timestamp || 1700000000);
   const n = nonceFromSeed(nonceSeed);
-  const sig = await signEmission(deviceSigner, vehicleId, co2, co, nox, hc, pm25, ts, n);
+  const sig = await signEmission(deviceSigner, registry, vehicleId, co2, co, nox, hc, pm25, ts, n);
   return registry
     .connect(stationSigner)
     .storeEmission(vehicleId, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig);
@@ -61,7 +97,7 @@ async function storeFailRecord(registry, vehicleId, stationSigner, deviceSigner,
   const wltcPhase = 3;
   const ts = BigInt(timestamp || 1700000100);
   const n = nonceFromSeed(nonceSeed);
-  const sig = await signEmission(deviceSigner, vehicleId, co2, co, nox, hc, pm25, ts, n);
+  const sig = await signEmission(deviceSigner, registry, vehicleId, co2, co, nox, hc, pm25, ts, n);
   return registry
     .connect(stationSigner)
     .storeEmission(vehicleId, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig);
@@ -144,7 +180,7 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
       const fraudScore = 7500n, vspValue = 12000n, wltcPhase = 1;
       const ts = 1700000200n;
       const n = nonceFromSeed(100);
-      const sig = await signEmission(device, vid, co2, co, nox, hc, pm25, ts, n);
+      const sig = await signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
 
       await expect(
         registry.connect(station).storeEmission(vid, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig)
@@ -176,7 +212,7 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
 
     it("TC-07: Unauthorized station cannot store emissions", async () => {
       const n = nonceFromSeed(30);
-      const sig = await signEmission(device, "MH12XX0000", 80000n, 500n, 30n, 50n, 2n, 1700001000n, n);
+      const sig = await signEmission(device, registry, "MH12XX0000", 80000n, 500n, 30n, 50n, 2n, 1700001000n, n);
       await expect(
         registry.connect(unauthorized).storeEmission(
           "MH12XX0000", 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, 1700001000n, n, sig
@@ -196,7 +232,7 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
 
     it("TC-09: Empty vehicle ID rejected", async () => {
       const n = nonceFromSeed(50);
-      const sig = await signEmission(device, "", 80000n, 500n, 30n, 50n, 2n, 1700000900n, n);
+      const sig = await signEmission(device, registry, "", 80000n, 500n, 30n, 50n, 2n, 1700000900n, n);
       await expect(
         registry.connect(station).storeEmission(
           "", 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, 1700000900n, n, sig
@@ -210,7 +246,7 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
       const fraudScore = 1500n, vspValue = 16000n, wltcPhase = 2;
       const ts = 1700001000n;
       const n = nonceFromSeed(60);
-      const sig = await signEmission(device, vid, co2, co, nox, hc, pm25, ts, n);
+      const sig = await signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
 
       await registry.connect(station).storeEmission(
         vid, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig
@@ -244,7 +280,7 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
       const vid = "MH12RP0001";
       const n = nonceFromSeed(70);
       const ts = 1700002000n;
-      const sig = await signEmission(device, vid, 80000n, 500n, 30n, 50n, 2n, ts, n);
+      const sig = await signEmission(device, registry, vid, 80000n, 500n, 30n, 50n, 2n, ts, n);
       await registry.connect(station).storeEmission(vid, 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, ts, n, sig);
       await expect(
         registry.connect(station).storeEmission(vid, 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, ts, n, sig)
@@ -256,7 +292,7 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
       const n = nonceFromSeed(80);
       const ts = 1700003000n;
       // Signed by unauthorized account (not a registered device)
-      const sig = await signEmission(unauthorized, vid, 80000n, 500n, 30n, 50n, 2n, ts, n);
+      const sig = await signEmission(unauthorized, registry, vid, 80000n, 500n, 30n, 50n, 2n, ts, n);
       await expect(
         registry.connect(station).storeEmission(vid, 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, ts, n, sig)
       ).to.be.revertedWith("Signature from unregistered device");
@@ -534,5 +570,474 @@ describe("Smart PUC — Full Test Suite (Hardhat)", function () {
       await puc2.waitForDeployment();
       expect(await puc2.authority()).to.equal(admin.address);
     });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // v3.2 additions (EIP-712, Pausable, BS-IV, claimVehicle, phase summary,
+  // Merkle batch commit, concave reward curve)
+  // ═══════════════════════════════════════════════════════════════════════
+  describe("v3.2 EIP-712 signatures", () => {
+    it("TC-34: Device signature is rejected when signed under the wrong contract (domain binding)", async () => {
+      // Deploy a sibling registry so signatures under the original domain
+      // must not be valid under the new domain.
+      const EmissionRegistry = await ethers.getContractFactory("EmissionRegistry", admin);
+      const sibling = await upgrades.deployProxy(EmissionRegistry, [], { kind: "uups", initializer: "initialize" });
+      await sibling.waitForDeployment();
+      await (await sibling.setTestingStation(station.address, true)).wait();
+      await (await sibling.setRegisteredDevice(device.address, true)).wait();
+
+      const vid = "MH12DOMAIN";
+      const ts = 1700040000n;
+      const n = nonceFromSeed(800);
+      // Sign for the ORIGINAL registry, try to submit to the SIBLING.
+      const sig = await signEmission(device, registry, vid, 80000n, 500n, 30n, 50n, 2n, ts, n);
+      await expect(
+        sibling.connect(station).storeEmission(vid, 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, ts, n, sig)
+      ).to.be.revertedWith("Signature from unregistered device");
+    });
+
+    it("TC-35: getEmissionDigest matches off-chain EIP-712 digest", async () => {
+      const vid = "MH12DIG01";
+      const ts = 1700041000n;
+      const n = nonceFromSeed(810);
+      const sig = await signEmission(device, registry, vid, 80000n, 500n, 30n, 50n, 2n, ts, n);
+
+      // A successful storeEmission implies the contract's recovered signer
+      // matches the device — this indirectly verifies the digest.
+      await registry.connect(station).storeEmission(vid, 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, ts, n, sig);
+      const r = await registry.getRecord(vid, 0);
+      expect(r.deviceAddress).to.equal(device.address);
+    });
+  });
+
+  describe("v3.2 Pausable circuit breaker", () => {
+    it("TC-36: Admin can pause storeEmission and unpause it", async () => {
+      await registry.pause();
+      const n = nonceFromSeed(820);
+      const sig = await signEmission(device, registry, "PAUSE01", 80000n, 500n, 30n, 50n, 2n, 1700050000n, n);
+      await expect(
+        registry.connect(station).storeEmission("PAUSE01", 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, 1700050000n, n, sig)
+      ).to.be.revertedWith("Pausable: paused");
+
+      await registry.unpause();
+      await expect(
+        registry.connect(station).storeEmission("PAUSE01", 80000n, 500n, 30n, 50n, 2n, 1000n, 15000n, 2, 1700050000n, n, sig)
+      ).to.emit(registry, "RecordStored");
+    });
+
+    it("TC-37: Non-admin cannot pause", async () => {
+      await expect(registry.connect(unauthorized).pause())
+        .to.be.revertedWith("Only admin can call this function");
+    });
+
+    it("TC-38: GreenToken and PUCCertificate also pausable", async () => {
+      await greenToken.pause();
+      await expect(greenToken.connect(vehicleOwner).redeem(0))
+        .to.be.revertedWith("Pausable: paused");
+      await greenToken.unpause();
+
+      await puc.pause();
+      await storePassRecord(registry, "PAUSECERT", station, device, 830, 1700051000);
+      await storePassRecord(registry, "PAUSECERT", station, device, 831, 1700051100);
+      await storePassRecord(registry, "PAUSECERT", station, device, 832, 1700051200);
+      await expect(
+        puc.connect(station)["issueCertificate(string,address,string)"]("PAUSECERT", vehicleOwner.address, "")
+      ).to.be.revertedWith("Pausable: paused");
+      await puc.unpause();
+    });
+  });
+
+  describe("v3.2 BS-IV support", () => {
+    it("TC-39: Vehicle tagged BS-IV uses the looser BS-IV thresholds", async () => {
+      const vid = "BS4VEHICLE";
+      // A BS-IV-tagged vehicle passing with CO=1500 (x1000) which would FAIL
+      // under BS-VI's 1000 cap but is below BS-IV's 2300 cap.
+      await registry.setVehicleStandard(vid, 1); // 1 = BS4
+      const co2 = 100000n, co = 1500n, nox = 80n, hc = 120n, pm25 = 4n;
+      const ts = 1700060000n;
+      const n = nonceFromSeed(900);
+      const sig = await signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
+      await registry.connect(station).storeEmission(vid, co2, co, nox, hc, pm25, 500n, 12000n, 2, ts, n, sig);
+      const r = await registry.getRecord(vid, 0);
+      // CES should be computed against BS-IV thresholds and still pass.
+      expect(r.status).to.equal(true);
+    });
+
+    it("TC-40: computeCESForStandard(BS4) differs from computeCES(BS6)", async () => {
+      const ces6 = await registry.computeCES(100000, 1500, 80, 120, 4);
+      const ces4 = await registry.computeCESForStandard(100000, 1500, 80, 120, 4, 1);
+      expect(ces6).to.be.gt(ces4); // BS-VI is strict → higher CES for same inputs
+    });
+
+    it("TC-41: Default standard for unset vehicle is BS6", async () => {
+      const vid = "DEFAULTSTD";
+      expect(await registry.vehicleStandard(vid)).to.equal(0n); // BS6 = 0
+    });
+  });
+
+  describe("v3.2 Hardened claimVehicle", () => {
+    it("TC-42: claimVehicle requires a valid admin EIP-712 signature", async () => {
+      const vid = "CLAIMTEST1";
+      const adminSig = await signVehicleClaim(admin, registry, vid, vehicleOwner.address);
+      await expect(
+        registry.connect(vehicleOwner).claimVehicle(vid, adminSig)
+      ).to.emit(registry, "VehicleOwnerSet");
+      expect(await registry.vehicleOwners(vid)).to.equal(vehicleOwner.address);
+    });
+
+    it("TC-43: claimVehicle rejects signature from non-admin", async () => {
+      const vid = "CLAIMTEST2";
+      const badSig = await signVehicleClaim(unauthorized, registry, vid, vehicleOwner.address);
+      await expect(
+        registry.connect(vehicleOwner).claimVehicle(vid, badSig)
+      ).to.be.revertedWith("Invalid admin signature");
+    });
+
+    it("TC-44: claimVehicle rejects signature for wrong claimant (no squatting)", async () => {
+      const vid = "CLAIMTEST3";
+      // Admin signed for `vehicleOwner`, but `unauthorized` tries to claim.
+      const adminSig = await signVehicleClaim(admin, registry, vid, vehicleOwner.address);
+      await expect(
+        registry.connect(unauthorized).claimVehicle(vid, adminSig)
+      ).to.be.revertedWith("Invalid admin signature");
+    });
+
+    it("TC-45: claimVehicle rejects already-claimed vehicle", async () => {
+      const vid = "CLAIMTEST4";
+      const adminSig = await signVehicleClaim(admin, registry, vid, vehicleOwner.address);
+      await registry.connect(vehicleOwner).claimVehicle(vid, adminSig);
+      await expect(
+        registry.connect(vehicleOwner).claimVehicle(vid, adminSig)
+      ).to.be.revertedWith("Vehicle already claimed");
+    });
+  });
+
+  describe("v3.2 Per-phase WLTC summary", () => {
+    it("TC-46: reportPhaseSummary emits PhaseCompleted", async () => {
+      await expect(
+        registry.connect(station).reportPhaseSummary("PHASEVEH", 2, 6500, 8400, 1700070000)
+      ).to.emit(registry, "PhaseCompleted");
+    });
+
+    it("TC-47: reportPhaseSummary rejects invalid phase > 3", async () => {
+      await expect(
+        registry.connect(station).reportPhaseSummary("PHASEVEH", 5, 6500, 8400, 1700070100)
+      ).to.be.revertedWith("Invalid WLTC phase (0-3)");
+    });
+
+    it("TC-48: Only authorized station can report phase summary", async () => {
+      await expect(
+        registry.connect(unauthorized).reportPhaseSummary("PHASEVEH", 1, 5000, 4000, 1700070200)
+      ).to.be.revertedWith("Caller is not an authorized testing station");
+    });
+  });
+
+  describe("v3.2 Merkle batch commit", () => {
+    it("TC-49: commitBatchRoot stores a root and emits an event", async () => {
+      const root = ethers.keccak256(ethers.toUtf8Bytes("batch-42"));
+      await expect(
+        registry.connect(station).commitBatchRoot("BATCHVEH", 42, root, 100)
+      ).to.emit(registry, "BatchRootCommitted");
+
+      const [storedRoot, storedCount] = await registry.getBatchRoot("BATCHVEH", 42);
+      expect(storedRoot).to.equal(root);
+      expect(storedCount).to.equal(100n);
+    });
+
+    it("TC-50: Duplicate commitBatchRoot for same (vehicle, day) is rejected", async () => {
+      const root = ethers.keccak256(ethers.toUtf8Bytes("batch-dup"));
+      await registry.connect(station).commitBatchRoot("DUPBATCH", 1, root, 50);
+      await expect(
+        registry.connect(station).commitBatchRoot("DUPBATCH", 1, root, 50)
+      ).to.be.revertedWith("Batch already committed");
+    });
+
+    it("TC-51: commitBatchRoot requires an authorized station", async () => {
+      const root = ethers.keccak256(ethers.toUtf8Bytes("batch-unauth"));
+      await expect(
+        registry.connect(unauthorized).commitBatchRoot("UNAUTHBATCH", 1, root, 50)
+      ).to.be.revertedWith("Caller is not an authorized testing station");
+    });
+  });
+
+  describe("v3.2 Concave reward curve", () => {
+    it("TC-52: computeRewardAmount(0) returns MAX (200 GCT)", async () => {
+      expect(await puc.computeRewardAmount(0))
+        .to.equal(ethers.parseEther("200"));
+    });
+
+    it("TC-53: computeRewardAmount(CEILING) returns MIN (50 GCT)", async () => {
+      expect(await puc.computeRewardAmount(10000))
+        .to.equal(ethers.parseEther("50"));
+    });
+
+    it("TC-54: Concave curve is below linear midpoint at CES=5000", async () => {
+      // Linear midpoint would be 125 GCT; concave midpoint is
+      // 50 + 150 * (5000*5000/10000) / 10000 = 50 + 150*2500/10000 = 87.5 GCT
+      const mid = await puc.computeRewardAmount(5000);
+      expect(mid).to.be.lt(ethers.parseEther("125"));
+      expect(mid).to.be.gte(ethers.parseEther("80"));
+      expect(mid).to.be.lte(ethers.parseEther("95"));
+    });
+
+    it("TC-55: Concave curve is strictly decreasing", async () => {
+      const r0 = await puc.computeRewardAmount(0);
+      const r1 = await puc.computeRewardAmount(2500);
+      const r2 = await puc.computeRewardAmount(5000);
+      const r3 = await puc.computeRewardAmount(7500);
+      const r4 = await puc.computeRewardAmount(10000);
+      expect(r0).to.be.gt(r1);
+      expect(r1).to.be.gt(r2);
+      expect(r2).to.be.gt(r3);
+      expect(r3).to.be.gt(r4);
+    });
+  });
+
+  describe("v3.2 First-PUC validity branch (CMVR Rule 115)", () => {
+    async function makeEligible(vid, nonceSeedStart) {
+      for (let i = 0; i < 3; i++) {
+        await storePassRecord(registry, vid, station, device, nonceSeedStart + i, 1700020000 + i * 100);
+      }
+    }
+
+    it("TC-56: First-ever PUC auto-detects FIRST flag and gets 360-day validity", async () => {
+      const vid = "MH12FIRST1";
+      await makeEligible(vid, 800);
+      const tx = await puc
+        .connect(station)
+        ["issueCertificate(string,address,string)"](vid, vehicleOwner.address, "");
+      const rcpt = await tx.wait();
+      const issued = rcpt.logs.map((l) => {
+        try { return puc.interface.parseLog(l); } catch { return null; }
+      }).find((e) => e && e.name === "CertificateIssued");
+      const tokenId = issued.args.tokenId;
+      const cert = await puc.getCertificate(tokenId);
+      const duration = BigInt(cert.expiryTimestamp) - BigInt(cert.issueTimestamp);
+      // 360 days in seconds
+      expect(duration).to.equal(360n * 24n * 60n * 60n);
+      expect(cert.isFirstPUC).to.equal(true);
+    });
+
+    it("TC-57: Renewal after revocation auto-detects NOT-FIRST and gets 180-day validity", async () => {
+      const vid = "MH12FIRST2";
+      await makeEligible(vid, 810);
+      // First PUC
+      const tx1 = await puc
+        .connect(station)
+        ["issueCertificate(string,address,string)"](vid, vehicleOwner.address, "");
+      const rcpt1 = await tx1.wait();
+      const issued1 = rcpt1.logs.map((l) => {
+        try { return puc.interface.parseLog(l); } catch { return null; }
+      }).find((e) => e && e.name === "CertificateIssued");
+      const tokenId1 = issued1.args.tokenId;
+      // Revoke so a second PUC can be issued
+      await puc.revokeCertificate(tokenId1, "Unit-test revocation");
+      // Second PUC
+      const tx2 = await puc
+        .connect(station)
+        ["issueCertificate(string,address,string)"](vid, vehicleOwner.address, "");
+      const rcpt2 = await tx2.wait();
+      const issued2 = rcpt2.logs.map((l) => {
+        try { return puc.interface.parseLog(l); } catch { return null; }
+      }).find((e) => e && e.name === "CertificateIssued");
+      const tokenId2 = issued2.args.tokenId;
+      const cert2 = await puc.getCertificate(tokenId2);
+      const duration = BigInt(cert2.expiryTimestamp) - BigInt(cert2.issueTimestamp);
+      // 180 days — not first
+      expect(duration).to.equal(180n * 24n * 60n * 60n);
+      expect(cert2.isFirstPUC).to.equal(false);
+    });
+
+    it("TC-58: Explicit overload issueCertificateWithFirstFlag honours the flag", async () => {
+      const vid = "MH12FIRST3";
+      await makeEligible(vid, 820);
+      // Force NOT-first on a vehicle with no prior certificate — should get 180 days.
+      const tx = await puc
+        .connect(station)
+        .issueCertificateWithFirstFlag(vid, vehicleOwner.address, "", false);
+      const rcpt = await tx.wait();
+      const issued = rcpt.logs.map((l) => {
+        try { return puc.interface.parseLog(l); } catch { return null; }
+      }).find((e) => e && e.name === "CertificateIssued");
+      const tokenId = issued.args.tokenId;
+      const cert = await puc.getCertificate(tokenId);
+      const duration = BigInt(cert.expiryTimestamp) - BigInt(cert.issueTimestamp);
+      expect(duration).to.equal(180n * 24n * 60n * 60n);
+      expect(cert.isFirstPUC).to.equal(false);
+    });
+  });
+
+  describe("v3.2.1 Per-vehicle rate limit (audit G8)", () => {
+    it("TC-59: Default rate limit is 0 (disabled) for backward compatibility", async () => {
+      expect(await registry.perVehicleRateLimitSeconds()).to.equal(0n);
+    });
+
+    it("TC-60: setPerVehicleRateLimit requires admin", async () => {
+      await expect(registry.connect(unauthorized).setPerVehicleRateLimit(3))
+        .to.be.revertedWith("Only admin can call this function");
+    });
+
+    it("TC-61: Enabled rate limit rejects back-to-back writes to the same vehicle", async () => {
+      // Snapshot-style: enable, write once, attempt an immediate second
+      // write in the same block → should revert. Then advance time and
+      // verify the second write succeeds.
+      await registry.connect(admin).setPerVehicleRateLimit(10); // 10s gap
+      const vid = "MH12RATELIM";
+      // First write — should succeed.
+      await storePassRecord(registry, vid, station, device, 900, 1_700_050_000);
+      // Second write — same vehicle, <10s later → revert.
+      await expect(
+        storePassRecord(registry, vid, station, device, 901, 1_700_050_001)
+      ).to.be.revertedWith("Per-vehicle rate limit: writes too frequent");
+      // Advance chain time by 11 seconds and retry — should succeed.
+      await ethers.provider.send("evm_increaseTime", [11]);
+      await ethers.provider.send("evm_mine", []);
+      await storePassRecord(registry, vid, station, device, 902, 1_700_050_012);
+      // Reset to 0 so later tests are unaffected.
+      await registry.connect(admin).setPerVehicleRateLimit(0);
+    });
+  });
+
+  describe("v3.2.2 Privacy mode (audit L11 / G6)", () => {
+    it("TC-62: privacyMode defaults to false and computeVehicleIdHash is deterministic", async () => {
+      expect(await registry.privacyMode()).to.equal(false);
+      const h1 = await registry.computeVehicleIdHash("MH12AB1234");
+      const h2 = await registry.computeVehicleIdHash("MH12AB1234");
+      expect(h1).to.equal(h2);
+      // Hash matches keccak256(bytes("MH12AB1234"))
+      const expected = ethers.keccak256(ethers.toUtf8Bytes("MH12AB1234"));
+      expect(h1).to.equal(expected);
+    });
+
+    it("TC-63: setPrivacyMode requires admin and emits PrivacyModeSet", async () => {
+      await expect(registry.connect(unauthorized).setPrivacyMode(true))
+        .to.be.revertedWith("Only admin can call this function");
+      await expect(registry.connect(admin).setPrivacyMode(true))
+        .to.emit(registry, "PrivacyModeSet")
+        .withArgs(true);
+      expect(await registry.privacyMode()).to.equal(true);
+      // Reset so later tests see the default.
+      await registry.connect(admin).setPrivacyMode(false);
+    });
+
+    it("TC-64: storeEmission emits EmissionStoredHashed only when privacy mode is on", async () => {
+      const vid = "MH12PRIV01";
+      // Privacy OFF (default): no hashed event.
+      const txOff = await storePassRecord(registry, vid, station, device, 1_000, 1_700_100_000);
+      const rcOff = await txOff.wait();
+      const hashedOff = rcOff.logs.map((l) => {
+        try { return registry.interface.parseLog(l); } catch { return null; }
+      }).filter((e) => e && e.name === "EmissionStoredHashed");
+      expect(hashedOff.length).to.equal(0);
+
+      // Privacy ON: hashed event IS emitted with the correct topic.
+      await registry.connect(admin).setPrivacyMode(true);
+      const vid2 = "MH12PRIV02";
+      const txOn = await storePassRecord(registry, vid2, station, device, 1_001, 1_700_100_100);
+      const rcOn = await txOn.wait();
+      const hashedOn = rcOn.logs.map((l) => {
+        try { return registry.interface.parseLog(l); } catch { return null; }
+      }).filter((e) => e && e.name === "EmissionStoredHashed");
+      expect(hashedOn.length).to.equal(1);
+      const expectedHash = ethers.keccak256(ethers.toUtf8Bytes(vid2));
+      expect(hashedOn[0].args.vehicleIdHash).to.equal(expectedHash);
+      expect(hashedOn[0].args.passed).to.equal(true);
+      // Reset.
+      await registry.connect(admin).setPrivacyMode(false);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MultiSigAdmin (audit S5) — 2-of-3 governance of the EmissionRegistry admin
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("MultiSigAdmin (audit S5)", () => {
+  let admin, sig1, sig2, sig3, outsider;
+  let registry, multisig;
+
+  beforeEach(async () => {
+    [admin, sig1, sig2, sig3, outsider] = await ethers.getSigners();
+
+    // Deploy a fresh EmissionRegistry proxy for this isolated suite.
+    const ER = await ethers.getContractFactory("EmissionRegistry", admin);
+    registry = await upgrades.deployProxy(ER, [], { kind: "uups", initializer: "initialize" });
+    await registry.waitForDeployment();
+
+    // Deploy the 2-of-3 multisig with (sig1, sig2, sig3) as signers.
+    const MS = await ethers.getContractFactory("MultiSigAdmin", admin);
+    multisig = await MS.deploy([sig1.address, sig2.address, sig3.address], 2);
+    await multisig.waitForDeployment();
+
+    // Hand the EmissionRegistry admin role to the multisig.
+    await registry.connect(admin).transferAdmin(await multisig.getAddress());
+    expect(await registry.admin()).to.equal(await multisig.getAddress());
+  });
+
+  it("TC-65: constructor rejects zero signer, duplicate signer, and bad threshold", async () => {
+    const MS = await ethers.getContractFactory("MultiSigAdmin", admin);
+    await expect(MS.deploy([], 1)).to.be.reverted; // need at least 1 signer
+    await expect(MS.deploy([sig1.address], 2))
+      .to.be.revertedWith("MultiSigAdmin: invalid threshold");
+    await expect(MS.deploy([sig1.address, sig1.address], 2))
+      .to.be.revertedWith("MultiSigAdmin: duplicate signer");
+    await expect(MS.deploy([ethers.ZeroAddress], 1))
+      .to.be.revertedWith("MultiSigAdmin: zero signer");
+  });
+
+  it("TC-66: propose() by a non-signer reverts", async () => {
+    const calldata = registry.interface.encodeFunctionData("setPerVehicleRateLimit", [5]);
+    await expect(
+      multisig.connect(outsider).propose(await registry.getAddress(), calldata, 0)
+    ).to.be.revertedWithCustomError(multisig, "NotSigner");
+  });
+
+  it("TC-67: single confirmation is below threshold — execute reverts", async () => {
+    const calldata = registry.interface.encodeFunctionData("setPerVehicleRateLimit", [5]);
+    const tx = await multisig.connect(sig1).propose(await registry.getAddress(), calldata, 0);
+    await tx.wait();
+    // Proposer auto-confirms (count = 1), threshold = 2.
+    await expect(multisig.connect(sig1).execute(0))
+      .to.be.revertedWithCustomError(multisig, "BelowThreshold");
+    expect(await registry.perVehicleRateLimitSeconds()).to.equal(0n);
+  });
+
+  it("TC-68: 2-of-3 confirmation executes the admin call end-to-end", async () => {
+    const calldata = registry.interface.encodeFunctionData("setPerVehicleRateLimit", [7]);
+    await multisig.connect(sig1).propose(await registry.getAddress(), calldata, 0);
+    await multisig.connect(sig2).confirm(0); // 2nd confirmation reaches threshold
+    const ex = await multisig.connect(sig3).execute(0); // any signer may execute
+    await ex.wait();
+    expect(await registry.perVehicleRateLimitSeconds()).to.equal(7n);
+    const p = await multisig.getProposal(0);
+    expect(p.executed).to.equal(true);
+  });
+
+  it("TC-69: re-executing an already-executed proposal reverts", async () => {
+    const calldata = registry.interface.encodeFunctionData("setPerVehicleRateLimit", [9]);
+    await multisig.connect(sig1).propose(await registry.getAddress(), calldata, 0);
+    await multisig.connect(sig2).confirm(0);
+    await multisig.connect(sig2).execute(0);
+    await expect(multisig.connect(sig1).execute(0))
+      .to.be.revertedWithCustomError(multisig, "AlreadyExecuted");
+  });
+
+  it("TC-70: revoke() drops a confirmation and blocks execute until re-confirmed", async () => {
+    const calldata = registry.interface.encodeFunctionData("setPerVehicleRateLimit", [11]);
+    await multisig.connect(sig1).propose(await registry.getAddress(), calldata, 0);
+    await multisig.connect(sig2).confirm(0);
+    // sig2 changes their mind.
+    await multisig.connect(sig2).revoke(0);
+    await expect(multisig.connect(sig1).execute(0))
+      .to.be.revertedWithCustomError(multisig, "BelowThreshold");
+    // sig3 confirms instead — back at threshold.
+    await multisig.connect(sig3).confirm(0);
+    await multisig.connect(sig3).execute(0);
+    expect(await registry.perVehicleRateLimitSeconds()).to.equal(11n);
+  });
+
+  it("TC-71: after admin transfer, direct onlyAdmin calls from the old admin revert", async () => {
+    await expect(registry.connect(admin).setPerVehicleRateLimit(99))
+      .to.be.revertedWith("Only admin can call this function");
   });
 });

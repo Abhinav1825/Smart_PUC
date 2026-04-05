@@ -1,5 +1,15 @@
 # Smart PUC — Gas Cost Analysis
 
+> **Measurement provenance.** All gas numbers in this document were
+> measured against **Smart PUC v3.2** (EIP-712-bound `storeEmission`,
+> UUPS proxies, BSStandard enum, Pausable/nonReentrant guards) on the
+> in-process Hardhat network (`chainId 31337`, Solidity 0.8.x, optimiser
+> `runs=200`, `viaIR=true`). Latest measurement run: **2026-04-05**,
+> commit tip of branch `main`. Re-run
+> `npx hardhat run scripts/measure_gas.js` to regenerate
+> `docs/gas_report.json` from a fresh local node; update the date stamp
+> above whenever you do.
+
 This document quantifies the gas cost of every state-changing operation in
 the Smart PUC contracts, translates those costs into fiat at current Polygon
 and Ethereum prices, and projects the system-level cost of operating the
@@ -28,30 +38,34 @@ Regenerate with: `npm run measure-gas`.
 ## 2. Per-Operation Write Costs
 
 Numbers below are the direct output of `scripts/measure_gas.js` against the
-v3.1 UUPS-proxied contracts (see `docs/gas_report.json`):
+v3.2 UUPS-proxied contracts (see `docs/gas_report.json`):
 
 | Operation | Contract | Gas Used | Polygon @ 50 gwei | Ethereum L1 @ 15 gwei | Notes |
 |-----------|----------|----------|-------------------|------------------------|-------|
-| `storeEmission` (first submission, new vehicle) | EmissionRegistry | 497,530 | $0.01741 | $17.91 | Cold-slot SSTOREs for vehicle registration, stats, consecutive-pass counters. |
-| `storeEmission` (subsequent PASS) | EmissionRegistry | 356,919 | $0.01249 | $12.85 | **Dominant steady-state cost.** ECDSA verify + on-chain CES + nonce replay. |
-| `storeEmission` (FAIL + pollutant events) | EmissionRegistry | 480,691 | $0.01682 | $17.30 | Additional SSTORE for the violation index plus per-pollutant event emissions. |
-| `issueCertificate` (with GreenToken mint) | PUCCertificate | 490,643 | $0.01717 | $17.66 | ERC-721 mint + cross-contract ERC-20 reward + proportional CES-based amount. |
-| `revokeCertificate` | PUCCertificate | 65,627 | $0.00230 | $2.36 | Single storage write + event. |
-| `redeem` (burn-to-reward) | GreenToken | 198,281 | $0.00694 | $7.14 | Burn + redemption record + counters. |
-| `setTestingStation` | EmissionRegistry | 52,992 | $0.00186 | $1.91 | Admin-only, amortised. |
-| `setRegisteredDevice` | EmissionRegistry | 53,068 | $0.00186 | $1.91 | Admin-only, amortised. |
-| `setVehicleOwner` | EmissionRegistry | 54,356 | $0.00190 | $1.96 | One-time per vehicle. |
-| `setSoftVehicleCap` | EmissionRegistry | 31,402 | $0.00110 | $1.13 | Advisory pilot-scale limit. |
+| `storeEmission` (first submission, new vehicle) | EmissionRegistry | 507,925 | $0.01778 | $18.29 | Cold-slot SSTOREs for vehicle registration, stats, consecutive-pass counters. |
+| `storeEmission` (subsequent PASS) | EmissionRegistry | 367,311 | $0.01286 | $13.22 | **Dominant steady-state cost.** EIP-712 verify + on-chain CES + nonce replay. |
+| `storeEmission` (FAIL + pollutant events) | EmissionRegistry | 491,115 | $0.01719 | $17.68 | Additional SSTORE for the violation index plus per-pollutant event emissions. |
+| `issueCertificate` (with GreenToken mint) | PUCCertificate | 495,337 | $0.01734 | $17.83 | ERC-721 mint + cross-contract ERC-20 reward + proportional CES-based amount. |
+| `revokeCertificate` | PUCCertificate | 65,726 | $0.00230 | $2.37 | Single storage write + event. |
+| `redeem` (burn-to-reward) | GreenToken | 202,733 | $0.00710 | $7.30 | Burn + redemption record + counters. |
+| `setTestingStation` | EmissionRegistry | 53,080 | $0.00186 | $1.91 | Admin-only, amortised. |
+| `setRegisteredDevice` | EmissionRegistry | 53,244 | $0.00186 | $1.92 | Admin-only, amortised. |
+| `setVehicleOwner` | EmissionRegistry | 54,647 | $0.00191 | $1.97 | One-time per vehicle. |
+| `setSoftVehicleCap` | EmissionRegistry | 31,754 | $0.00111 | $1.14 | Advisory pilot-scale limit. |
 
 **Key observation.** In steady state, the per-PASS-record cost on Polygon is
-**≈ $0.0125**. The UUPS proxy adds a small constant overhead (roughly
+**≈ $0.0129**. The UUPS proxy adds a small constant overhead (roughly
 2,400 gas for the `DELEGATECALL`) to every call; this is a deliberate
 trade-off for upgradeability (see `docs/ARCHITECTURE_TRADEOFFS.md` §8).
 
 **CES computation.** The v3.1 fix to `_computeCES` (removal of a redundant
 `* 10 / CES_WEIGHT_TOTAL` at the end of the function) saved 72 gas on every
 `storeEmission` call without changing any other state — the savings are
-already reflected in the numbers above.
+already reflected in the numbers above. The v3.2 upgrade to **EIP-712
+typed-data signing** (replacing the legacy `eth_sign`-style packed keccak)
+adds roughly 10 k gas per `storeEmission` call in exchange for chain-id
+and contract-address binding in the domain separator, which eliminates the
+cross-chain signature replay vector flagged as A9 in the threat model.
 
 ## 3. Read Costs (amortised by RPC pricing)
 
@@ -78,20 +92,20 @@ Assumptions:
 
 | Item | Events/year | Gas/event | Total gas | USD (Polygon) |
 |------|-------------|-----------|-----------|----------------|
-| Sampled `storeEmission` (PASS) | 25 | 356,919 | 8,922,975 | $0.3123 |
-| `issueCertificate` | 1 | 490,643 | 490,643 | $0.0172 |
-| `revokeCertificate` | 0.5 | 65,627 | 32,814 | $0.0011 |
-| `redeem` | 2 | 198,281 | 396,562 | $0.0139 |
-| **Per-vehicle annual cost** | — | — | **9,842,994** | **~$0.345** |
+| Sampled `storeEmission` (PASS) | 25 | 367,311 | 9,182,775 | $0.3214 |
+| `issueCertificate` | 1 | 495,337 | 495,337 | $0.0173 |
+| `revokeCertificate` | 0.5 | 65,726 | 32,863 | $0.0012 |
+| `redeem` | 2 | 202,733 | 405,466 | $0.0142 |
+| **Per-vehicle annual cost** | — | — | **10,116,441** | **~$0.354** |
 
 ## 5. Scale Projection (Polygon)
 
 | Fleet size | Annual cost |
 |------------|-------------|
-| 1,000 vehicles (district pilot) | ~$345 |
-| 100,000 vehicles (city rollout) | ~$34,450 |
-| 10 M vehicles (state) | ~$3.45 M |
-| 300 M vehicles (national) | ~$103 M |
+| 1,000 vehicles (district pilot) | ~$354 |
+| 100,000 vehicles (city rollout) | ~$35,410 |
+| 10 M vehicles (state) | ~$3.54 M |
+| 300 M vehicles (national) | ~$106 M |
 
 These figures are **pre-optimisation**. Further reductions are available via:
 

@@ -266,6 +266,55 @@
         </div>
     </div>
 
+    <!-- ─── v3.2 Panels: Predictive + Chain Events + Station Fraud ─── -->
+    <div class="analytics-grid">
+        <!-- Pre-PUC Predictor (audit 13B #3) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128200;</span> Pre-PUC Failure Predictor</div>
+                <span class="text-muted text-mono" id="predictStatus">Idle</span>
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+                <input type="text" id="predictVehicleId" class="form-input" placeholder="Vehicle ID (e.g. MH12AB1234)" style="flex:1;">
+                <button id="predictBtn" class="btn btn-primary">Predict + Explain</button>
+            </div>
+            <div id="predictResult" class="text-mono text-sm" style="min-height:160px; padding:0.75rem; background:#0d1229; border-radius:8px; overflow-x:auto;">
+                <span class="text-dim">Enter a vehicle id and click "Predict + Explain" to see the SHAP-lite explanation of the failure probability.</span>
+            </div>
+        </div>
+
+        <!-- Station Fraud Analysis (audit 13B #14) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#127981;</span> Station-Level Fraud Analysis</div>
+                <span class="text-muted text-mono" id="stationFraudStatus">Idle</span>
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+                <input type="number" id="stationFraudLimit" class="form-input" placeholder="Records limit (default 500)" style="flex:1;" value="500">
+                <button id="stationFraudBtn" class="btn btn-primary">Analyze all stations</button>
+            </div>
+            <div id="stationFraudResult" class="text-mono text-sm" style="min-height:160px; padding:0.75rem; background:#0d1229; border-radius:8px; overflow-x:auto;">
+                <span class="text-dim">Requires admin API key (set window.SMART_PUC_ADMIN_API_KEY). Returns per-station risk reports ranked highest-first.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chain Events Projection (audit Fix #10) -->
+    <div class="card analytics-full" style="margin-bottom:1.5rem;">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#128279;</span> On-Chain Event Projection (PhaseCompleted + BatchRootCommitted)</div>
+            <span class="text-muted text-mono" id="chainEventsStatus">Idle</span>
+        </div>
+        <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+            <input type="text" id="chainEventVehicleId" class="form-input" placeholder="Vehicle ID" style="flex:1; min-width:200px;">
+            <button id="chainSyncBtn" class="btn btn-primary">Sync from chain</button>
+            <button id="chainPhaseBtn" class="btn">Phase events</button>
+            <button id="chainRootsBtn" class="btn">Batch roots</button>
+            <button id="chainStatusBtn" class="btn">Listener status</button>
+        </div>
+        <pre id="chainEventsResult" class="text-mono text-sm" style="min-height:140px; padding:0.75rem; background:#0d1229; border-radius:8px; overflow-x:auto; white-space:pre-wrap; word-break:break-word;">Click a button to query the chain-events projection.</pre>
+    </div>
+
     <!-- Footer -->
     <footer class="footer">
         Smart PUC &mdash; Analytics Dashboard | Blockchain-Based Multi-Pollutant Vehicle Emission Monitoring &amp; Compliance System (BSVI)
@@ -275,6 +324,7 @@
 <!-- Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="wallet.js"></script>
 <script src="app.js"></script>
 <script>
 const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
@@ -775,9 +825,118 @@ function escapeCSV(val) {
     return s;
 }
 
+// ─────────────────────────────────────────────────────────────────
+// v3.2 panels: Pre-PUC Predictor, Station Fraud, Chain Events
+// ─────────────────────────────────────────────────────────────────
+
+function setPanelStatus(id, text, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'text-mono ' + (cls || 'text-muted');
+}
+
+function formatJsonBlock(target, data) {
+    const el = document.getElementById(target);
+    if (!el) return;
+    el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+}
+
+async function handlePredictPuc() {
+    const vid = (document.getElementById('predictVehicleId').value || '').trim();
+    if (!vid) {
+        formatJsonBlock('predictResult', 'Please enter a vehicle ID.');
+        return;
+    }
+    setPanelStatus('predictStatus', 'Loading…', 'text-info');
+    try {
+        const res = await fetch(`${API}/api/predict-puc/${encodeURIComponent(vid)}?explain=true`);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        formatJsonBlock('predictResult', data);
+        setPanelStatus('predictStatus', 'OK', 'text-success');
+    } catch (err) {
+        formatJsonBlock('predictResult', `Error: ${err.message}`);
+        setPanelStatus('predictStatus', 'Error', 'text-danger');
+    }
+}
+
+async function handleStationFraud() {
+    const limit = parseInt((document.getElementById('stationFraudLimit').value || '500'), 10) || 500;
+    setPanelStatus('stationFraudStatus', 'Loading…', 'text-info');
+    try {
+        // This endpoint requires auth; the browser dev panel relies on
+        // the backend's dev-mode API-key header set via the optional
+        // window.SMART_PUC_ADMIN_API_KEY global.
+        const headers = {};
+        const key = window.SMART_PUC_ADMIN_API_KEY;
+        if (key) headers['X-API-Key'] = key;
+        const res = await fetch(`${API}/api/fraud/station-analysis?limit=${encodeURIComponent(limit)}`, { headers });
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        formatJsonBlock('stationFraudResult', data);
+        setPanelStatus('stationFraudStatus', 'OK', 'text-success');
+    } catch (err) {
+        formatJsonBlock('stationFraudResult', `Error: ${err.message}`);
+        setPanelStatus('stationFraudStatus', 'Error', 'text-danger');
+    }
+}
+
+async function chainEventsRequest(action) {
+    const vid = (document.getElementById('chainEventVehicleId').value || '').trim();
+    setPanelStatus('chainEventsStatus', 'Loading…', 'text-info');
+    try {
+        let url;
+        let opts = {};
+        if (action === 'sync') {
+            url = `${API}/api/chain-events/sync`;
+            opts = { method: 'POST' };
+            const key = window.SMART_PUC_ADMIN_API_KEY;
+            if (key) opts.headers = { 'X-API-Key': key };
+        } else if (action === 'status') {
+            url = `${API}/api/chain-events/status`;
+        } else if (action === 'phase') {
+            if (!vid) { formatJsonBlock('chainEventsResult', 'Please enter a vehicle ID.'); setPanelStatus('chainEventsStatus','Idle','text-muted'); return; }
+            url = `${API}/api/chain-events/phase/${encodeURIComponent(vid)}`;
+        } else if (action === 'roots') {
+            if (!vid) { formatJsonBlock('chainEventsResult', 'Please enter a vehicle ID.'); setPanelStatus('chainEventsStatus','Idle','text-muted'); return; }
+            url = `${API}/api/chain-events/batch-roots/${encodeURIComponent(vid)}`;
+        } else {
+            return;
+        }
+        const res = await fetch(url, opts);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        formatJsonBlock('chainEventsResult', data);
+        setPanelStatus('chainEventsStatus', 'OK', 'text-success');
+    } catch (err) {
+        formatJsonBlock('chainEventsResult', `Error: ${err.message}`);
+        setPanelStatus('chainEventsStatus', 'Error', 'text-danger');
+    }
+}
+
 // ── Initialize ──
 document.addEventListener('DOMContentLoaded', function() {
     initDateRange();
+    // v3.2 panels wiring
+    const predictBtn = document.getElementById('predictBtn');
+    if (predictBtn) predictBtn.addEventListener('click', handlePredictPuc);
+    const stationFraudBtn = document.getElementById('stationFraudBtn');
+    if (stationFraudBtn) stationFraudBtn.addEventListener('click', handleStationFraud);
+    const chainSyncBtn = document.getElementById('chainSyncBtn');
+    if (chainSyncBtn) chainSyncBtn.addEventListener('click', () => chainEventsRequest('sync'));
+    const chainStatusBtn = document.getElementById('chainStatusBtn');
+    if (chainStatusBtn) chainStatusBtn.addEventListener('click', () => chainEventsRequest('status'));
+    const chainPhaseBtn = document.getElementById('chainPhaseBtn');
+    if (chainPhaseBtn) chainPhaseBtn.addEventListener('click', () => chainEventsRequest('phase'));
+    const chainRootsBtn = document.getElementById('chainRootsBtn');
+    if (chainRootsBtn) chainRootsBtn.addEventListener('click', () => chainEventsRequest('roots'));
 });
 </script>
 </body>

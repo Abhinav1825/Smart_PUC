@@ -1,10 +1,11 @@
-# Smart PUC v3.1 — Blockchain-Based Vehicle Emission Monitoring System
+# Smart PUC v3.2 — Blockchain-Based Vehicle Emission Monitoring System
 
 ![CI](https://github.com/your-org/Smart_PUC/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Solidity](https://img.shields.io/badge/Solidity-0.8.21-363636.svg)
 ![Node](https://img.shields.io/badge/Node.js-18%2B-339933.svg)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)
+![Version](https://img.shields.io/badge/Version-v3.2-blueviolet.svg)
 
 A **research prototype** of a blockchain-based real-time vehicle emission
 monitoring and compliance system for India. It implements a **3-node trust
@@ -19,6 +20,16 @@ Credit Tokens redeemable through an on-chain marketplace.
 > experiments. Before any pilot rollout, read [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md),
 > [docs/PRIVACY_DPDP.md](docs/PRIVACY_DPDP.md), and the
 > **Limitations and Non-Goals** section below.
+
+### Paper target venue
+
+This artefact accompanies a manuscript being prepared for submission to
+**IEEE Internet of Things Journal** (primary) / **IEEE Transactions on
+Intelligent Transportation Systems** (secondary). Both venues accept
+software artefacts and emphasise reproducibility, and both fit the paper's
+blockchain + IoT + ITS framing. See [docs/PAPER_FRAMING.md](docs/PAPER_FRAMING.md)
+for the intended narrative, the §IV.C CES-vs-CO2 experimental framing,
+and the mapping between paper claims and this artefact's evidence files.
 
 ---
 
@@ -185,8 +196,8 @@ npx ganache --deterministic --accounts 10 --defaultBalanceEther 100 --port 7545
 # 3. Deploy all 3 contracts
 npx hardhat run scripts/deploy.js --network localhost
 
-# 4. Start Testing Station backend (separate terminal)
-cd backend && python app.py
+# 4. Start Testing Station backend (separate terminal, FastAPI + uvicorn)
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 5000 --reload
 
 # 5. Start frontend (separate terminal)
 npx http-server frontend -p 3000 -c-1 --cors

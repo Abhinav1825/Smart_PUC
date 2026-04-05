@@ -77,6 +77,10 @@ class IssueCertificateRequest(BaseModel):
     vehicle_id: str = Field(..., min_length=1, max_length=128)
     vehicle_owner: str = Field(..., min_length=42, max_length=42)
     metadata_uri: Optional[str] = None
+    # Optional: force the first-PUC (360-day) validity branch per CMVR
+    # Rule 115. If omitted, the contract auto-detects based on whether
+    # the vehicle has any prior certificates (audit L7).
+    is_first_puc: Optional[bool] = None
 
 
 class RevokeCertificateRequest(BaseModel):
@@ -87,8 +91,20 @@ class RevokeCertificateRequest(BaseModel):
 # ─────────────────────────── tokens ──────────────────────────────────────
 
 class RedeemTokensRequest(BaseModel):
-    reward_type: str = Field(..., min_length=1, max_length=64)
-    from_address: str = Field(..., min_length=42, max_length=42)
+    # Reward type is a uint8 enum defined in contracts/GreenToken.sol:
+    #   0 = TOLL_DISCOUNT
+    #   1 = PARKING_WAIVER
+    #   2 = TAX_CREDIT
+    #   3 = PRIORITY_SERVICE
+    reward_type: int = Field(..., ge=0, le=3)
+
+
+# ─────────────────────────── RTO enforcement ─────────────────────────────
+
+class RTOEnforceRequest(BaseModel):
+    vehicle_id: str = Field(..., min_length=1, max_length=32)
+    action: str = Field(..., min_length=1, max_length=32)  # warning / retest / inspection
+    remarks: str = Field("", max_length=1024)
 
 
 # ─────────────────────────── notifications ───────────────────────────────

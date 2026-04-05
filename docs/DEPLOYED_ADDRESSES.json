@@ -1,0 +1,18 @@
+{
+  "31337": {
+    "network": "localhost",
+    "chainId": 31337,
+    "deployedAt": "2026-04-05T12:43:54.385Z",
+    "contracts": {
+      "GreenToken": "0x2Ed6De230a57C50ac32306A19773a76a0a981438",
+      "EmissionRegistry": "0xaA2431f952077580FFbfeB40821B7eed053598dC",
+      "PUCCertificate": "0x26692343e061f327CFaE781509Ca6F7728beFDF7"
+    },
+    "eip712Domain": {
+      "name": "SmartPUC",
+      "version": "3.2",
+      "chainId": 31337,
+      "verifyingContract": "0xaA2431f952077580FFbfeB40821B7eed053598dC"
+    }
+  }
+}

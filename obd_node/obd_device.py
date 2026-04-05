@@ -32,7 +32,7 @@ import warnings
 from typing import Optional
 
 from eth_account import Account
-from eth_account.messages import encode_defunct
+from eth_account.messages import encode_typed_data
 from web3 import Web3
 
 # Add parent directory to path
@@ -70,6 +70,15 @@ DEVICE_PRIVATE_KEY = os.getenv(
 )
 STATION_URL = os.getenv("STATION_URL", "http://127.0.0.1:5000")
 DEFAULT_VEHICLE_ID = os.getenv("DEFAULT_VEHICLE_ID", "MH12AB1234")
+
+# EIP-712 domain configuration. Must match EmissionRegistry.initialize()
+# arguments ("SmartPUC", "3.2") and be bound to the actual deployed
+# contract address + chain id so that signatures can only be replayed on
+# the chain the device intended.
+EIP712_DOMAIN_NAME = os.getenv("EIP712_DOMAIN_NAME", "SmartPUC")
+EIP712_DOMAIN_VERSION = os.getenv("EIP712_DOMAIN_VERSION", "3.2")
+REGISTRY_ADDRESS = os.getenv("REGISTRY_ADDRESS", "")
+CHAIN_ID = int(os.getenv("CHAIN_ID", "0") or 0)
 
 # Scaling factors matching Solidity contracts
 SCALE_POLLUTANT = 1000
@@ -159,6 +168,10 @@ class OBDDeviceSimulator:
         vehicle_id: str = DEFAULT_VEHICLE_ID,
         station_url: str = STATION_URL,
         use_real_obd: bool = False,
+        registry_address: Optional[str] = None,
+        chain_id: Optional[int] = None,
+        domain_name: str = EIP712_DOMAIN_NAME,
+        domain_version: str = EIP712_DOMAIN_VERSION,
     ):
         self.vehicle_id = vehicle_id
         self.station_url = station_url
@@ -172,6 +185,17 @@ class OBDDeviceSimulator:
             )
         self.account = Account.from_key(device_private_key)
         self.device_address = self.account.address
+
+        # EIP-712 domain binding. The registry address + chain id make the
+        # signature valid only on the chain the device targets. Without
+        # them we fall back to a zero address / chain 0 domain — that is
+        # insecure and the backend will reject it on a real chain, but we
+        # allow it for unit tests that never touch the chain.
+        self.registry_address = (registry_address or REGISTRY_ADDRESS or
+                                 "0x0000000000000000000000000000000000000000")
+        self.chain_id = chain_id if chain_id is not None else CHAIN_ID
+        self.domain_name = domain_name
+        self.domain_version = domain_version
 
         # Initialize data source: real OBD-II or WLTC simulator
         if use_real_obd:
@@ -284,15 +308,23 @@ class OBDDeviceSimulator:
 
     def sign_reading(self, reading: dict) -> dict:
         """
-        Cryptographically sign the emission data with the device's private key.
+        Cryptographically sign the emission data with the device's private
+        key using EIP-712 typed data. The signed structure is:
 
-        The signature covers:
-            vehicleId + co2 + co + nox + hc + pm25 + timestamp + nonce
-        (matching the contract's _verifyDeviceSignature method)
+            EmissionReading(
+                string vehicleId,
+                uint256 co2, uint256 co, uint256 nox,
+                uint256 hc,  uint256 pm25,
+                uint256 timestamp,
+                bytes32 nonce
+            )
 
-        A unique bytes32 nonce is generated per reading to prevent replay
-        attacks. The nonce is included in both the signature hash and the
-        payload sent to the station.
+        bound to the domain
+            ("SmartPUC", "3.2", chainId, verifyingContract=REGISTRY_ADDRESS)
+
+        Chain-id binding in the domain separator mitigates cross-chain
+        replay (threat A9 in docs/THREAT_MODEL.md) and matches the
+        on-chain `EmissionRegistry._verifyDeviceSignature` verifier.
 
         Args:
             reading: Telemetry + emission data from generate_reading()
@@ -314,24 +346,45 @@ class OBDDeviceSimulator:
             text=f"{reading['vehicle_id']}{reading['timestamp']}{os.urandom(16).hex()}"
         )
 
-        # Create message hash matching the Solidity contract
-        # keccak256(abi.encodePacked(vehicleId, co2, co, nox, hc, pm25, timestamp, nonce))
-        message_hash = Web3.solidity_keccak(
-            ["string", "uint256", "uint256", "uint256", "uint256", "uint256", "uint256", "bytes32"],
-            [
-                reading["vehicle_id"],
-                co2_scaled,
-                co_scaled,
-                nox_scaled,
-                hc_scaled,
-                pm25_scaled,
-                reading["timestamp"],
-                nonce,
-            ]
-        )
-
-        # Sign with device private key (eth_sign format with "\x19Ethereum Signed Message:\n32" prefix)
-        signable = encode_defunct(message_hash)
+        # Build the EIP-712 typed data payload
+        typed_data = {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                    {"name": "verifyingContract", "type": "address"},
+                ],
+                "EmissionReading": [
+                    {"name": "vehicleId", "type": "string"},
+                    {"name": "co2", "type": "uint256"},
+                    {"name": "co", "type": "uint256"},
+                    {"name": "nox", "type": "uint256"},
+                    {"name": "hc", "type": "uint256"},
+                    {"name": "pm25", "type": "uint256"},
+                    {"name": "timestamp", "type": "uint256"},
+                    {"name": "nonce", "type": "bytes32"},
+                ],
+            },
+            "primaryType": "EmissionReading",
+            "domain": {
+                "name": self.domain_name,
+                "version": self.domain_version,
+                "chainId": self.chain_id,
+                "verifyingContract": self.registry_address,
+            },
+            "message": {
+                "vehicleId": reading["vehicle_id"],
+                "co2": co2_scaled,
+                "co": co_scaled,
+                "nox": nox_scaled,
+                "hc": hc_scaled,
+                "pm25": pm25_scaled,
+                "timestamp": int(reading["timestamp"]),
+                "nonce": nonce,
+            },
+        }
+        signable = encode_typed_data(full_message=typed_data)
         signed = self.account.sign_message(signable)
 
         return {

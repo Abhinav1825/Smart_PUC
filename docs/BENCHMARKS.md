@@ -1,5 +1,17 @@
 # Smart PUC — Latency and Throughput Benchmarks
 
+> **Measurement provenance.** All numbers in this document were measured
+> against **Smart PUC v3.2** (EIP-712 signature scheme, UUPS proxies,
+> 4-way fraud ensemble) on a local Hardhat node (`chainId 31337`). Latest
+> headline measurements taken **2026-04-05** on commit tip of branch
+> `main`, Windows 11 / Intel Core i7-12700H / 16 GB RAM. The docker-stack
+> Ganache measurements in §2.2 are preserved from the v3.1 release and
+> are clearly labelled as such; they are kept because the v3.1 and v3.2
+> data paths share the same backend pipeline (EIP-712 only adds ~10k gas
+> per `storeEmission`, see `docs/GAS_ANALYSIS.md` §3). If you re-run any
+> of the `scripts/bench_*.py` benchmarks, please update the date stamp
+> at the top of the corresponding table.
+
 This document reports end-to-end latency and throughput numbers for the
 Smart PUC data path (OBD device → testing station → blockchain), explains
 the experimental methodology, and gives the exact commands needed to

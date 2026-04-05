@@ -74,7 +74,7 @@ module.exports = {
     // ─── External Ganache / Hardhat node on :7545 ─────────────────────
     localhost: {
       url: process.env.RPC_URL || "http://127.0.0.1:7545",
-      chainId: 5777,
+      chainId: Number(process.env.CHAIN_ID || 5777),
       // `accounts` is intentionally omitted — Ganache exposes its own
       // accounts over JSON-RPC and the signer list is picked up via
       // `ethers.getSigners()` when targeting an external node.
@@ -155,6 +155,28 @@ module.exports = {
 
   mocha: {
     timeout: 120_000,
+  },
+
+  // Polygonscan source verification used by scripts/deploy_amoy.js.
+  // The API key is free from https://polygonscan.com/myapikey. If the
+  // environment variable is missing the verify step in deploy_amoy.js is
+  // a no-op, so the repository remains fully usable without it.
+  etherscan: {
+    apiKey: {
+      polygon:          process.env.POLYGONSCAN_API_KEY || "",
+      polygonAmoy:      process.env.POLYGONSCAN_API_KEY || "",
+      polygonZkEVM:     process.env.POLYGONSCAN_API_KEY || "",
+    },
+    customChains: [
+      {
+        network: "polygonAmoy",
+        chainId: 80002,
+        urls: {
+          apiURL: "https://api-amoy.polygonscan.com/api",
+          browserURL: "https://amoy.polygonscan.com",
+        },
+      },
+    ],
   },
 
   gasReporter: {

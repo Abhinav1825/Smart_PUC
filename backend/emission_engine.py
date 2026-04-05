@@ -1,9 +1,32 @@
 """
-Smart PUC — Multi-Pollutant Emission Calculation Engine (Bharat Stage VI)
+Smart PUC — Multi-Pollutant Emission Calculation Engine (BS-IV / BS-VI)
 =========================================================================
 Calculates CO2, CO, NOx, HC, and PM2.5 emissions in g/km from OBD-II
 telemetry data and computes a Composite Emission Score (CES) for
-real-time PUC compliance determination.
+real-time PUC compliance determination. Supports both BS-IV and BS-VI
+vehicles via per-vehicle standard tagging.
+
+DISCLOSURES (read these before citing this module in a paper):
+
+1. **CES weights are a proposed scheme, not a regulatory standard.**
+   The 0.35/0.30/0.15/0.12/0.08 weight distribution on
+   CO2/NOx/CO/HC/PM2.5 is this project's own health-weighted composite.
+   Neither ARAI nor MoRTH specify a multi-pollutant composite score
+   for BSVI — the gazette uses binary per-pollutant pass/fail. Papers
+   built on this code should phrase CES as "a proposed composite
+   scoring scheme for multi-pollutant compliance analysis", NOT
+   "the BSVI composite score".
+
+2. **The MOVES per-bin emission rates in this module are calibrated
+   constants**, not raw EPA `BaseRateOutput.dbf` dumps. They were
+   hand-tuned to produce WLTC totals inside BSVI certification
+   envelopes on a representative Indian hatchback. Any paper
+   quantitatively citing EPA MOVES3 on this module must label them
+   as "representative rates calibrated to BSVI certification ranges".
+
+3. **WLTC profile is a 100-waypoint reconstruction**, not the
+   copyrighted UN ECE R154 Annex 1 speed-time table. See
+   `backend/simulator.py`.
 
 References
 ----------
@@ -49,55 +72,124 @@ Composite Emission Score:
 
 from __future__ import annotations
 
+import enum
 import math
 from typing import Any, Dict, List, Optional
 
-# ──────────────────────────── BSVI Compliance Thresholds ─────────────────────
+# ─────────────────────────── Generated constants ────────────────────────────
+# The CES weights and BS-IV / BS-VI threshold tables below are NOT defined
+# here any more. They live in ``config/ces_weights.json`` and are compiled
+# into ``backend/ces_constants.py`` by ``scripts/gen_ces_consts.py``. That
+# same generator cross-checks the Solidity integer constants in
+# ``contracts/EmissionRegistry.sol`` so the Python and on-chain sides
+# cannot silently drift. See audit report L8 / G4.
+from backend.ces_constants import (  # noqa: E402
+    CES_WEIGHTS as _CES_WEIGHTS_GEN,
+    CES_PASS_CEILING as _CES_PASS_CEILING_GEN,
+    FRAUD_ALERT_THRESHOLD as _FRAUD_ALERT_GEN,
+    CONSECUTIVE_PASS_REQUIRED as _CONSECUTIVE_PASS_GEN,
+    BSVI_THRESHOLDS_PETROL as _BSVI_PETROL_GEN,
+    BSVI_THRESHOLDS_DIESEL as _BSVI_DIESEL_GEN,
+    BS4_THRESHOLDS_PETROL as _BS4_PETROL_GEN,
+    BS4_THRESHOLDS_DIESEL as _BS4_DIESEL_GEN,
+)
+
+
+class BSStandard(str, enum.Enum):
+    """
+    Bharat Stage emission standards supported by Smart PUC.
+
+    - ``BS6`` — Bharat Stage VI (2020+), the strictest standard.
+    - ``BS4`` — Bharat Stage IV (2010–2019), applies to a large fraction
+      of India's in-use fleet and uses looser per-pollutant caps.
+
+    The enum values are strings so they can be round-tripped through JSON
+    payloads to/from the frontend and tests. The integer ordering (BS6=0,
+    BS4=1) matches the `BSStandard` enum in EmissionRegistry.sol, so a
+    single numeric constant can be used to pick the correct threshold set
+    on both sides.
+    """
+    BS6 = "BS6"
+    BS4 = "BS4"
+
+    @property
+    def solidity_value(self) -> int:
+        """Match the Solidity enum ordering (BS6=0, BS4=1)."""
+        return 0 if self is BSStandard.BS6 else 1
+
+
+# ──────────────────────────── BS-VI Compliance Thresholds ────────────────────
 # Petrol thresholds (ARAI / MoRTH, 2020 — light-duty passenger car)
-CO2_THRESHOLD: float = 120.0     # g/km
-CO_THRESHOLD: float = 1.0        # g/km
-NOX_THRESHOLD: float = 0.06      # g/km
-HC_THRESHOLD: float = 0.10       # g/km
-PM25_THRESHOLD: float = 0.0045   # g/km
+# Values imported from backend.ces_constants (generated from config/ces_weights.json).
+CO2_THRESHOLD: float = _BSVI_PETROL_GEN["co2"]
+CO_THRESHOLD: float = _BSVI_PETROL_GEN["co"]
+NOX_THRESHOLD: float = _BSVI_PETROL_GEN["nox"]
+HC_THRESHOLD: float = _BSVI_PETROL_GEN["hc"]
+PM25_THRESHOLD: float = _BSVI_PETROL_GEN["pm25"]
 
 # Diesel thresholds (ARAI / MoRTH, 2020 — light-duty passenger car)
-DIESEL_CO2_THRESHOLD: float = 120.0    # g/km (fleet average target)
-DIESEL_CO_THRESHOLD: float = 0.50      # g/km
-DIESEL_NOX_THRESHOLD: float = 0.08     # g/km
-DIESEL_HC_NOX_THRESHOLD: float = 0.17  # g/km (combined HC+NOx for diesel)
-DIESEL_HC_THRESHOLD: float = 0.09      # g/km (derived: HC+NOx - NOx)
-DIESEL_PM25_THRESHOLD: float = 0.0045  # g/km
+DIESEL_CO2_THRESHOLD: float = _BSVI_DIESEL_GEN["co2"]
+DIESEL_CO_THRESHOLD: float = _BSVI_DIESEL_GEN["co"]
+DIESEL_NOX_THRESHOLD: float = _BSVI_DIESEL_GEN["nox"]
+# Back-compat alias: HC threshold for diesel is the HC-only value (HC+NOx − NOx).
+DIESEL_HC_THRESHOLD: float = _BSVI_DIESEL_GEN["hc"]
+# Combined HC+NOx cap = HC + NOx thresholds (used in a handful of legacy tests).
+DIESEL_HC_NOX_THRESHOLD: float = DIESEL_HC_THRESHOLD + DIESEL_NOX_THRESHOLD
+DIESEL_PM25_THRESHOLD: float = _BSVI_DIESEL_GEN["pm25"]
+
+# ──────────────────────────── BS-IV Compliance Thresholds ────────────────────
+BS4_CO2_THRESHOLD: float = _BS4_PETROL_GEN["co2"]
+BS4_CO_THRESHOLD: float = _BS4_PETROL_GEN["co"]
+BS4_NOX_THRESHOLD: float = _BS4_PETROL_GEN["nox"]
+BS4_HC_THRESHOLD: float = _BS4_PETROL_GEN["hc"]
+BS4_PM25_THRESHOLD: float = _BS4_PETROL_GEN["pm25"]
+
+BS4_DIESEL_CO2_THRESHOLD: float = _BS4_DIESEL_GEN["co2"]
+BS4_DIESEL_CO_THRESHOLD: float = _BS4_DIESEL_GEN["co"]
+BS4_DIESEL_NOX_THRESHOLD: float = _BS4_DIESEL_GEN["nox"]
+BS4_DIESEL_HC_THRESHOLD: float = _BS4_DIESEL_GEN["hc"]
+BS4_DIESEL_PM25_THRESHOLD: float = _BS4_DIESEL_GEN["pm25"]
 
 # ──────────────────────────── CES Weights ────────────────────────────────────
+# PROPOSED SCHEME — not a regulatory standard. See module docstring §1.
+# Single source of truth: config/ces_weights.json → backend/ces_constants.py.
+# The Solidity integer companion in contracts/EmissionRegistry.sol is
+# cross-checked at generation time by scripts/gen_ces_consts.py, so the
+# Python and on-chain surfaces cannot silently drift (audit L8/G4).
+CES_WEIGHTS: Dict[str, float] = dict(_CES_WEIGHTS_GEN)
+assert abs(sum(CES_WEIGHTS.values()) - 1.0) < 1e-9, "CES weights must sum to 1.0"
 
-CES_WEIGHTS: Dict[str, float] = {
-    "co2":  0.35,
-    "nox":  0.30,
-    "co":   0.15,
-    "hc":   0.12,
-    "pm25": 0.08,
-}
+# ──────────────────────────── BS-VI Thresholds Map ───────────────────────────
 
-# ──────────────────────────── BSVI Thresholds Map ────────────────────────────
+BSVI_THRESHOLDS: Dict[str, float] = dict(_BSVI_PETROL_GEN)
+BSVI_DIESEL_THRESHOLDS: Dict[str, float] = dict(_BSVI_DIESEL_GEN)
 
-BSVI_THRESHOLDS: Dict[str, float] = {
-    "co2":  CO2_THRESHOLD,
-    "co":   CO_THRESHOLD,
-    "nox":  NOX_THRESHOLD,
-    "hc":   HC_THRESHOLD,
-    "pm25": PM25_THRESHOLD,
-}
+# ──────────────────────────── BS-IV Thresholds Map ───────────────────────────
 
-BSVI_DIESEL_THRESHOLDS: Dict[str, float] = {
-    "co2":  DIESEL_CO2_THRESHOLD,
-    "co":   DIESEL_CO_THRESHOLD,
-    "nox":  DIESEL_NOX_THRESHOLD,
-    "hc":   DIESEL_HC_THRESHOLD,
-    "pm25": DIESEL_PM25_THRESHOLD,
-}
+BS4_THRESHOLDS: Dict[str, float] = dict(_BS4_PETROL_GEN)
+BS4_DIESEL_THRESHOLDS: Dict[str, float] = dict(_BS4_DIESEL_GEN)
+
+
+def get_thresholds(fuel_type: str, standard: BSStandard = BSStandard.BS6) -> Dict[str, float]:
+    """
+    Return the per-pollutant thresholds for a given fuel type and BS standard.
+
+    Args:
+        fuel_type: ``"petrol"`` or ``"diesel"``.
+        standard:  :class:`BSStandard` — BS-IV or BS-VI (default BS-VI).
+
+    Returns:
+        Mapping of pollutant name (``co2``, ``co``, ``nox``, ``hc``, ``pm25``)
+        to its g/km cap.
+    """
+    diesel = fuel_type.lower() == "diesel"
+    if standard is BSStandard.BS4:
+        return BS4_DIESEL_THRESHOLDS if diesel else BS4_THRESHOLDS
+    return BSVI_DIESEL_THRESHOLDS if diesel else BSVI_THRESHOLDS
+
 
 def _get_thresholds(fuel_type: str) -> Dict[str, float]:
-    """Return the BSVI threshold map for the given fuel type."""
+    """Return the BS-VI threshold map for the given fuel type (legacy helper)."""
     if fuel_type == "diesel":
         return BSVI_DIESEL_THRESHOLDS
     return BSVI_THRESHOLDS
@@ -231,6 +323,7 @@ def calculate_emissions(
     ambient_temp: float = 25.0,
     altitude: float = 0.0,
     cold_start: bool = False,
+    bs_standard: BSStandard = BSStandard.BS6,
 ) -> Dict[str, Any]:
     """
     Calculate multi-pollutant emissions using MOVES operating-mode rates,
@@ -397,7 +490,7 @@ def calculate_emissions(
         "pm25": pm25_gpkm,
     }
 
-    thresholds = _get_thresholds(fuel_type)
+    thresholds = get_thresholds(fuel_type, bs_standard)
     ces_score: float = sum(
         (pollutant_values[p] / thresholds[p]) * CES_WEIGHTS[p]
         for p in CES_WEIGHTS

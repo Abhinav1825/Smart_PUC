@@ -300,6 +300,7 @@
 
 <!-- Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="wallet.js"></script>
 <script src="app.js"></script>
 <script>
 // ── Configuration ──
@@ -477,31 +478,33 @@ async function redeemReward(rewardType) {
     btn.textContent = 'Redeeming...';
 
     try {
-        // Get JWT from localStorage if available
-        const token = localStorage.getItem('smart_puc_jwt') || '';
-
-        const res = await fetch(`${API}/api/tokens/redeem`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': token ? ('Bearer ' + token) : ''
-            },
-            body: JSON.stringify({
-                address: connectedAddress,
-                reward_type: rewardType
-            })
-        });
-        const data = await res.json();
-
-        if (data.success) {
-            showAlert('Redeemed ' + esc(REWARD_META[rewardType].name) + ' successfully!', 'success');
-            await loadTokenBalance();
-            await loadRedemptionHistory();
-        } else {
-            showAlert('Redemption failed: ' + esc(data.error || 'Unknown error'), 'warning');
+        // Real user redemption: burn the CALLER's GCT via MetaMask, not
+        // the backend station's. This matches the transferGCT() path
+        // below and ensures redeem() burns tokens from msg.sender, which
+        // must equal the connected wallet for the contract to accept it.
+        if (!greenTokenAddress) await loadContractAddresses();
+        if (!greenTokenAddress) {
+            showAlert('GreenToken contract address not loaded.', 'warning');
+            btn.disabled = false; btn.textContent = prevText; return;
         }
+        if (window.SmartPUC && window.SmartPUC.ensureChain) {
+            try { await window.SmartPUC.ensureChain(); }
+            catch (e) {
+                showAlert('Please switch MetaMask to the local Hardhat network.', 'warning');
+                btn.disabled = false; btn.textContent = prevText; return;
+            }
+        }
+        const redeemABI = [ "function redeem(uint8 _rewardType)" ];
+        const tokenContract = new ethers.Contract(greenTokenAddress, redeemABI, signer);
+        const tx = await tokenContract.redeem(rewardType);
+        showAlert('Transaction sent. Waiting for confirmation...', 'info');
+        await tx.wait();
+        showAlert('Redeemed ' + esc(REWARD_META[rewardType].name) + ' successfully!', 'success');
+        await loadTokenBalance();
+        await loadRedemptionHistory();
     } catch (e) {
-        showAlert('Redemption error: ' + esc(e.message), 'warning');
+        const msg = (e && (e.reason || e.shortMessage || e.message)) || String(e);
+        showAlert('Redemption error: ' + esc(msg), 'warning');
     }
 
     btn.textContent = prevText;

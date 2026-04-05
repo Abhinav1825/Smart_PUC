@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
 /**
  * @title IEmissionRegistry
@@ -53,7 +54,8 @@ contract PUCCertificate is
     Initializable,
     UUPSUpgradeable,
     ERC721Upgradeable,
-    ReentrancyGuardUpgradeable
+    ReentrancyGuardUpgradeable,
+    PausableUpgradeable
 {
 
     // ───────────────────────── State Variables ─────────────────────────
@@ -70,8 +72,16 @@ contract PUCCertificate is
     /// @notice Auto-incrementing token ID counter
     uint256 private _tokenIdCounter;
 
-    /// @notice Certificate validity duration (180 days)
+    /// @notice Default certificate validity duration (180 days).
+    /// @dev Per CMVR Rule 115 / MoRTH G.S.R. 721(E) 2017, the renewal cycle
+    ///      for a BS-VI four-wheeler is 180 days *after the first PUC*.
     uint256 public constant VALIDITY_PERIOD = 180 days;
+
+    /// @notice Extended validity for a vehicle's first PUC after registration.
+    /// @dev Per CMVR Rule 115 (BS-VI amendment), a newly-registered BS-VI
+    ///      four-wheeler's first PUC is valid for **one year (360 days)**
+    ///      before the 180-day renewal cycle takes over.
+    uint256 public constant FIRST_PUC_VALIDITY_PERIOD = 360 days;
 
     /// @notice CES score ceiling for issuance (scaled x10000, must be < 10000)
     uint256 public constant CES_PASS_CEILING = 10000;
@@ -113,6 +123,7 @@ contract PUCCertificate is
         address issuedByStation;
         bool    revoked;
         string  revokeReason;
+        bool    isFirstPUC;          // true => 360-day validity; false => 180-day renewal
     }
 
     // ───────────────────────── Mappings ────────────────────────────────
@@ -206,6 +217,7 @@ contract PUCCertificate is
         __UUPSUpgradeable_init();
         __ERC721_init("PUC Certificate", "PUC");
         __ReentrancyGuard_init();
+        __Pausable_init();
 
         authority = msg.sender;
         emissionRegistry = IEmissionRegistry(_emissionRegistry);
@@ -243,6 +255,16 @@ contract PUCCertificate is
         authority = _newAuthority;
     }
 
+    /// @notice Pause certificate issuance (emergency circuit breaker).
+    function pause() external onlyAuthority {
+        _pause();
+    }
+
+    /// @notice Resume certificate issuance.
+    function unpause() external onlyAuthority {
+        _unpause();
+    }
+
     /// @notice Set the base URI for IPFS gateway (e.g. "https://ipfs.io/ipfs/")
     function setBaseURI(string memory _newBaseURI) external onlyAuthority {
         _baseTokenURI = _newBaseURI;
@@ -263,33 +285,41 @@ contract PUCCertificate is
     // ───────────────────────── Reward Calculation ─────────────────────
 
     /**
-     * @notice Compute the proportional Green Token reward for a given
-     *         average CES score. Lower CES (cleaner vehicle) earns more.
-     * @dev The reward is a linear interpolation between GREEN_TOKEN_REWARD_MAX
-     *      (at averageCES = 0) and GREEN_TOKEN_REWARD_MIN (at
-     *      averageCES = CES_PASS_CEILING). averageCES is scaled x10000,
-     *      matching EmissionRegistry.
+     * @notice Compute the concave Green Token reward for a given average
+     *         CES score. Lower CES (cleaner vehicle) earns disproportionately
+     *         more.
+     * @dev The reward uses a quadratic concave curve that rewards genuinely
+     *      clean vehicles more aggressively than the v3.1 linear curve:
      *
-     *      A perfectly clean vehicle (CES = 0) receives 200 GCT.
-     *      A vehicle exactly at the ceiling (CES = 9999) receives 50 GCT.
-     *      A mid-tier vehicle (CES = 5000) receives 125 GCT.
+     *          delta    = CES_PASS_CEILING - ces            (0..CEILING)
+     *          deltaSq  = delta^2 / CEILING                 (still 0..CEILING)
+     *          reward   = MIN + (MAX - MIN) * deltaSq / CEILING
      *
-     *      This replaces the flat 100 GCT reward of v3.0 and ties the
-     *      incentive to actual emission performance — directly motivating
-     *      the user's request that rewards be proportional to measured
-     *      CO2 reduction. (CES is weighted 35% on CO2, so a lower CES
-     *      primarily reflects a lower CO2 footprint relative to BSVI.)
+     *      Key points along the curve (CEILING = 10000, MIN = 50 GCT,
+     *      MAX = 200 GCT, spread = 150 GCT):
+     *
+     *        averageCES = 0         → 200 GCT   (perfect, full reward)
+     *        averageCES = 2500      → ≈ 134 GCT (excellent)
+     *        averageCES = 5000      → ≈ 87.5 GCT (mid-tier)
+     *        averageCES = 7500      → ≈ 59 GCT (marginal)
+     *        averageCES = 10000     → 50 GCT   (ceiling, minimum reward)
+     *
+     *      Compared to the earlier linear curve the concave formulation
+     *      gives a stronger economic signal at the clean end of the
+     *      spectrum while keeping the same boundary values, which is the
+     *      behaviour a well-posed Pigouvian incentive should have.
+     *      averageCES is scaled x10000, matching EmissionRegistry.
      */
     function computeRewardAmount(uint256 _averageCES) public pure returns (uint256) {
         // Cap the input so the formula stays well-defined.
         uint256 ces = _averageCES >= CES_PASS_CEILING ? CES_PASS_CEILING : _averageCES;
 
-        // spread = MAX - MIN, delta = CES_PASS_CEILING - ces
         uint256 spread = GREEN_TOKEN_REWARD_MAX - GREEN_TOKEN_REWARD_MIN;
-        uint256 delta = CES_PASS_CEILING - ces;
+        uint256 delta = CES_PASS_CEILING - ces;                    // 0..CEILING
+        uint256 deltaSq = (delta * delta) / CES_PASS_CEILING;      // 0..CEILING
 
-        // Linear interpolation: MIN + spread * delta / CEILING
-        return GREEN_TOKEN_REWARD_MIN + (spread * delta) / CES_PASS_CEILING;
+        // Concave interpolation: MIN + spread * deltaSq / CEILING
+        return GREEN_TOKEN_REWARD_MIN + (spread * deltaSq) / CES_PASS_CEILING;
     }
 
     // ───────────────────────── Core Functions ──────────────────────────
@@ -310,8 +340,12 @@ contract PUCCertificate is
         string memory _vehicleId,
         address _vehicleOwner,
         string memory _metadataURI
-    ) external onlyAuthorizedIssuer nonReentrant returns (uint256) {
-        return _issueCertificateInternal(_vehicleId, _vehicleOwner, _metadataURI);
+    ) external onlyAuthorizedIssuer nonReentrant whenNotPaused returns (uint256) {
+        // Auto-detect "first PUC after registration": no prior certificate
+        // on file for this vehicle ID. Callers who need explicit control
+        // should use the 4-arg overload below.
+        bool autoFirst = (certificateCount[_vehicleId] == 0);
+        return _issueCertificateInternal(_vehicleId, _vehicleOwner, _metadataURI, autoFirst);
     }
 
     /**
@@ -323,8 +357,30 @@ contract PUCCertificate is
     function issueCertificate(
         string memory _vehicleId,
         address _vehicleOwner
-    ) external onlyAuthorizedIssuer nonReentrant returns (uint256) {
-        return _issueCertificateInternal(_vehicleId, _vehicleOwner, "");
+    ) external onlyAuthorizedIssuer nonReentrant whenNotPaused returns (uint256) {
+        bool autoFirst = (certificateCount[_vehicleId] == 0);
+        return _issueCertificateInternal(_vehicleId, _vehicleOwner, "", autoFirst);
+    }
+
+    /**
+     * @notice Explicit-first-PUC overload.
+     * @dev Lets the caller force the 360-day validity window for a vehicle's
+     *      first PUC after registration, or explicitly mark a renewal as
+     *      "not first" (e.g. a re-test after revocation). Closes audit L7.
+     * @param _vehicleId    Vehicle registration number.
+     * @param _vehicleOwner Wallet address of the vehicle owner.
+     * @param _metadataURI  Optional IPFS metadata URI; pass "" to skip.
+     * @param _isFirstPUC   ``true`` → 360-day validity (first post-registration
+     *                      certificate); ``false`` → 180-day renewal cycle.
+     * @return tokenId The newly minted token ID.
+     */
+    function issueCertificateWithFirstFlag(
+        string memory _vehicleId,
+        address _vehicleOwner,
+        string memory _metadataURI,
+        bool _isFirstPUC
+    ) external onlyAuthorizedIssuer nonReentrant whenNotPaused returns (uint256) {
+        return _issueCertificateInternal(_vehicleId, _vehicleOwner, _metadataURI, _isFirstPUC);
     }
 
     /**
@@ -333,7 +389,8 @@ contract PUCCertificate is
     function _issueCertificateInternal(
         string memory _vehicleId,
         address _vehicleOwner,
-        string memory _metadataURI
+        string memory _metadataURI,
+        bool _isFirstPUC
     ) internal returns (uint256) {
         require(bytes(_vehicleId).length > 0, "Vehicle ID cannot be empty");
         require(_vehicleOwner != address(0), "Invalid vehicle owner address");
@@ -360,7 +417,10 @@ contract PUCCertificate is
         _tokenIdCounter++;
         uint256 tokenId = _tokenIdCounter;
         uint256 issueTime = block.timestamp;
-        uint256 expiryTime = issueTime + VALIDITY_PERIOD;
+        // CMVR Rule 115 branch: a first post-registration PUC is valid for
+        // one year, subsequent renewals for 180 days.
+        uint256 validity = _isFirstPUC ? FIRST_PUC_VALIDITY_PERIOD : VALIDITY_PERIOD;
+        uint256 expiryTime = issueTime + validity;
 
         _mint(_vehicleOwner, tokenId);
 
@@ -380,7 +440,8 @@ contract PUCCertificate is
             totalRecordsAtIssue: totalRecords,
             issuedByStation:    msg.sender,
             revoked:            false,
-            revokeReason:       ""
+            revokeReason:       "",
+            isFirstPUC:         _isFirstPUC
         });
 
         vehicleToCertificate[_vehicleId] = tokenId;

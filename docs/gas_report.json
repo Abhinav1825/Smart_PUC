@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-05T09:26:25.203Z",
+  "generatedAt": "2026-04-05T10:50:50.873Z",
   "toolchain": "hardhat+ethers-v6",
   "proxyKind": "UUPS",
   "assumptions": {
@@ -12,72 +12,72 @@
     {
       "operation": "storeEmission (first submission for new vehicle)",
       "contract": "EmissionRegistry",
-      "gas": 497530,
-      "polygon_usd": 0.017414,
-      "ethereum_usd": 17.9111
+      "gas": 507925,
+      "polygon_usd": 0.017777,
+      "ethereum_usd": 18.2853
     },
     {
       "operation": "storeEmission (subsequent PASS)",
       "contract": "EmissionRegistry",
-      "gas": 356919,
-      "polygon_usd": 0.012492,
-      "ethereum_usd": 12.8491
+      "gas": 367311,
+      "polygon_usd": 0.012856,
+      "ethereum_usd": 13.2232
     },
     {
       "operation": "storeEmission (FAIL + pollutant events)",
       "contract": "EmissionRegistry",
-      "gas": 480691,
-      "polygon_usd": 0.016824,
-      "ethereum_usd": 17.3049
+      "gas": 491115,
+      "polygon_usd": 0.017189,
+      "ethereum_usd": 17.6801
     },
     {
       "operation": "issueCertificate (with GreenToken mint)",
       "contract": "PUCCertificate",
-      "gas": 490643,
-      "polygon_usd": 0.017173,
-      "ethereum_usd": 17.6631
+      "gas": 495337,
+      "polygon_usd": 0.017337,
+      "ethereum_usd": 17.8321
     },
     {
       "operation": "revokeCertificate",
       "contract": "PUCCertificate",
-      "gas": 65627,
-      "polygon_usd": 0.002297,
-      "ethereum_usd": 2.3626
+      "gas": 65726,
+      "polygon_usd": 0.0023,
+      "ethereum_usd": 2.3661
     },
     {
       "operation": "redeem (burn-to-reward)",
       "contract": "GreenToken",
-      "gas": 198281,
-      "polygon_usd": 0.00694,
-      "ethereum_usd": 7.1381
+      "gas": 202733,
+      "polygon_usd": 0.007096,
+      "ethereum_usd": 7.2984
     },
     {
       "operation": "setTestingStation",
       "contract": "EmissionRegistry",
-      "gas": 52992,
-      "polygon_usd": 0.001855,
-      "ethereum_usd": 1.9077
+      "gas": 53080,
+      "polygon_usd": 0.001858,
+      "ethereum_usd": 1.9109
     },
     {
       "operation": "setRegisteredDevice",
       "contract": "EmissionRegistry",
-      "gas": 53068,
-      "polygon_usd": 0.001857,
-      "ethereum_usd": 1.9104
+      "gas": 53244,
+      "polygon_usd": 0.001864,
+      "ethereum_usd": 1.9168
     },
     {
       "operation": "setVehicleOwner",
       "contract": "EmissionRegistry",
-      "gas": 54356,
-      "polygon_usd": 0.001902,
-      "ethereum_usd": 1.9568
+      "gas": 54647,
+      "polygon_usd": 0.001913,
+      "ethereum_usd": 1.9673
     },
     {
       "operation": "setSoftVehicleCap",
       "contract": "EmissionRegistry",
-      "gas": 31402,
-      "polygon_usd": 0.001099,
-      "ethereum_usd": 1.1305
+      "gas": 31754,
+      "polygon_usd": 0.001111,
+      "ethereum_usd": 1.1431
     }
   ]
 }

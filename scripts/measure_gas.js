@@ -51,12 +51,31 @@ function nonceFromSeed(seed) {
   return ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [seed]));
 }
 
-async function signEmission(signer, vehicleId, co2, co, nox, hc, pm25, ts, nonce) {
-  const hash = ethers.solidityPackedKeccak256(
-    ["string", "uint256", "uint256", "uint256", "uint256", "uint256", "uint256", "bytes32"],
-    [vehicleId, co2, co, nox, hc, pm25, ts, nonce]
+async function signEmission(signer, registry, vehicleId, co2, co, nox, hc, pm25, ts, nonce) {
+  const net = await ethers.provider.getNetwork();
+  const domain = {
+    name: "SmartPUC",
+    version: "3.2",
+    chainId: net.chainId,
+    verifyingContract: await registry.getAddress(),
+  };
+  const types = {
+    EmissionReading: [
+      { name: "vehicleId", type: "string" },
+      { name: "co2", type: "uint256" },
+      { name: "co", type: "uint256" },
+      { name: "nox", type: "uint256" },
+      { name: "hc", type: "uint256" },
+      { name: "pm25", type: "uint256" },
+      { name: "timestamp", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+    ],
+  };
+  return signer.signTypedData(
+    domain,
+    types,
+    { vehicleId, co2, co, nox, hc, pm25, timestamp: ts, nonce }
   );
-  return signer.signMessage(ethers.getBytes(hash));
 }
 
 async function gasOf(txPromise) {
@@ -93,7 +112,7 @@ async function main() {
   await (await puc.setAuthorizedIssuer(station.address, true)).wait();
 
   const mkSig = async (vid, co2, co, nox, hc, pm25, ts, n) =>
-    signEmission(device, vid, co2, co, nox, hc, pm25, ts, n);
+    signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
 
   // 1. storeEmission — first submission for a new vehicle
   {
