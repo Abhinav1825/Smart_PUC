@@ -191,11 +191,26 @@ def _estimate_fuel_rate(speed_kmh: float, acceleration_mps2: float) -> float:
 def _generate_wltc_profile() -> np.ndarray:
     """Generate a 1800-point speed array (km/h) approximating the WLTC Class 3b cycle.
 
-    The profile is built from key waypoints that capture the characteristic
-    shape of each phase (idle periods, ramps, plateaus, decelerations) and
-    linearly interpolated with numpy to produce the full second-by-second
-    trace.  Waypoints are tuned to produce a total cycle distance of
-    approximately 23.27 km, matching the official UN ECE R154 specification.
+    The profile is a **representative approximation** built from ~100 key
+    waypoints that capture the characteristic shape of each phase (idle
+    periods, ramps, plateaus, decelerations), linearly interpolated with
+    numpy to produce the full second-by-second trace.
+
+    .. note::
+
+       This is NOT the official UN ECE R154 Annex 1 speed table, which
+       specifies exact speed values at each second and is subject to
+       copyright by UNECE.  The approximation preserves the key
+       characteristics of the official profile:
+
+       - Total duration: 1800 s (exact)
+       - Phase boundaries: identical to the official cycle
+       - Peak speeds per phase: 56.5 / 76.6 / 97.4 / 131.3 km/h (exact)
+       - Total distance: ~23.40 km (official: 23.27 km, error < 0.6%)
+       - Idle fraction: ~11% (official: ~13%)
+
+       For regulatory-grade analysis, the official speed table from
+       UN ECE R154, Annex 1, Sub-Annex 1, Appendix 1 should be used.
 
     Returns
     -------

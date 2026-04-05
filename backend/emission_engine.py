@@ -25,8 +25,12 @@ Formulae
 IPCC fuel-based CO2 (FR-05):
     CO2 (g/km) = fuel_rate (L/100 km) x emission_factor (g/L) / 100
 
-MOVES operating-mode-based rate conversion:
-    pollutant (g/km) = base_rate (g/s) / speed (m/s)
+MOVES operating-mode-based rate conversion (simplified):
+    pollutant (g/km) = calibration_constant / speed (m/s)
+    Note: The calibration constants in EMISSION_RATES are pre-scaled so
+    that this division yields correct g/km values directly.  They are
+    NOT raw g/s emission rates (a true g/s rate divided by m/s would
+    give g/m, not g/km).  See EMISSION_RATES comments for details.
 
 NOx Arrhenius temperature correction [3]:
     NOx_corrected = NOx_base x exp[Ea/R x (1/T_ref - 1/T_amb)]
@@ -49,12 +53,20 @@ import math
 from typing import Any, Dict, List, Optional
 
 # ──────────────────────────── BSVI Compliance Thresholds ─────────────────────
-
-CO2_THRESHOLD: float = 120.0     # g/km — Bharat Stage VI (petrol, light-duty)
+# Petrol thresholds (ARAI / MoRTH, 2020 — light-duty passenger car)
+CO2_THRESHOLD: float = 120.0     # g/km
 CO_THRESHOLD: float = 1.0        # g/km
 NOX_THRESHOLD: float = 0.06      # g/km
 HC_THRESHOLD: float = 0.10       # g/km
 PM25_THRESHOLD: float = 0.0045   # g/km
+
+# Diesel thresholds (ARAI / MoRTH, 2020 — light-duty passenger car)
+DIESEL_CO2_THRESHOLD: float = 120.0    # g/km (fleet average target)
+DIESEL_CO_THRESHOLD: float = 0.50      # g/km
+DIESEL_NOX_THRESHOLD: float = 0.08     # g/km
+DIESEL_HC_NOX_THRESHOLD: float = 0.17  # g/km (combined HC+NOx for diesel)
+DIESEL_HC_THRESHOLD: float = 0.09      # g/km (derived: HC+NOx - NOx)
+DIESEL_PM25_THRESHOLD: float = 0.0045  # g/km
 
 # ──────────────────────────── CES Weights ────────────────────────────────────
 
@@ -76,8 +88,19 @@ BSVI_THRESHOLDS: Dict[str, float] = {
     "pm25": PM25_THRESHOLD,
 }
 
-# Internal alias
-_THRESHOLDS = BSVI_THRESHOLDS
+BSVI_DIESEL_THRESHOLDS: Dict[str, float] = {
+    "co2":  DIESEL_CO2_THRESHOLD,
+    "co":   DIESEL_CO_THRESHOLD,
+    "nox":  DIESEL_NOX_THRESHOLD,
+    "hc":   DIESEL_HC_THRESHOLD,
+    "pm25": DIESEL_PM25_THRESHOLD,
+}
+
+def _get_thresholds(fuel_type: str) -> Dict[str, float]:
+    """Return the BSVI threshold map for the given fuel type."""
+    if fuel_type == "diesel":
+        return BSVI_DIESEL_THRESHOLDS
+    return BSVI_THRESHOLDS
 
 # ──────────────────────────── IPCC Fuel-Based CO2 Factors ────────────────────
 
@@ -87,19 +110,31 @@ EMISSION_FACTORS: Dict[str, int] = {
 }
 
 # ──────────────────────────── MOVES Operating Mode Emission Rates ────────────
-# Base emission rates in g/s per operating-mode bin per pollutant.
+# Emission rate calibration constants per operating-mode bin per pollutant.
 # Bins follow the EPA MOVES3 VSP/speed binning scheme [1].
 #
-# Values are representative rates for a BSVI-compliant light-duty petrol
-# vehicle (1.0–1.2 L naturally-aspirated), calibrated to produce realistic
-# g/km values across the WLTC driving cycle.  These are derived from
-# published MOVES3 BaseRateOutput tables for light-duty gasoline vehicles
-# (EPA source classification code 2160102010) and scaled to the Indian
-# BSVI emission tier [2].
+# IMPORTANT: These values are NOT raw emission rates in g/s.  They are
+# pre-scaled calibration constants chosen so that dividing by speed_mps
+# (m/s) yields the correct emission rate in g/km directly:
 #
-# NOTE: These rates are representative values aligned with published
-# MOVES3 magnitude ranges and BSVI certification data.  For regulatory-
-# grade analysis, facility-specific MOVES3 runs should be used.
+#     pollutant (g/km) = calibration_constant / speed (m/s)
+#
+# A true emission rate for, e.g., CO at bin 21 would be ~0.004 g/s, not
+# 4.2.  The values here are ~1000x larger because they encode the g/s-to-
+# g/km conversion factor (x 1000 m/km) implicitly.  See the calibration
+# notes below for the derivation.
+#
+# These are NOT raw MOVES3 BaseRateOutput values.  They are synthetic
+# constants for a BSVI-compliant light-duty petrol vehicle (1.0-1.2 L
+# naturally-aspirated), tuned to produce realistic g/km values across the
+# WLTC driving cycle.  The magnitude ranges are informed by published
+# MOVES3 BaseRateOutput tables for light-duty gasoline vehicles (EPA
+# source classification code 2160102010) and scaled to the Indian BSVI
+# emission tier [2].
+#
+# NOTE: These constants are representative values aligned with BSVI
+# certification data.  For regulatory-grade analysis, facility-specific
+# MOVES3 runs should be used.
 #
 # Bin  0  — Braking / deceleration
 # Bin  1  — Idle
@@ -114,19 +149,18 @@ EMISSION_FACTORS: Dict[str, int] = {
 # Bin 28  — Cruise / acceleration, VSP > 30 kW/ton
 
 EMISSION_RATES: Dict[int, Dict[str, float]] = {
-    # bin: { co2 (g/s), co (g/s), nox (g/s), hc (g/s), pm25 (g/s) }
+    # bin: { co2, co, nox, hc, pm25 }  (calibration constants, NOT g/s)
     #
-    # Calibration targets (at 60 km/h = 16.67 m/s, bin 21):
-    #   CO2 ~130 g/km -> handled by fuel-based IPCC formula
-    #   CO  ~0.25 g/km -> 0.25 * 16.67 = 4.17 g/s
-    #   NOx ~0.020 g/km -> 0.020 * 16.67 = 0.333 g/s
-    #   HC  ~0.025 g/km -> 0.025 * 16.67 = 0.417 g/s
-    #   PM2.5 ~0.001 g/km -> 0.001 * 16.67 = 0.0167 g/s
+    # Calibration derivation (at 60 km/h = 16.67 m/s, bin 21):
+    #   Target g/km * speed_mps = calibration constant
+    #   CO2 ~130 g/km  -> handled by fuel-based IPCC formula
+    #   CO  ~0.25 g/km -> 0.25 * 16.67 = 4.17
+    #   NOx ~0.020 g/km -> 0.020 * 16.67 = 0.333
+    #   HC  ~0.025 g/km -> 0.025 * 16.67 = 0.417
+    #   PM2.5 ~0.001 g/km -> 0.001 * 16.67 = 0.0167
     #
     # These produce WLTC-cycle-averaged values near BSVI certification
-    # levels, consistent with ARAI Real Driving Emissions (RDE) data [2]
-    # and MOVES3 BaseRateOutput magnitude ranges for Tier 3 / Euro 6d
-    # equivalent gasoline vehicles [1].
+    # levels, consistent with ARAI Real Driving Emissions (RDE) data [2].
     0: {
         "co2": 0.80,   "co": 1.50,    "nox": 0.060,
         "hc":  0.10,    "pm25": 0.0030,
@@ -363,19 +397,20 @@ def calculate_emissions(
         "pm25": pm25_gpkm,
     }
 
+    thresholds = _get_thresholds(fuel_type)
     ces_score: float = sum(
-        (pollutant_values[p] / _THRESHOLDS[p]) * CES_WEIGHTS[p]
+        (pollutant_values[p] / thresholds[p]) * CES_WEIGHTS[p]
         for p in CES_WEIGHTS
     )
     ces_score = round(ces_score, 4)
 
     # ── 9. Per-pollutant compliance ───────────────────────────────────────
     compliance: Dict[str, bool] = {
-        "co2":     bool(co2_gpkm <= CO2_THRESHOLD),
-        "co":      bool(co_gpkm <= CO_THRESHOLD),
-        "nox":     bool(nox_gpkm <= NOX_THRESHOLD),
-        "hc":      bool(hc_gpkm <= HC_THRESHOLD),
-        "pm25":    bool(pm25_gpkm <= PM25_THRESHOLD),
+        "co2":     bool(co2_gpkm <= thresholds["co2"]),
+        "co":      bool(co_gpkm <= thresholds["co"]),
+        "nox":     bool(nox_gpkm <= thresholds["nox"]),
+        "hc":      bool(hc_gpkm <= thresholds["hc"]),
+        "pm25":    bool(pm25_gpkm <= thresholds["pm25"]),
         "overall": bool(ces_score < 1.0),
     }
 

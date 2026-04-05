@@ -5,6 +5,12 @@
  * WLTC phase tracking, CES gauge, and NFT certificate viewer.
  */
 
+// === HTML Escape Helper (XSS Prevention) ===
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // === Configuration & Global State ===
 const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
 const CONTRACT_ABI = [
@@ -361,13 +367,13 @@ function updateLatestTx(data) {
     if (!el) return;
     el.innerHTML =
         '<div style="font-size:.8125rem">' +
-        '<div class="flex-between mb-md"><span class="text-muted">Tx Hash</span><span class="text-mono">' + (data.txHash ? data.txHash.slice(0, 10) + '...' + data.txHash.slice(-8) : 'N/A') + '</span></div>' +
-        '<div class="flex-between mb-md"><span class="text-muted">Block</span><span class="text-mono">' + (data.blockNumber || 'N/A') + '</span></div>' +
-        '<div class="flex-between mb-md"><span class="text-muted">CO&#8322;</span><span class="text-mono">' + (data.co2_g_per_km != null ? data.co2_g_per_km.toFixed(1) : '--') + ' g/km</span></div>' +
-        '<div class="flex-between mb-md"><span class="text-muted">CES</span><span class="text-mono">' + (data.ces_score != null ? data.ces_score.toFixed(3) : '--') + '</span></div>' +
-        '<div class="flex-between mb-md"><span class="text-muted">Fraud</span><span class="text-mono">' + (data.fraud_score != null ? data.fraud_score.toFixed(3) : '--') + '</span></div>' +
-        '<div class="flex-between mb-md"><span class="text-muted">Status</span><span class="status-badge ' + (data.status === 'PASS' ? 'pass' : 'fail') + '">' + (data.status || '--') + '</span></div>' +
-        '<div class="flex-between"><span class="text-muted">Vehicle</span><span><strong>' + (data.vehicle_id || '--') + '</strong></span></div>' +
+        '<div class="flex-between mb-md"><span class="text-muted">Tx Hash</span><span class="text-mono">' + (data.txHash ? escapeHtml(data.txHash.slice(0, 10)) + '...' + escapeHtml(data.txHash.slice(-8)) : 'N/A') + '</span></div>' +
+        '<div class="flex-between mb-md"><span class="text-muted">Block</span><span class="text-mono">' + escapeHtml(data.blockNumber || 'N/A') + '</span></div>' +
+        '<div class="flex-between mb-md"><span class="text-muted">CO&#8322;</span><span class="text-mono">' + escapeHtml(data.co2_g_per_km != null ? data.co2_g_per_km.toFixed(1) : '--') + ' g/km</span></div>' +
+        '<div class="flex-between mb-md"><span class="text-muted">CES</span><span class="text-mono">' + escapeHtml(data.ces_score != null ? data.ces_score.toFixed(3) : '--') + '</span></div>' +
+        '<div class="flex-between mb-md"><span class="text-muted">Fraud</span><span class="text-mono">' + escapeHtml(data.fraud_score != null ? data.fraud_score.toFixed(3) : '--') + '</span></div>' +
+        '<div class="flex-between mb-md"><span class="text-muted">Status</span><span class="status-badge ' + (data.status === 'PASS' ? 'pass' : 'fail') + '">' + escapeHtml(data.status || '--') + '</span></div>' +
+        '<div class="flex-between"><span class="text-muted">Vehicle</span><span><strong>' + escapeHtml(data.vehicle_id || '--') + '</strong></span></div>' +
         '</div>';
 }
 
@@ -518,19 +524,19 @@ async function loadHistory() {
             const cl = r.status === 'PASS' ? 'pass' : 'fail';
             return '<tr>' +
                 '<td class="mono">' + (i + 1) + '</td>' +
-                '<td>' + r.vehicleId + '</td>' +
-                '<td class="mono">' + (r.co2Level / 1000).toFixed(1) + '</td>' +
-                '<td class="mono">' + (r.coLevel / 1000).toFixed(3) + '</td>' +
-                '<td class="mono">' + (r.noxLevel / 1000).toFixed(4) + '</td>' +
-                '<td class="mono">' + (r.hcLevel / 1000).toFixed(4) + '</td>' +
-                '<td class="mono">' + (r.pm25Level / 1000).toFixed(4) + '</td>' +
-                '<td class="mono">' + (r.cesScore / 10000).toFixed(3) + '</td>' +
-                '<td class="mono">' + (r.fraudScore / 10000).toFixed(3) + '</td>' +
-                '<td><span class="status-badge ' + cl + '">' + r.status + '</span></td>' +
+                '<td>' + escapeHtml(r.vehicleId) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.co2Level / 1000).toFixed(1)) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.coLevel / 1000).toFixed(3)) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.noxLevel / 1000).toFixed(4)) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.hcLevel / 1000).toFixed(4)) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.pm25Level / 1000).toFixed(4)) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.cesScore / 10000).toFixed(3)) + '</td>' +
+                '<td class="mono">' + escapeHtml((r.fraudScore / 10000).toFixed(3)) + '</td>' +
+                '<td><span class="status-badge ' + cl + '">' + escapeHtml(r.status) + '</span></td>' +
                 '</tr>';
         }).join('');
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-fail">' + err.message + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-fail">' + escapeHtml(err.message) + '</td></tr>';
     }
 }
 
@@ -542,7 +548,7 @@ function showAlert(msg, type) {
     const cls = type === 'violation' ? 'alert-violation' : type === 'warning' ? 'alert-warning' : 'alert-success';
     const id = 'alert-' + Date.now();
     c.insertAdjacentHTML('afterbegin',
-        '<div class="alert ' + cls + '" id="' + id + '">' + msg +
+        '<div class="alert ' + cls + '" id="' + id + '">' + escapeHtml(msg) +
         '<button class="alert-dismiss" onclick="document.getElementById(\'' + id + '\').remove()">&#10005;</button></div>');
     setTimeout(function () { var el = document.getElementById(id); if (el) el.remove(); }, 8000);
 }

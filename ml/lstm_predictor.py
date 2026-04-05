@@ -1,25 +1,38 @@
-"""LSTM-based emission prediction for preventive compliance monitoring.
+"""Emission prediction for preventive compliance monitoring.
 
-This represents the first application of sequence forecasting to blockchain-based
-vehicle emission compliance systems.
+This module provides two predictor implementations for forecasting future
+emission levels (CO2, NOx) and the composite emission score (CES) from a
+sliding window of recent sensor readings:
 
-The predictor uses a stacked LSTM architecture to forecast future emission levels
-(CO2, NOx) and the composite emission score (CES) from a sliding window of recent
-sensor readings.  When predicted values breach configurable thresholds the system
-can issue early warnings *before* a compliance violation occurs, giving the driver
+1. **EmissionPredictor** (LSTM-based) — requires TensorFlow.  Uses a
+   stacked LSTM architecture (128 -> 64 units) with dropout and batch
+   normalisation.  Must be trained before use via :meth:`train`.
+2. **MockPredictor** (linear extrapolation) — no dependencies.  Fits a
+   first-order linear trend across the sliding window and extrapolates.
+   Used as the default when TensorFlow is not installed.
+
+When predicted values breach configurable thresholds the system can issue
+early warnings *before* a compliance violation occurs, giving the driver
 or fleet operator time to react.
 
-Architecture overview
----------------------
-Two LSTM layers (128 -> 64 units) with dropout regularisation (p=0.2) and batch
-normalisation are followed by a dense projection that outputs a (forecast_horizon
-x 3) tensor representing the predicted CO2, NOx, and CES values for the next
-``forecast_horizon`` time-steps (default 5, corresponding to 25 s at a 5 s
-sampling interval).
+Architecture overview (EmissionPredictor)
+-----------------------------------------
+Two LSTM layers (128 -> 64 units) with dropout regularisation (p=0.2) and
+batch normalisation are followed by a dense projection that outputs a
+(forecast_horizon x 3) tensor representing the predicted CO2, NOx, and CES
+values for the next ``forecast_horizon`` time-steps (default 5,
+corresponding to 25 s at a 5 s sampling interval).
 
 Input features (8)
 ------------------
 speed, rpm, fuel_rate, acceleration, co2, nox, vsp, ces_score
+
+Training data
+-------------
+Pre-generated training data is available at ``ml/training_data.npy``
+(9000 samples from 5 WLTC cycles).  Regenerate with::
+
+    python -m ml.generate_training_data --cycles 5 --output ml/training_data.npy
 
 References
 ----------

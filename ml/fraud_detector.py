@@ -30,7 +30,7 @@ class PhysicsConstraintValidator:
     """Validate OBD-II readings against hard physics rules.
 
     Each reading is checked against a fixed set of physical constraints.
-    Any single violation forces the fraud score to be at least 0.5.
+    Any single violation forces the fraud score to be at least 0.7.
     """
 
     _NUM_CHECKS = 7
@@ -102,7 +102,7 @@ class PhysicsConstraintValidator:
         # Score calculation
         score = len(violations) / self._NUM_CHECKS
         if violations:
-            score = max(score, 0.5)
+            score = max(score, 0.7)
 
         return score, violations
 
@@ -359,9 +359,9 @@ class FraudDetector:
             A dictionary with the following keys:
 
             - **fraud_score** (*float*): Combined score in [0.0, 1.0].
-            - **is_fraud** (*bool*): ``True`` if fraud_score >= 0.65.
-            - **severity** (*str*): ``"LOW"`` (< 0.35), ``"MEDIUM"``
-              (0.35 -- 0.65), or ``"HIGH"`` (>= 0.65).
+            - **is_fraud** (*bool*): ``True`` if fraud_score >= 0.50.
+            - **severity** (*str*): ``"LOW"`` (< 0.25), ``"MEDIUM"``
+              (0.25 -- 0.50), or ``"HIGH"`` (>= 0.50).
             - **components** (*dict*): Individual scores from each
               component (``physics``, ``isolation``, ``temporal``).
             - **violations** (*list[str]*): All violation descriptions
@@ -380,17 +380,17 @@ class FraudDetector:
         )
         fraud_score = min(fraud_score, 1.0)
 
-        # Physics override: if physics validator detects severe violations
-        # (score >= 0.7, meaning 5+ of 7 rules broken), override the
-        # ensemble score to ensure blatantly impossible readings are always
-        # flagged, regardless of IF/temporal contributions.
-        physics_override = physics_score >= 0.7
+        # Physics override: if physics validator detects any violation
+        # (score >= 0.5, i.e. at least one rule broken), override the
+        # ensemble score to ensure physically impossible readings are
+        # always flagged, regardless of IF/temporal contributions.
+        physics_override = physics_score >= 0.5
         if physics_override:
-            fraud_score = max(fraud_score, 0.80)
+            fraud_score = max(fraud_score, 0.55)
 
-        if fraud_score >= 0.65:
+        if fraud_score >= 0.50:
             severity = "HIGH"
-        elif fraud_score >= 0.35:
+        elif fraud_score >= 0.25:
             severity = "MEDIUM"
         else:
             severity = "LOW"
@@ -399,7 +399,7 @@ class FraudDetector:
 
         return {
             "fraud_score": fraud_score,
-            "is_fraud": fraud_score >= 0.65,
+            "is_fraud": fraud_score >= 0.50,
             "severity": severity,
             "physics_override": physics_override,
             "components": {

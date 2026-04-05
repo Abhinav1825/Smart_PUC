@@ -58,7 +58,14 @@ except ImportError:
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from backend.emission_engine import calculate_co2, EMISSION_FACTORS, DEFAULT_THRESHOLD
+from backend.emission_engine import (
+    calculate_co2,
+    calculate_emissions,
+    EMISSION_FACTORS,
+    DEFAULT_THRESHOLD,
+    CES_WEIGHTS,
+    BSVI_THRESHOLDS,
+)
 from backend.simulator import OBDSimulator
 from ml.fraud_detector import FraudDetector
 from physics.vsp_model import calculate_vsp, estimate_fuel_rate, VehicleParams
@@ -161,6 +168,8 @@ class CESComparisonResult:
     co2_only_violation_rate: float = 0.0
     ces_violation_rate: float = 0.0
     additional_detections: int = 0
+    ces_unique_detections: int = 0
+    co2_unique_detections: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -307,32 +316,45 @@ def _generate_tampered_sample(rng: np.random.RandomState) -> Dict[str, Any]:
 # Composite Emission Score helpers
 # ---------------------------------------------------------------------------
 
-def _compute_ces(co2_g_km: float, nox_g_km: float, pm_g_km: float) -> float:
+def _compute_ces(
+    co2_g_km: float,
+    nox_g_km: float,
+    co_g_km: float,
+    hc_g_km: float,
+    pm25_g_km: float,
+) -> float:
     """Compute a Composite Emission Score from multiple pollutants.
 
-    The CES is a weighted normalised sum designed so that a vehicle can fail
-    even if CO2 alone is within limits.
+    Uses the same 5-pollutant weights and BSVI thresholds as the main
+    emission engine (:mod:`backend.emission_engine`):
+
+        CES = sum_i (pollutant_i / threshold_i) * weight_i
+
+    Weights: CO2=0.35, NOx=0.30, CO=0.15, HC=0.12, PM2.5=0.08.
+    A CES >= 1.0 indicates a violation.
 
     Args:
         co2_g_km: CO2 emissions in g/km.
         nox_g_km: NOx emissions in g/km.
-        pm_g_km: Particulate matter (PM2.5) emissions in g/km.
+        co_g_km: CO emissions in g/km.
+        hc_g_km: HC emissions in g/km.
+        pm25_g_km: PM2.5 emissions in g/km.
 
     Returns:
-        Composite score in [0, 1] where values above 0.7 indicate a
-        violation.
+        Composite score where values >= 1.0 indicate a violation.
     """
-    # BS-VI limits (petrol)
-    co2_limit = 120.0   # g/km
-    nox_limit = 0.06    # g/km
-    pm_limit = 0.0045   # g/km
+    pollutant_values = {
+        "co2":  co2_g_km,
+        "nox":  nox_g_km,
+        "co":   co_g_km,
+        "hc":   hc_g_km,
+        "pm25": pm25_g_km,
+    }
 
-    co2_norm = min(co2_g_km / co2_limit, 2.0)
-    nox_norm = min(nox_g_km / nox_limit, 2.0)
-    pm_norm = min(pm_g_km / pm_limit, 2.0)
-
-    # Weights: CO2 50%, NOx 30%, PM 20%
-    ces = 0.50 * co2_norm + 0.30 * nox_norm + 0.20 * pm_norm
+    ces = sum(
+        (pollutant_values[p] / BSVI_THRESHOLDS[p]) * CES_WEIGHTS[p]
+        for p in CES_WEIGHTS
+    )
     return ces
 
 
@@ -346,16 +368,31 @@ class BenchmarkSuite:
     Attributes:
         results: Dictionary mapping experiment names to their result objects.
         seed: Random seed used for reproducibility.
+        use_real_blockchain: When True, attempt to connect to Ganache for
+            real gas measurements in E3.
     """
 
-    def __init__(self, seed: int = 42) -> None:
+    def __init__(self, seed: int = 42, use_real_blockchain: bool = False) -> None:
         """Initialise the benchmark suite.
 
         Args:
             seed: Random seed for reproducibility across all experiments.
+            use_real_blockchain: If True, connect to Ganache on port 7545
+                for real transaction gas measurements.
         """
         self.seed: int = seed
         self.results: Dict[str, Any] = {}
+        self.use_real_blockchain: bool = use_real_blockchain
+        self._blockchain = None
+
+        if self.use_real_blockchain:
+            try:
+                from backend.blockchain_connector import BlockchainConnector
+                self._blockchain = BlockchainConnector()
+                print("  [Blockchain] Connected to Ganache for real measurements.")
+            except Exception as e:
+                print(f"  [Blockchain] Could not connect ({e}). Falling back to mock.")
+                self.use_real_blockchain = False
 
     # -----------------------------------------------------------------------
     # E1 -- Throughput
@@ -497,13 +534,15 @@ class BenchmarkSuite:
         gas_price_gwei: float = 30.0,
         matic_usd: float = 0.70,
     ) -> GasCostResult:
-        """E3: Simulate gas consumption per storeEmission call.
+        """E3: Measure gas consumption per storeEmission call.
 
-        Uses realistic gas estimates for the Smart PUC emission storage
-        contract (approximately 250k--350k gas per call on Polygon).
+        When ``use_real_blockchain`` is enabled and a Ganache connection is
+        available, this experiment sends real transactions and reads gas
+        consumption from actual transaction receipts.  Otherwise, it falls
+        back to simulated gas estimates (250k--350k range).
 
         Args:
-            num_samples: Number of mock transactions to sample.
+            num_samples: Number of transactions to sample.
             gas_price_gwei: Gas price in Gwei for cost estimation.
             matic_usd: MATIC/USD exchange rate for cost estimation.
 
@@ -514,9 +553,31 @@ class BenchmarkSuite:
         rng = np.random.RandomState(self.seed)
         gas_values: List[int] = []
 
-        for _ in range(num_samples):
-            receipt = _mock_store_emission("BENCH_GAS", rng.randint(50, 200))
-            gas_values.append(receipt["gas_used"])
+        if self.use_real_blockchain and self._blockchain is not None:
+            # Real blockchain gas measurement
+            sim = OBDSimulator(vehicle_id="BENCH_GAS_REAL")
+            for i in range(num_samples):
+                try:
+                    reading = sim.generate_reading()
+                    co2_result = calculate_co2(
+                        reading["fuel_rate"], reading["speed"], reading["fuel_type"]
+                    )
+                    result = self._blockchain.store_emission(
+                        vehicle_id=f"GASTEST{i:04d}",
+                        co2=co2_result["co2_g_per_km"],
+                    )
+                    # Get actual gas from receipt
+                    tx_hash = result["tx_hash"]
+                    receipt = self._blockchain.w3.eth.get_transaction_receipt(tx_hash)
+                    gas_values.append(receipt.gasUsed)
+                except Exception as e:
+                    print(f"    Real tx {i} failed: {e}, falling back to mock")
+                    receipt = _mock_store_emission("BENCH_GAS", rng.randint(50, 200))
+                    gas_values.append(receipt["gas_used"])
+        else:
+            for _ in range(num_samples):
+                receipt = _mock_store_emission("BENCH_GAS", rng.randint(50, 200))
+                gas_values.append(receipt["gas_used"])
 
         gas_arr = np.array(gas_values, dtype=np.float64)
         mean_gas = float(np.mean(gas_arr))
@@ -622,22 +683,48 @@ class BenchmarkSuite:
 
         Runs the full simplified WLTC drive cycle, computing both CO2-only
         compliance (pass/fail against the BS-VI threshold) and a Composite
-        Emission Score (CES) that also accounts for NOx and PM2.5.
+        Emission Score (CES) that accounts for CO2, NOx, CO, HC, and PM2.5
+        using the same weights and thresholds as the main emission engine.
 
-        NOx and PM emissions are estimated from VSP using simplified modal
-        emission factors derived from MOVES operating-mode rates.
+        Uses :func:`calculate_emissions` from the emission engine for
+        consistent multi-pollutant computation via MOVES operating-mode
+        rates.
 
         Returns:
             :class:`CESComparisonResult` comparing the two approaches.
         """
         profile = _generate_wltc_profile()
-        rng = np.random.RandomState(self.seed)
         params = VehicleParams()
 
         co2_only_violations = 0
         ces_violations = 0
+        ces_unique = 0  # CES flags FAIL but CO2-only says PASS
+        co2_unique = 0  # CO2-only flags FAIL but CES says PASS
         total_points = 0
         prev_speed_mps = 0.0
+
+        # Map VSP ranges to MOVES operating-mode bins
+        _VSP_BIN_BOUNDARIES = [
+            (0,  0),   # braking / decel
+            (0,  1),   # idle
+            (3, 21),   # VSP 0-3
+            (6, 22),   # VSP 3-6
+            (9, 23),   # VSP 6-9
+            (12, 24),  # VSP 9-12
+            (18, 25),  # VSP 12-18
+            (24, 26),  # VSP 18-24
+            (30, 27),  # VSP 24-30
+        ]
+
+        def _vsp_to_bin(vsp_val: float, spd_mps: float) -> int:
+            if spd_mps < 0.2778:
+                return 1   # idle
+            if vsp_val < 0:
+                return 0   # braking
+            for threshold, bin_id in reversed(_VSP_BIN_BOUNDARIES[2:]):
+                if vsp_val >= threshold:
+                    return bin_id
+            return 11      # coast
 
         for i, (t_s, speed_kmh) in enumerate(profile):
             speed_mps = speed_kmh / 3.6
@@ -651,26 +738,40 @@ class BenchmarkSuite:
                 prev_speed_mps = speed_mps
                 continue
 
-            # CO2
-            co2_result = calculate_co2(fuel_rate_l100, speed_kmh, "petrol")
-            co2_g_km = co2_result["co2_g_per_km"]
+            op_bin = _vsp_to_bin(vsp, speed_mps)
 
-            # Simplified NOx and PM estimation from VSP
-            # Based on MOVES modal rates for light-duty petrol
-            vsp_clamped = max(vsp, 0.0)
-            nox_g_km = 0.005 + 0.002 * vsp_clamped + float(rng.normal(0, 0.003))
-            nox_g_km = max(nox_g_km, 0.0)
-            pm_g_km = 0.001 + 0.0002 * vsp_clamped + float(rng.normal(0, 0.0005))
-            pm_g_km = max(pm_g_km, 0.0)
+            # Full multi-pollutant calculation via the main engine
+            result = calculate_emissions(
+                speed_kmh=speed_kmh,
+                acceleration=accel,
+                rpm=0.0,
+                fuel_rate=fuel_rate_l100,
+                fuel_type="petrol",
+                operating_mode_bin=op_bin,
+            )
 
-            # CO2-only check
-            if co2_result["status"] == "FAIL":
+            co2_g_km = result["co2_g_per_km"]
+            nox_g_km = result["nox_g_per_km"]
+            co_g_km = result["co_g_per_km"]
+            hc_g_km = result["hc_g_per_km"]
+            pm25_g_km = result["pm25_g_per_km"]
+
+            # CO2-only check (FAIL if CO2 exceeds BSVI threshold)
+            co2_only_fail = co2_g_km > BSVI_THRESHOLDS["co2"]
+            if co2_only_fail:
                 co2_only_violations += 1
 
-            # CES check
-            ces = _compute_ces(co2_g_km, nox_g_km, pm_g_km)
-            if ces > 0.7:
+            # CES check (violation at >= 1.0, consistent with emission engine)
+            ces = _compute_ces(co2_g_km, nox_g_km, co_g_km, hc_g_km, pm25_g_km)
+            ces_fail = ces >= 1.0
+            if ces_fail:
                 ces_violations += 1
+
+            # Track unique detections by each method
+            if ces_fail and not co2_only_fail:
+                ces_unique += 1
+            if co2_only_fail and not ces_fail:
+                co2_unique += 1
 
             total_points += 1
             prev_speed_mps = speed_mps
@@ -682,6 +783,8 @@ class BenchmarkSuite:
             co2_only_violation_rate=round(co2_only_violations / total_points, 4) if total_points > 0 else 0.0,
             ces_violation_rate=round(ces_violations / total_points, 4) if total_points > 0 else 0.0,
             additional_detections=ces_violations - co2_only_violations,
+            ces_unique_detections=ces_unique,
+            co2_unique_detections=co2_unique,
         )
 
         self.results["ces_vs_co2"] = result
@@ -729,6 +832,8 @@ class BenchmarkSuite:
         print(f"  CES violations:      {ces.ces_violations}/{ces.total_points} "
               f"({ces.ces_violation_rate:.2%})")
         print(f"  Additional detections by CES: {ces.additional_detections}")
+        print(f"  CES-unique (non-CO2 violations): {ces.ces_unique_detections}")
+        print(f"  CO2-unique (CO2-only, CES passes): {ces.co2_unique_detections}")
 
         print("\n" + "=" * 70)
         print("  All benchmarks complete.")
@@ -878,7 +983,13 @@ class BenchmarkSuite:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    suite = BenchmarkSuite(seed=42)
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(description="SmartPUC Benchmark Suite")
+    _parser.add_argument("--real", action="store_true",
+                         help="Use real Ganache blockchain for gas measurements")
+    _args = _parser.parse_args()
+
+    suite = BenchmarkSuite(seed=42, use_real_blockchain=_args.real)
     suite.run_all()
 
     print("\n\nLaTeX Tables:")

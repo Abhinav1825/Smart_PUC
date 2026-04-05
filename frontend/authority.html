@@ -64,6 +64,7 @@
 <script>
 const API=window.SMART_PUC_API||'http://127.0.0.1:5000';
 const PHASE_LABELS=['Low','Medium','High','Extra High'];
+function escapeHtmlAuth(str){if(str==null)return '';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 async function loadAll(){
     const tb=document.getElementById('recBody'),search=document.getElementById('searchVid').value.trim().toUpperCase(),
           filt=document.getElementById('filterSt').value;
@@ -102,15 +103,15 @@ async function loadAll(){
             const d=new Date(r.timestamp*1000).toLocaleString();
             const cl=r.status==='PASS'?'pass':'fail';
             const fcl=r.fraud>=0.65?'text-fail':r.fraud>=0.35?'text-warn':'text-pass';
-            return '<tr><td class="mono">'+( i+1)+'</td><td><strong>'+r.vehicleId+'</strong></td><td class="mono">'+r.co2.toFixed(1)+'</td><td class="mono">'+r.nox.toFixed(4)+'</td><td class="mono">'+r.ces.toFixed(3)+'</td><td class="mono '+fcl+'">'+r.fraud.toFixed(3)+'</td><td>'+PHASE_LABELS[r.phase]+'</td><td class="text-muted">'+d+'</td><td><span class="status-badge '+cl+'">'+r.status+'</span></td></tr>';
+            return '<tr><td class="mono">'+( i+1)+'</td><td><strong>'+escapeHtmlAuth(r.vehicleId)+'</strong></td><td class="mono">'+escapeHtmlAuth(r.co2.toFixed(1))+'</td><td class="mono">'+escapeHtmlAuth(r.nox.toFixed(4))+'</td><td class="mono">'+escapeHtmlAuth(r.ces.toFixed(3))+'</td><td class="mono '+fcl+'">'+escapeHtmlAuth(r.fraud.toFixed(3))+'</td><td>'+escapeHtmlAuth(PHASE_LABELS[r.phase])+'</td><td class="text-muted">'+escapeHtmlAuth(d)+'</td><td><span class="status-badge '+cl+'">'+escapeHtmlAuth(r.status)+'</span></td></tr>';
         }).join('');
-    }catch(e){tb.innerHTML='<tr><td colspan="9" class="text-center text-fail">'+e.message+'</td></tr>';}
+    }catch(e){tb.innerHTML='<tr><td colspan="9" class="text-center text-fail">'+escapeHtmlAuth(e.message)+'</td></tr>';}
 }
 async function listenViol(){try{const c=await getContract();if(!c)return;
     c.on('ViolationDetected',(v,ces,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
-        '<div class="alert alert-violation">VIOLATION: '+v+' CES='+(Number(ces)/10000).toFixed(3)+' at '+new Date(Number(t)*1000).toLocaleTimeString()+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
+        '<div class="alert alert-violation">VIOLATION: '+escapeHtmlAuth(v)+' CES='+escapeHtmlAuth((Number(ces)/10000).toFixed(3))+' at '+escapeHtmlAuth(new Date(Number(t)*1000).toLocaleTimeString())+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
     c.on('FraudDetected',(v,fs,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
-        '<div class="alert alert-warning">FRAUD ALERT: '+v+' Score='+(Number(fs)/10000).toFixed(3)+' at '+new Date(Number(t)*1000).toLocaleTimeString()+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
+        '<div class="alert alert-warning">FRAUD ALERT: '+escapeHtmlAuth(v)+' Score='+escapeHtmlAuth((Number(fs)/10000).toFixed(3))+' at '+escapeHtmlAuth(new Date(Number(t)*1000).toLocaleTimeString())+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
 }catch(e){console.warn(e);}}
 document.addEventListener('DOMContentLoaded',listenViol);
 </script>

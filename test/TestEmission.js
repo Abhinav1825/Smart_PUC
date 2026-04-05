@@ -13,7 +13,7 @@ contract("EmissionContract", (accounts) => {
     const contractOwner = await instance.owner();
     assert.equal(contractOwner, owner, "Owner should be deployer");
 
-    const threshold = await instance.co2Threshold();
+    const threshold = await instance.threshold();
     assert.equal(threshold.toNumber(), 120000, "CO2 threshold should be 120000");
   });
 
@@ -44,7 +44,7 @@ contract("EmissionContract", (accounts) => {
     const record = await instance.getRecord("MH12AB1234", 0);
     assert.equal(record.co2.toNumber(), 100000);
     assert.equal(record.co.toNumber(), 500);
-    assert.equal(record.passed, true, "Record should PASS");
+    assert.equal(record.status, true, "Record should PASS");
   });
 
   // TC-03: Store FAIL record (CES >= 10000) and verify ViolationDetected
@@ -102,7 +102,7 @@ contract("EmissionContract", (accounts) => {
       { from: owner }
     );
     await instance.storeEmission(
-      "MH12GH3456", 125000, 1100, 70, 110, 6, 11000, 3000, 22000, 4, 1700000500,
+      "MH12GH3456", 125000, 1100, 70, 110, 6, 11000, 3000, 22000, 3, 1700000500,
       { from: owner }
     );
 
@@ -147,8 +147,8 @@ contract("EmissionContract", (accounts) => {
       { from: owner }
     );
 
-    const isRegistered = await instance.isVehicleRegistered("MH12KL2345");
-    assert.equal(isRegistered, true, "Vehicle should be auto-registered");
+    const recordCount = await instance.getRecordCount("MH12KL2345");
+    assert.ok(recordCount.toNumber() > 0, "Vehicle should be auto-registered (record count > 0)");
   });
 
   // TC-09: Empty vehicle ID rejected
@@ -196,7 +196,7 @@ contract("EmissionContract", (accounts) => {
     assert.equal(record.vspValue.toNumber(), 16000, "vspValue mismatch");
     assert.equal(record.wltcPhase.toNumber(), 2, "wltcPhase mismatch");
     assert.equal(record.timestamp.toNumber(), 1700001000, "timestamp mismatch");
-    assert.equal(record.passed, true, "passed mismatch");
+    assert.equal(record.status, true, "status mismatch");
   });
 
   // TC-11: Unauthorized caller rejected

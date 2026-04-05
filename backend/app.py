@@ -23,8 +23,12 @@ Requires:
     - Truffle migration completed
 """
 
+import functools
+import hashlib
+import hmac
 import os
 import sys
+import threading
 import time
 import traceback
 from typing import Optional
@@ -147,7 +151,11 @@ if _cors_origins == "*":
 else:
     CORS(app, origins=_cors_origins.split(","))
 
-# Simple in-memory rate limiting (per-IP, per-minute)
+# API key authentication for write endpoints
+API_KEY = os.getenv("API_KEY", "")  # Set in .env for production; empty = auth disabled
+
+# Simple in-memory rate limiting (per-IP, per-minute) — thread-safe
+_rate_limit_lock = threading.Lock()
 _rate_limit_store: dict = {}
 _RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "120"))  # requests per minute
 _RATE_LIMIT_WINDOW = 60  # seconds
@@ -155,27 +163,45 @@ _RATE_LIMIT_WINDOW = 60  # seconds
 DEFAULT_VEHICLE_ID = os.getenv("DEFAULT_VEHICLE_ID", "MH12AB1234")
 
 
+def require_api_key(f):
+    """Decorator: require valid API key for write endpoints.
+
+    When API_KEY is empty (dev mode), authentication is skipped.
+    The key must be sent as ``X-API-Key`` header or ``api_key`` query parameter.
+    """
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not API_KEY:
+            return f(*args, **kwargs)  # auth disabled in dev mode
+        provided = request.headers.get("X-API-Key") or request.args.get("api_key", "")
+        if not provided or not hmac.compare_digest(provided, API_KEY):
+            return jsonify({"success": False, "error": "Invalid or missing API key"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.before_request
 def _check_rate_limit():
-    """Simple per-IP rate limiting to prevent API abuse."""
+    """Thread-safe per-IP rate limiting to prevent API abuse."""
     client_ip = request.remote_addr or "unknown"
     now = time.time()
 
-    # Clean expired entries
-    expired = [ip for ip, (_, ts) in _rate_limit_store.items() if now - ts > _RATE_LIMIT_WINDOW]
-    for ip in expired:
-        del _rate_limit_store[ip]
+    with _rate_limit_lock:
+        # Clean expired entries
+        expired = [ip for ip, (_, ts) in _rate_limit_store.items() if now - ts > _RATE_LIMIT_WINDOW]
+        for ip in expired:
+            del _rate_limit_store[ip]
 
-    if client_ip in _rate_limit_store:
-        count, window_start = _rate_limit_store[client_ip]
-        if now - window_start < _RATE_LIMIT_WINDOW:
-            if count >= _RATE_LIMIT_MAX:
-                return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
-            _rate_limit_store[client_ip] = (count + 1, window_start)
+        if client_ip in _rate_limit_store:
+            count, window_start = _rate_limit_store[client_ip]
+            if now - window_start < _RATE_LIMIT_WINDOW:
+                if count >= _RATE_LIMIT_MAX:
+                    return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
+                _rate_limit_store[client_ip] = (count + 1, window_start)
+            else:
+                _rate_limit_store[client_ip] = (1, now)
         else:
             _rate_limit_store[client_ip] = (1, now)
-    else:
-        _rate_limit_store[client_ip] = (1, now)
 
 # ────────────────────────── Initialise Components ────────────────────────
 
@@ -190,7 +216,8 @@ except Exception as e:
     blockchain = None
     blockchain_connected = False
 
-# Track readings count for LSTM window and cold-start timing
+# Track readings count for LSTM window and cold-start timing (thread-safe)
+_readings_lock = threading.Lock()
 readings_count = 0
 _engine_start_time: float = time.time()  # timestamp of first reading for cold-start
 
@@ -280,6 +307,7 @@ def simulate():
 
 
 @app.route("/api/record", methods=["POST"])
+@require_api_key
 def record():
     """
     POST /api/record
@@ -327,7 +355,8 @@ def record():
             acceleration=acceleration,
         )
 
-        readings_count += 1
+        with _readings_lock:
+            readings_count += 1
 
         # Step 2: Fraud detection
         fraud_result = {"fraud_score": 0.0, "is_fraud": False, "severity": "LOW", "violations": []}
