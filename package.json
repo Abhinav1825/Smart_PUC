@@ -1,16 +1,26 @@
 {
   "name": "smart-puc",
-  "version": "2.0.0",
-  "description": "Blockchain-Based Multi-Pollutant Vehicle Emission Monitoring and Compliance System (BSVI)",
+  "version": "3.0.0",
+  "description": "Blockchain-Based Multi-Pollutant Vehicle Emission Monitoring and Compliance System (BSVI) with OBD-II integration, ML fraud detection, GreenToken rewards, and Polygon deployment",
   "main": "truffle-config.js",
   "scripts": {
     "compile": "truffle compile",
     "migrate": "truffle migrate",
     "migrate:sepolia": "truffle migrate --network sepolia",
+    "migrate:polygon": "truffle migrate --network polygon",
     "test": "truffle test",
-    "test:python": "cd .. && python -m pytest tests/ -v",
+    "test:python": "python -m pytest tests/ -v",
+    "test:coverage": "npx solidity-coverage",
+    "coverage": "npx solidity-coverage",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && python app.py",
-    "dev:frontend": "npx http-server frontend -p 3000 -c-1 --cors"
+    "dev:frontend": "npx http-server frontend -p 3000 -c-1 --cors",
+    "dev:obd": "python -m obd_node.obd_device --count 50 --interval 3",
+    "start": "npm run docker:up",
+    "docker:up": "docker-compose up --build",
+    "docker:down": "docker-compose down",
+    "lint:sol": "npx solhint 'contracts/**/*.sol'",
+    "lint:py": "flake8 backend/ ml/ physics/ integrations/ --max-line-length=120 --ignore=E501,W503,E402"
   },
   "keywords": [
     "blockchain",
@@ -34,6 +44,8 @@
   },
   "devDependencies": {
     "chai": "^4.3.10",
-    "http-server": "^14.1.1"
+    "ganache": "^7.9.2",
+    "http-server": "^14.1.1",
+    "solidity-coverage": "^0.8.12"
   }
 }

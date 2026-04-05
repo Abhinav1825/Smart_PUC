@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PUC — Fleet Management Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Fleet-specific styles */
+        .fleet-overview { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+        @media (max-width: 900px) { .fleet-overview { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 500px) { .fleet-overview { grid-template-columns: 1fr; } }
+
+        .fleet-stat-card {
+            background: var(--bg-card, #111834); border-radius: 14px; padding: 1.4rem;
+            text-align: center; border: 1px solid var(--clr-border, #1e2a4a);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .fleet-stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
+        .fleet-stat-card .stat-value {
+            font-size: 2rem; font-weight: 700;
+            background: linear-gradient(135deg, #007AFF, #00BCD4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .fleet-stat-card .stat-label { font-size: 0.78rem; color: #8892b0; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Sortable table headers */
+        .sortable { cursor: pointer; user-select: none; position: relative; padding-right: 1.2em; }
+        .sortable::after { content: '\25B4\25BE'; position: absolute; right: 0.2em; top: 50%; transform: translateY(-50%); font-size: 0.65em; opacity: 0.4; letter-spacing: -2px; }
+        .sortable.asc::after { content: '\25B2'; opacity: 0.9; }
+        .sortable.desc::after { content: '\25BC'; opacity: 0.9; }
+
+        /* Row color coding */
+        tr.row-compliant { border-left: 3px solid #4CAF50; }
+        tr.row-violation { border-left: 3px solid #F44336; background: rgba(244,67,54,0.04); }
+
+        /* Alert severity badges */
+        .severity-high { background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336; }
+        .severity-medium { background: rgba(255,152,0,0.15); color: #FF9800; border: 1px solid #FF9800; }
+        .severity-low { background: rgba(33,150,243,0.15); color: #2196F3; border: 1px solid #2196F3; }
+        .severity-badge { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+
+        .alert-card {
+            padding: 0.9rem 1.1rem; border-radius: 10px; margin-bottom: 0.6rem;
+            background: rgba(255,255,255,0.02); border: 1px solid var(--clr-border, #1e2a4a);
+            display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+        }
+        .alert-card-high { border-left: 3px solid #F44336; }
+        .alert-card-medium { border-left: 3px solid #FF9800; }
+        .alert-card-low { border-left: 3px solid #2196F3; }
+
+        .alert-info { flex: 1; }
+        .alert-vehicle { font-weight: 600; font-size: 0.95rem; }
+        .alert-message { color: #8892b0; font-size: 0.82rem; margin-top: 0.15rem; }
+        .alert-time { color: #5a6a8a; font-size: 0.75rem; white-space: nowrap; }
+
+        /* Bulk actions bar */
+        .bulk-bar {
+            display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem;
+            background: rgba(0,122,255,0.08); border-radius: 10px; margin-bottom: 1rem;
+            border: 1px solid rgba(0,122,255,0.2);
+        }
+        .bulk-bar .selected-count { font-weight: 600; color: #007AFF; }
+
+        /* Eligibility indicators */
+        .eligibility-yes { color: #4CAF50; font-weight: 600; }
+        .eligibility-no { color: #F44336; font-weight: 600; }
+        .eligibility-pending { color: #FF9800; font-weight: 600; }
+
+        /* Chart container */
+        .chart-container { position: relative; height: 350px; width: 100%; }
+
+        /* Checkbox styling */
+        .fleet-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #007AFF; }
+
+        /* Loading spinner */
+        .fleet-spinner {
+            display: inline-block; width: 20px; height: 20px;
+            border: 2px solid rgba(255,255,255,0.1); border-top-color: #007AFF;
+            border-radius: 50%; animation: fleet-spin 0.6s linear infinite;
+        }
+        @keyframes fleet-spin { to { transform: rotate(360deg); } }
+
+        .empty-fleet-state { text-align: center; padding: 3rem 1rem; color: #5a6a8a; }
+        .empty-fleet-state .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+        .alerts-scroll { max-height: 400px; overflow-y: auto; padding-right: 0.5rem; }
+        .alerts-scroll::-webkit-scrollbar { width: 4px; }
+        .alerts-scroll::-webkit-scrollbar-thumb { background: #2a3158; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <div class="logo">&#9889;</div>
+            <div><h1>Smart PUC</h1><span>Fleet Management</span></div>
+        </a>
+        <div class="navbar-actions">
+            <a href="index.html" class="nav-link">Vehicle</a>
+            <a href="authority.html" class="nav-link">Authority</a>
+            <a href="verify.html" class="nav-link">Verify</a>
+            <a href="analytics.html" class="nav-link">Analytics</a>
+            <a href="fleet.html" class="nav-link active">Fleet</a>
+            <a href="rto.html" class="nav-link">RTO</a>
+            <a href="marketplace.html" class="nav-link">Marketplace</a>
+            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+        </div>
+    </nav>
+
+    <div id="alertsContainer"></div>
+
+    <!-- Section 1: Fleet Overview Cards -->
+    <div class="fleet-overview" id="fleetOverview">
+        <div class="fleet-stat-card">
+            <div class="stat-value" id="ovTotalVehicles">--</div>
+            <div class="stat-label">Total Vehicles</div>
+        </div>
+        <div class="fleet-stat-card">
+            <div class="stat-value" id="ovTotalRecords">--</div>
+            <div class="stat-label">Total Records</div>
+        </div>
+        <div class="fleet-stat-card">
+            <div class="stat-value" id="ovComplianceRate">--</div>
+            <div class="stat-label">Fleet Compliance</div>
+        </div>
+        <div class="fleet-stat-card">
+            <div class="stat-value" id="ovAvgCES">--</div>
+            <div class="stat-label">Avg CES</div>
+        </div>
+        <div class="fleet-stat-card">
+            <div class="stat-value" id="ovTotalGCT" style="-webkit-text-fill-color:#4CAF50; color:#4CAF50;">--</div>
+            <div class="stat-label">Total GCT Earned</div>
+        </div>
+    </div>
+
+    <!-- Section 2: Vehicle Fleet Table + Bulk Actions -->
+    <div class="card mb-lg">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#128666;</span> Vehicle Fleet</div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+                <button class="btn btn-accent btn-sm" onclick="loadFleetVehicles()">Refresh</button>
+            </div>
+        </div>
+
+        <!-- Bulk Actions Bar -->
+        <div class="bulk-bar" id="bulkBar" style="display:none;">
+            <span class="selected-count" id="selectedCount">0 selected</span>
+            <button class="btn btn-accent btn-sm" id="bulkIssueBtn" onclick="bulkIssueCertificates()">Issue Certificates</button>
+            <button class="btn btn-outline btn-sm" onclick="clearSelection()">Clear Selection</button>
+            <span id="bulkStatus" style="font-size:0.82rem;color:#8892b0;"></span>
+        </div>
+
+        <div class="table-container">
+            <table id="fleetTable">
+                <thead>
+                    <tr>
+                        <th style="width:40px;"><input type="checkbox" class="fleet-checkbox" id="selectAllChk" onchange="toggleSelectAll(this)"></th>
+                        <th class="sortable" data-col="vehicle_id" onclick="sortFleetTable('vehicle_id')">Vehicle ID</th>
+                        <th class="sortable" data-col="total_records" onclick="sortFleetTable('total_records')">Total Records</th>
+                        <th class="sortable" data-col="violations" onclick="sortFleetTable('violations')">Violations</th>
+                        <th class="sortable" data-col="fraud_alerts" onclick="sortFleetTable('fraud_alerts')">Fraud Alerts</th>
+                        <th class="sortable" data-col="avg_ces" onclick="sortFleetTable('avg_ces')">Avg CES</th>
+                        <th>PUC Status</th>
+                        <th>Eligibility</th>
+                        <th class="sortable" data-col="last_activity" onclick="sortFleetTable('last_activity')">Last Activity</th>
+                    </tr>
+                </thead>
+                <tbody id="fleetTableBody">
+                    <tr><td colspan="9" class="text-center text-dim" style="padding:2rem;">Loading fleet data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 3: Active Alerts Panel + Section 5: Emission Comparison Chart -->
+    <div class="grid-2 mb-lg">
+        <!-- Active Alerts -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#9888;</span> Active Alerts</div>
+                <span class="text-muted text-mono" id="alertCount">0 alerts</span>
+            </div>
+            <div class="alerts-scroll" id="alertsPanel">
+                <div class="empty-fleet-state">
+                    <div class="icon">&#128276;</div>
+                    <p>Loading alerts...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fleet Emission Comparison Chart -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128202;</span> Fleet Emission Comparison</div>
+                <span class="text-muted text-mono">Avg CES per Vehicle</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="fleetComparisonChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        Smart PUC &mdash; Fleet Management Dashboard | Blockchain-Based Multi-Pollutant Emission Monitoring &amp; Compliance
+    </footer>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+<script>
+// ── Configuration ──
+const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+
+// ── State ──
+let fleetVehicles = [];
+let selectedVehicles = new Set();
+let currentSort = { col: null, dir: 'asc' };
+let comparisonChart = null;
+
+// ── Utility: HTML escaping ──
+function escapeHtml(str) {
+    if (str == null) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+}
+
+// ── Utility: Truncate address ──
+function truncAddr(addr) {
+    if (!addr || addr === '0x0000000000000000000000000000000000000000') return '--';
+    return addr.slice(0, 6) + '...' + addr.slice(-4);
+}
+
+// ── Utility: Format timestamp ──
+function formatTime(ts) {
+    if (!ts || ts === 0) return '--';
+    const d = new Date(typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts);
+    return d.toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Utility: Safe fetch with error handling ──
+async function safeFetch(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// Section 1: Fleet Overview
+// ══════════════════════════════════════════════════════════════
+async function loadFleetOverview() {
+    try {
+        const data = await safeFetch(`${API_BASE}/api/analytics/fleet`);
+        const f = data.fleet || data.result || data;
+
+        document.getElementById('ovTotalVehicles').textContent = f.total_vehicles != null ? f.total_vehicles : '--';
+        document.getElementById('ovTotalRecords').textContent = f.total_records != null ? f.total_records : '--';
+        document.getElementById('ovComplianceRate').textContent = f.compliance_rate != null ? parseFloat(f.compliance_rate).toFixed(1) + '%' : '--';
+        document.getElementById('ovAvgCES').textContent = f.avg_ces != null ? parseFloat(f.avg_ces).toFixed(4) : '--';
+        document.getElementById('ovTotalGCT').textContent = f.total_gct_earned != null ? f.total_gct_earned : '--';
+    } catch (e) {
+        console.warn('Fleet overview fetch failed:', e.message);
+        ['ovTotalVehicles','ovTotalRecords','ovComplianceRate','ovAvgCES','ovTotalGCT'].forEach(function(id) {
+            document.getElementById(id).textContent = 'N/A';
+        });
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Section 2: Vehicle Fleet Table
+// ══════════════════════════════════════════════════════════════
+async function loadFleetVehicles() {
+    const tbody = document.getElementById('fleetTableBody');
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center"><div class="fleet-spinner"></div></td></tr>';
+
+    try {
+        const data = await safeFetch(`${API_BASE}/api/fleet/vehicles`);
+        fleetVehicles = data.vehicles || data.result || data || [];
+
+        if (!Array.isArray(fleetVehicles) || fleetVehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-dim" style="padding:2rem;">No fleet vehicles found. Start monitoring vehicles to populate this dashboard.</td></tr>';
+            return;
+        }
+
+        renderFleetTable();
+        renderComparisonChart();
+    } catch (e) {
+        console.warn('Fleet vehicles fetch failed:', e.message);
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-dim" style="padding:2rem;">Could not load fleet data. Ensure the backend is running at ' + escapeHtml(API_BASE) + '</td></tr>';
+    }
+}
+
+function renderFleetTable() {
+    const tbody = document.getElementById('fleetTableBody');
+
+    if (!fleetVehicles.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-dim" style="padding:2rem;">No vehicles in fleet.</td></tr>';
+        return;
+    }
+
+    const sorted = [...fleetVehicles];
+    if (currentSort.col) {
+        sorted.sort(function(a, b) {
+            let va = a[currentSort.col];
+            let vb = b[currentSort.col];
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (va == null) va = '';
+            if (vb == null) vb = '';
+            if (va < vb) return currentSort.dir === 'asc' ? -1 : 1;
+            if (va > vb) return currentSort.dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
+    tbody.innerHTML = sorted.map(function(v) {
+        const vid = v.vehicle_id || v.vehicleId || '--';
+        const totalRec = v.total_records != null ? v.total_records : 0;
+        const violations = v.violations != null ? v.violations : 0;
+        const fraudAlerts = v.fraud_alerts != null ? v.fraud_alerts : 0;
+        const avgCes = v.avg_ces != null ? parseFloat(v.avg_ces).toFixed(4) : '--';
+        const pucStatus = v.puc_status || v.pucStatus || 'Unknown';
+        const eligible = v.eligible != null ? v.eligible : (v.eligibility != null ? v.eligibility : null);
+        const lastActivity = v.last_activity || v.lastActivity || 0;
+
+        const isCompliant = violations === 0 && fraudAlerts === 0;
+        const rowClass = isCompliant ? 'row-compliant' : 'row-violation';
+        const checked = selectedVehicles.has(vid) ? 'checked' : '';
+
+        let pucBadge;
+        const pucLower = String(pucStatus).toLowerCase();
+        if (pucLower === 'valid' || pucLower === 'active') {
+            pucBadge = '<span class="status-badge pass">VALID</span>';
+        } else if (pucLower === 'expired') {
+            pucBadge = '<span class="status-badge" style="background:rgba(255,152,0,0.15);color:#FF9800;">EXPIRED</span>';
+        } else if (pucLower === 'revoked') {
+            pucBadge = '<span class="status-badge fail">REVOKED</span>';
+        } else {
+            pucBadge = '<span class="status-badge" style="background:rgba(255,255,255,0.05);color:#8892b0;">NONE</span>';
+        }
+
+        let eligBadge;
+        if (eligible === true || eligible === 'yes') {
+            eligBadge = '<span class="eligibility-yes">Eligible</span>';
+        } else if (eligible === false || eligible === 'no') {
+            eligBadge = '<span class="eligibility-no">Not Eligible</span>';
+        } else if (eligible === 'pending') {
+            eligBadge = '<span class="eligibility-pending">Pending</span>';
+        } else {
+            eligBadge = '<span style="color:#5a6a8a;">--</span>';
+        }
+
+        return '<tr class="' + rowClass + '">' +
+            '<td><input type="checkbox" class="fleet-checkbox" value="' + escapeHtml(vid) + '" ' + checked + ' onchange="toggleVehicleSelect(this)"></td>' +
+            '<td><strong>' + escapeHtml(vid) + '</strong></td>' +
+            '<td class="mono">' + totalRec + '</td>' +
+            '<td class="mono" style="color:' + (violations > 0 ? '#F44336' : 'inherit') + ';">' + violations + '</td>' +
+            '<td class="mono" style="color:' + (fraudAlerts > 0 ? '#FF9800' : 'inherit') + ';">' + fraudAlerts + '</td>' +
+            '<td class="mono">' + escapeHtml(avgCes) + '</td>' +
+            '<td>' + pucBadge + '</td>' +
+            '<td>' + eligBadge + '</td>' +
+            '<td class="text-muted" style="font-size:0.82rem;">' + escapeHtml(formatTime(lastActivity)) + '</td>' +
+            '</tr>';
+    }).join('');
+}
+
+// ── Sorting ──
+function sortFleetTable(col) {
+    const headers = document.querySelectorAll('#fleetTable .sortable');
+    headers.forEach(function(h) { h.classList.remove('asc', 'desc'); });
+
+    if (currentSort.col === col) {
+        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.col = col;
+        currentSort.dir = 'asc';
+    }
+
+    const activeHeader = document.querySelector('#fleetTable .sortable[data-col="' + col + '"]');
+    if (activeHeader) activeHeader.classList.add(currentSort.dir);
+
+    renderFleetTable();
+}
+
+// ── Selection ──
+function toggleVehicleSelect(chk) {
+    if (chk.checked) {
+        selectedVehicles.add(chk.value);
+    } else {
+        selectedVehicles.delete(chk.value);
+    }
+    updateBulkBar();
+}
+
+function toggleSelectAll(chk) {
+    const checkboxes = document.querySelectorAll('#fleetTableBody .fleet-checkbox');
+    checkboxes.forEach(function(cb) {
+        cb.checked = chk.checked;
+        if (chk.checked) {
+            selectedVehicles.add(cb.value);
+        } else {
+            selectedVehicles.delete(cb.value);
+        }
+    });
+    updateBulkBar();
+}
+
+function clearSelection() {
+    selectedVehicles.clear();
+    document.getElementById('selectAllChk').checked = false;
+    document.querySelectorAll('#fleetTableBody .fleet-checkbox').forEach(function(cb) { cb.checked = false; });
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const bar = document.getElementById('bulkBar');
+    const count = selectedVehicles.size;
+    if (count > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('selectedCount').textContent = count + ' selected';
+    } else {
+        bar.style.display = 'none';
+    }
+    document.getElementById('bulkStatus').textContent = '';
+}
+
+// ══════════════════════════════════════════════════════════════
+// Section 4: Bulk Certificate Issuance
+// ══════════════════════════════════════════════════════════════
+async function bulkIssueCertificates() {
+    if (selectedVehicles.size === 0) return;
+
+    const statusEl = document.getElementById('bulkStatus');
+    const btn = document.getElementById('bulkIssueBtn');
+    btn.disabled = true;
+    statusEl.textContent = 'Issuing certificates...';
+
+    const vehicleIds = Array.from(selectedVehicles);
+    let issued = 0;
+    let failed = 0;
+
+    for (const vid of vehicleIds) {
+        try {
+            statusEl.textContent = 'Issuing for ' + escapeHtml(vid) + '... (' + (issued + failed + 1) + '/' + vehicleIds.length + ')';
+            const res = await fetch(API_BASE + '/api/certificate/issue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vehicle_id: vid })
+            });
+            const data = await res.json();
+            if (data.success) {
+                issued++;
+            } else {
+                failed++;
+            }
+        } catch (e) {
+            failed++;
+        }
+    }
+
+    statusEl.innerHTML = '<span style="color:#4CAF50;">' + issued + ' issued</span>' +
+        (failed > 0 ? ', <span style="color:#F44336;">' + failed + ' failed</span>' : '');
+    btn.disabled = false;
+
+    clearSelection();
+    loadFleetVehicles();
+    loadFleetOverview();
+}
+
+// ══════════════════════════════════════════════════════════════
+// Section 3: Active Alerts Panel
+// ══════════════════════════════════════════════════════════════
+async function loadFleetAlerts() {
+    const panel = document.getElementById('alertsPanel');
+
+    try {
+        const data = await safeFetch(`${API_BASE}/api/fleet/alerts`);
+        const alerts = data.alerts || data.result || data || [];
+
+        if (!Array.isArray(alerts) || alerts.length === 0) {
+            panel.innerHTML = '<div class="empty-fleet-state"><div class="icon">&#9989;</div><p>No active alerts. All vehicles compliant.</p></div>';
+            document.getElementById('alertCount').textContent = '0 alerts';
+            return;
+        }
+
+        // Sort by severity: HIGH first, then MEDIUM, then LOW
+        const severityOrder = { 'HIGH': 0, 'MEDIUM': 1, 'LOW': 2 };
+        alerts.sort(function(a, b) {
+            const sa = severityOrder[String(a.severity).toUpperCase()] || 3;
+            const sb = severityOrder[String(b.severity).toUpperCase()] || 3;
+            return sa - sb;
+        });
+
+        document.getElementById('alertCount').textContent = alerts.length + ' alert' + (alerts.length !== 1 ? 's' : '');
+
+        panel.innerHTML = alerts.map(function(alert) {
+            const sev = String(alert.severity || 'LOW').toUpperCase();
+            const cardClass = sev === 'HIGH' ? 'alert-card-high' : sev === 'MEDIUM' ? 'alert-card-medium' : 'alert-card-low';
+            const badgeClass = sev === 'HIGH' ? 'severity-high' : sev === 'MEDIUM' ? 'severity-medium' : 'severity-low';
+            const vid = alert.vehicle_id || alert.vehicleId || 'Unknown';
+            const msg = alert.message || alert.description || alert.type || 'Alert triggered';
+            const time = alert.timestamp || alert.time || 0;
+
+            return '<div class="alert-card ' + cardClass + '">' +
+                '<div class="alert-info">' +
+                    '<div class="alert-vehicle">' + escapeHtml(vid) + ' <span class="severity-badge ' + badgeClass + '">' + escapeHtml(sev) + '</span></div>' +
+                    '<div class="alert-message">' + escapeHtml(msg) + '</div>' +
+                '</div>' +
+                '<div class="alert-time">' + escapeHtml(formatTime(time)) + '</div>' +
+                '</div>';
+        }).join('');
+    } catch (e) {
+        console.warn('Fleet alerts fetch failed:', e.message);
+        panel.innerHTML = '<div class="empty-fleet-state"><div class="icon">&#128276;</div><p>Could not load alerts.</p></div>';
+        document.getElementById('alertCount').textContent = '0 alerts';
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Section 5: Fleet Emission Comparison Chart
+// ══════════════════════════════════════════════════════════════
+function renderComparisonChart() {
+    if (!fleetVehicles.length) return;
+
+    const ctx = document.getElementById('fleetComparisonChart').getContext('2d');
+
+    const labels = fleetVehicles.map(function(v) { return v.vehicle_id || v.vehicleId || '?'; });
+    const cesValues = fleetVehicles.map(function(v) { return v.avg_ces != null ? parseFloat(v.avg_ces) : 0; });
+
+    const barColors = cesValues.map(function(ces) {
+        if (ces >= 1.0) return 'rgba(244, 67, 54, 0.75)';
+        if (ces >= 0.75) return 'rgba(255, 152, 0, 0.75)';
+        return 'rgba(76, 175, 80, 0.75)';
+    });
+
+    const borderColors = cesValues.map(function(ces) {
+        if (ces >= 1.0) return '#F44336';
+        if (ces >= 0.75) return '#FF9800';
+        return '#4CAF50';
+    });
+
+    if (comparisonChart) {
+        comparisonChart.destroy();
+    }
+
+    comparisonChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Average CES',
+                data: cesValues,
+                backgroundColor: barColors,
+                borderColor: borderColors,
+                borderWidth: 1,
+                borderRadius: 4,
+                maxBarThickness: 50
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(17, 24, 52, 0.95)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#8892b0',
+                    borderColor: '#2a3158',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function(ctx) {
+                            return 'CES: ' + ctx.parsed.y.toFixed(4);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#8892b0', font: { size: 10 }, maxRotation: 45, minRotation: 0 },
+                    grid: { display: false }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#8892b0' },
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    title: { display: true, text: 'CES Score', color: '#8892b0' }
+                }
+            },
+            // Threshold line annotation via plugin
+            annotation: {
+                annotations: {
+                    threshold: {
+                        type: 'line',
+                        yMin: 1.0,
+                        yMax: 1.0,
+                        borderColor: '#F44336',
+                        borderWidth: 2,
+                        borderDash: [6, 3],
+                        label: {
+                            content: 'Pass Threshold (1.0)',
+                            enabled: true,
+                            position: 'end',
+                            backgroundColor: 'rgba(244,67,54,0.8)',
+                            color: '#fff',
+                            font: { size: 10 }
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [{
+            id: 'thresholdLine',
+            afterDraw: function(chart) {
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                if (yScale.max < 1.0) return;
+                const y = yScale.getPixelForValue(1.0);
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([6, 3]);
+                ctx.strokeStyle = '#F44336';
+                ctx.lineWidth = 2;
+                ctx.moveTo(xScale.left, y);
+                ctx.lineTo(xScale.right, y);
+                ctx.stroke();
+                ctx.fillStyle = '#F44336';
+                ctx.font = '10px sans-serif';
+                ctx.fillText('Pass Threshold (1.0)', xScale.right - 130, y - 6);
+                ctx.restore();
+            }
+        }]
+    });
+}
+
+// ══════════════════════════════════════════════════════════════
+// Initialization
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+    loadFleetOverview();
+    loadFleetVehicles();
+    loadFleetAlerts();
+});
+</script>
+</body>
+</html>

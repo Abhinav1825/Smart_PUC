@@ -1,17 +1,17 @@
 @echo off
-title Smart PUC - Project Launcher
+title Smart PUC - 3-Node Architecture Launcher
 color 0A
 echo.
-echo  ========================================================
-echo   Smart PUC - Multi-Pollutant Vehicle Emission Monitor
-echo   Blockchain + ML + WLTC + BSVI Compliance System
-echo  ========================================================
+echo  ============================================================
+echo   Smart PUC - 3-Node Blockchain Emission Monitoring System
+echo   EmissionRegistry + PUCCertificate (NFT) + GreenToken (ERC-20)
+echo  ============================================================
 echo.
 
 :: ──────────────────────────────────────────────────────────
 :: STEP 1: Install global tools (Truffle + Ganache)
 :: ──────────────────────────────────────────────────────────
-echo [1/7] Checking global tools...
+echo [1/8] Checking global tools...
 where truffle >nul 2>nul
 if %errorlevel% neq 0 (
     echo       Installing Truffle and Ganache globally...
@@ -23,85 +23,86 @@ if %errorlevel% neq 0 (
 :: ──────────────────────────────────────────────────────────
 :: STEP 2: Install Node.js dependencies
 :: ──────────────────────────────────────────────────────────
-echo [2/7] Installing Node.js dependencies (OpenZeppelin, HDWallet, http-server)...
+echo [2/8] Installing Node.js dependencies...
 call npm.cmd install
 
 :: ──────────────────────────────────────────────────────────
-:: STEP 3: Setup Python virtual environment + packages
+:: STEP 3: Setup Python virtual environment
 :: ──────────────────────────────────────────────────────────
-echo [3/7] Setting up Python environment...
-if not exist "backend\venv\Scripts\python.exe" (
+echo [3/8] Setting up Python environment...
+if not exist "venv\Scripts\python.exe" (
     echo       Creating virtual environment...
-    cd backend
     python -m venv venv
-    cd ..
 )
-echo       Installing Python packages (Flask, Web3, numpy, scikit-learn)...
-call backend\venv\Scripts\pip.exe install -q -r requirements.txt
+echo       Installing Python packages...
+call venv\Scripts\pip.exe install -q -r requirements.txt
 
 :: ──────────────────────────────────────────────────────────
-:: STEP 4: Create .env configuration
+:: STEP 4: Start Ganache (deterministic mode, 10 accounts)
 :: ──────────────────────────────────────────────────────────
-echo [4/7] Configuring environment...
-(
-echo RPC_URL=http://127.0.0.1:7545
-echo PRIVATE_KEY=0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d
-echo FLASK_PORT=5000
-echo FLASK_DEBUG=true
-echo DEFAULT_VEHICLE_ID=MH12AB1234
-echo CORS_ORIGINS=http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:8080,http://localhost:8080
-echo RATE_LIMIT_MAX=120
-) > .env
-echo       .env file created.
-
-:: ──────────────────────────────────────────────────────────
-:: STEP 5: Start Ganache (local blockchain)
-:: ──────────────────────────────────────────────────────────
-echo [5/7] Starting Ganache local blockchain on port 7545...
-start "SmartPUC - Ganache Blockchain" /min cmd /c "ganache -d -p 7545"
+echo [4/8] Starting Ganache local blockchain on port 7545...
+echo       Account roles: [0]=Admin  [1]=Station  [2]=Device  [3]=Owner
+start "SmartPUC - Ganache Blockchain" /min cmd /c "ganache --deterministic --accounts 10 --defaultBalanceEther 100 --port 7545 --gasLimit 12000000"
 echo       Waiting for Ganache to start...
 timeout /t 5 /nobreak > nul
 
 :: ──────────────────────────────────────────────────────────
-:: STEP 6: Compile and deploy smart contracts
+:: STEP 5: Compile and deploy all 3 smart contracts
 :: ──────────────────────────────────────────────────────────
-echo [6/7] Compiling and deploying smart contracts...
+echo [5/8] Deploying 3 smart contracts (EmissionRegistry + PUCCertificate + GreenToken)...
 call truffle migrate --reset --network development
 
 :: ──────────────────────────────────────────────────────────
-:: STEP 7: Start Backend + Frontend
+:: STEP 6: Start Testing Station Backend (Node 2)
 :: ──────────────────────────────────────────────────────────
-echo [7/7] Starting servers...
-start "SmartPUC - Backend API (port 5000)" /min cmd /c "cd backend && venv\Scripts\python.exe app.py"
+echo [6/8] Starting Testing Station Backend (Node 2) on port 5000...
+start "SmartPUC - Testing Station (Node 2)" /min cmd /c "venv\Scripts\python.exe backend\app.py"
 timeout /t 3 /nobreak > nul
-start "SmartPUC - Frontend (port 3000)" /min cmd /c "npx http-server frontend -p 3000 -c-1 --cors"
+
+:: ──────────────────────────────────────────────────────────
+:: STEP 7: Start Frontend Server (Node 3)
+:: ──────────────────────────────────────────────────────────
+echo [7/8] Starting Frontend (Node 3: Dashboards + Verification Portal) on port 3000...
+start "SmartPUC - Frontend (Node 3)" /min cmd /c "npx http-server frontend -p 3000 -c-1 --cors"
 timeout /t 2 /nobreak > nul
+
+:: ──────────────────────────────────────────────────────────
+:: STEP 8: Start OBD Device Simulator (Node 1) — optional
+:: ────────────────────────────────────────────────────────��─
+echo [8/8] Starting OBD Device Simulator (Node 1)...
+start "SmartPUC - OBD Device (Node 1)" /min cmd /c "venv\Scripts\python.exe -m obd_node.obd_device --count 100 --interval 5"
 
 :: ──────────────────────────────────────────────────────────
 :: DONE
 :: ──────────────────────────────────────────────────────────
 echo.
-echo  ========================================================
-echo   ALL SERVICES RUNNING
-echo  ========================================================
+echo  ============================================================
+echo   ALL 3 NODES RUNNING
+echo  ============================================================
 echo.
-echo   Dashboard:   http://127.0.0.1:3000
-echo   Backend API: http://127.0.0.1:5000
-echo   Blockchain:  http://127.0.0.1:7545
+echo   Node 1 (OBD Device):        Signing + sending telemetry
+echo   Node 2 (Testing Station):   http://127.0.0.1:5000
+echo   Node 3 (Frontend):          http://127.0.0.1:3000
+echo   Blockchain (Ganache):       http://127.0.0.1:7545
+echo.
+echo   Dashboards:
+echo     Vehicle Owner:     http://127.0.0.1:3000/index.html
+echo     Authority Panel:   http://127.0.0.1:3000/authority.html
+echo     Verification:      http://127.0.0.1:3000/verify.html
 echo.
 echo   MetaMask Setup:
-echo     Network:   Ganache
-echo     RPC URL:   http://127.0.0.1:7545
-echo     Chain ID:  1337
-echo     Import key (Account 2):
-echo     0x6cbed15c793ce57650b9877cf6fa156fbef513c4e6134f022a85b1ffdd59b2a1
+echo     Network:    Ganache
+echo     RPC URL:    http://127.0.0.1:7545
+echo     Chain ID:   1337
 echo.
-echo   Press any key to open the dashboard in your browser...
+echo     Import as Vehicle Owner (Account 3):
+echo     0x646f1ce2fdad0e6deeeb5c7e8e5543bdde65e86029e2fd9fc169899c440a7913
+echo.
+echo   Press any key to open the dashboard...
 pause > nul
 start http://127.0.0.1:3000
 echo.
 echo   Services are running in background windows.
-echo   Close this window when done. To stop all services,
-echo   close the Ganache, Backend, and Frontend windows.
+echo   Close this window when done.
 echo.
 pause

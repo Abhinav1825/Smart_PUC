@@ -1,0 +1,12 @@
+FROM node:18-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY truffle-config.js .
+COPY contracts/ ./contracts/
+COPY migrations/ ./migrations/
+
+CMD ["npx", "truffle", "migrate", "--network", "development"]

@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PUC — Public Verification Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .verify-container { max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+        .verify-card {
+            background: var(--bg-card, #111834); border-radius: 16px;
+            padding: 2.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .verify-header { text-align: center; margin-bottom: 2rem; }
+        .verify-header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .verify-header p { color: #8892b0; font-size: 0.95rem; }
+        .verify-badge {
+            display: inline-block; padding: 0.5rem 1.5rem; border-radius: 30px;
+            font-size: 1rem; font-weight: 700; text-transform: uppercase; margin-top: 0.5rem;
+        }
+        .badge-valid { background: rgba(76,175,80,0.15); color: #4CAF50; border: 2px solid #4CAF50; }
+        .badge-invalid { background: rgba(244,67,54,0.15); color: #F44336; border: 2px solid #F44336; }
+        .badge-expired { background: rgba(255,152,0,0.15); color: #FF9800; border: 2px solid #FF9800; }
+        .badge-checking { background: rgba(0,122,255,0.15); color: #007AFF; border: 2px solid #007AFF; }
+        .verify-search { display: flex; gap: 0.75rem; margin-bottom: 2rem; }
+        .verify-search input {
+            flex: 1; padding: 0.85rem 1rem; border-radius: 10px;
+            border: 1px solid #2a3158; background: #0d1229; color: #fff;
+            font-size: 1rem; text-transform: uppercase;
+        }
+        .verify-search button {
+            padding: 0.85rem 1.5rem; border-radius: 10px; border: none;
+            background: #007AFF; color: white; font-weight: 600; cursor: pointer;
+            font-size: 1rem;
+        }
+        .verify-search button:hover { background: #0056b3; }
+        .verify-search button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+        .result-item { padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 10px; }
+        .result-item label { display: block; font-size: 0.75rem; color: #8892b0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.3rem; }
+        .result-item .value { font-size: 1.1rem; font-weight: 600; }
+        .result-full { grid-column: 1 / -1; }
+        .chain-proof { margin-top: 1.5rem; padding: 1rem; background: rgba(0,188,212,0.08); border-radius: 10px; border: 1px solid rgba(0,188,212,0.2); }
+        .chain-proof h4 { color: #00BCD4; margin-bottom: 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+        .chain-proof p { font-size: 0.8rem; color: #8892b0; word-break: break-all; }
+        .no-backend-note { text-align: center; padding: 1.5rem; color: #8892b0; font-size: 0.9rem; }
+        .wallet-verify-section { margin-top: 1.5rem; text-align: center; }
+        .wallet-verify-section button {
+            padding: 0.7rem 1.5rem; border-radius: 10px; border: 1px solid #007AFF;
+            background: transparent; color: #007AFF; cursor: pointer; font-size: 0.9rem;
+        }
+        .wallet-verify-section button:hover { background: rgba(0,122,255,0.1); }
+        #directChainResult { margin-top: 1rem; padding: 1rem; border-radius: 10px; display: none; }
+        .stats-row { display: flex; gap: 1rem; justify-content: center; margin-top: 1rem; }
+        .stat-chip {
+            padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem;
+            background: rgba(255,255,255,0.05);
+        }
+
+        /* QR Code section */
+        .qr-section {
+            margin-top: 2rem; text-align: center; padding: 1.5rem;
+            background: rgba(76,175,80,0.05); border-radius: 12px;
+            border: 1px solid rgba(76,175,80,0.15);
+        }
+        .qr-section h4 {
+            color: #4CAF50; margin-bottom: 1rem; font-size: 0.9rem;
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .qr-container {
+            display: inline-block; padding: 16px; background: #fff; border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .qr-label {
+            margin-top: 0.75rem; font-size: 0.85rem; color: #8892b0;
+        }
+        .qr-actions {
+            display: flex; gap: 0.75rem; justify-content: center; margin-top: 1.25rem; flex-wrap: wrap;
+        }
+        .qr-actions button {
+            padding: 0.6rem 1.2rem; border-radius: 10px; border: none;
+            font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .btn-download-qr {
+            background: #4CAF50; color: white;
+        }
+        .btn-download-qr:hover { background: #388E3C; }
+        .btn-print-cert {
+            background: transparent; color: #00BCD4; border: 1px solid #00BCD4 !important;
+        }
+        .btn-print-cert:hover { background: rgba(0,188,212,0.1); }
+
+        /* Print styles */
+        @media print {
+            body { background: #fff !important; color: #000 !important; }
+            .navbar, .verify-search, .wallet-verify-section, .qr-actions,
+            #directChainResult, .chain-proof { display: none !important; }
+            .verify-container { max-width: 100%; margin: 0; }
+            .verify-card {
+                background: #fff !important; box-shadow: none !important;
+                border: 1px solid #ccc; color: #000 !important;
+            }
+            .verify-header h1 { color: #000 !important; }
+            .verify-header p { color: #555 !important; }
+            .result-item { background: #f9f9f9 !important; border: 1px solid #ddd; }
+            .result-item label { color: #555 !important; }
+            .result-item .value { color: #000 !important; }
+            .stat-chip { background: #f0f0f0 !important; color: #000 !important; }
+            .qr-section { background: #fff !important; border-color: #ccc !important; }
+            .qr-section h4 { color: #333 !important; }
+            .qr-label { color: #555 !important; }
+            .badge-valid { background: #e8f5e9 !important; color: #2e7d32 !important; border-color: #2e7d32 !important; }
+            .badge-invalid { background: #ffebee !important; color: #c62828 !important; border-color: #c62828 !important; }
+            .badge-expired { background: #fff3e0 !important; color: #e65100 !important; border-color: #e65100 !important; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <div class="logo">&#9889;</div>
+            <div><h1>Smart PUC</h1><span>Verification Portal</span></div>
+        </a>
+        <div class="navbar-actions">
+            <a href="index.html" class="nav-link">Vehicle</a>
+            <a href="authority.html" class="nav-link">Authority</a>
+            <a href="verify.html" class="nav-link active">Verify</a>
+            <a href="analytics.html" class="nav-link">Analytics</a>
+            <a href="fleet.html" class="nav-link">Fleet</a>
+            <a href="rto.html" class="nav-link">RTO</a>
+            <a href="marketplace.html" class="nav-link">Marketplace</a>
+            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+        </div>
+    </nav>
+
+    <div class="verify-container">
+        <div class="verify-card">
+            <div class="verify-header">
+                <h1>PUC Certificate Verification</h1>
+                <p>Enter a vehicle registration number to verify its Pollution Under Control certificate directly from the blockchain. No login required.</p>
+            </div>
+
+            <!-- Search -->
+            <div class="verify-search">
+                <input type="text" id="verifyInput" placeholder="e.g. MH12AB1234" maxlength="15"
+                       onkeypress="if(event.key==='Enter') verifyVehicle()">
+                <button id="verifyBtn" onclick="verifyVehicle()">Verify</button>
+            </div>
+
+            <!-- Result -->
+            <div id="verifyResult" style="display:none;">
+                <div style="text-align:center; margin-bottom:1.5rem;">
+                    <div id="statusBadge" class="verify-badge badge-checking">Checking...</div>
+                </div>
+
+                <div class="result-grid">
+                    <div class="result-item">
+                        <label>Vehicle ID</label>
+                        <div class="value" id="resVehicleId">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>Certificate Status</label>
+                        <div class="value" id="resCertStatus">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>Issue Date</label>
+                        <div class="value" id="resIssueDate">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>Expiry Date</label>
+                        <div class="value" id="resExpiryDate">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>Average CES</label>
+                        <div class="value" id="resAvgCES">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>NFT Token ID</label>
+                        <div class="value" id="resTokenId">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>Owner Address</label>
+                        <div class="value" id="resOwner" style="font-size:0.8rem;">--</div>
+                    </div>
+                    <div class="result-item">
+                        <label>Revoked</label>
+                        <div class="value" id="resRevoked">--</div>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-row" id="statsRow" style="display:none;">
+                    <div class="stat-chip" id="statRecords">0 Records</div>
+                    <div class="stat-chip" id="statViolations">0 Violations</div>
+                    <div class="stat-chip" id="statAvgCES">CES: 0.00</div>
+                </div>
+
+                <!-- QR Code Section (shown only for valid certs) -->
+                <div class="qr-section" id="qrSection" style="display:none;">
+                    <h4>Scan to Verify</h4>
+                    <div class="qr-container" id="qrContainer"></div>
+                    <div class="qr-label">Scan this QR code to verify the PUC certificate</div>
+                    <div class="qr-actions">
+                        <button class="btn-download-qr" onclick="downloadQRCode()">Download QR Code</button>
+                        <button class="btn-print-cert" onclick="printCertificate()">Print Certificate</button>
+                    </div>
+                </div>
+
+                <!-- Blockchain Proof -->
+                <div class="chain-proof">
+                    <h4>Blockchain Proof</h4>
+                    <p>This verification reads directly from the Ethereum blockchain. The certificate data is immutable and cannot be forged. No centralized server can alter these records.</p>
+                    <p style="margin-top:0.5rem;" id="chainInfo">Connect MetaMask for direct on-chain verification.</p>
+                </div>
+
+                <!-- Direct Chain Verification -->
+                <div class="wallet-verify-section">
+                    <button onclick="verifyDirectFromChain()">Verify Directly from Blockchain (MetaMask)</button>
+                    <div id="directChainResult"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script>
+        const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+        let lastVehicleId = '';
+        let lastVerificationValid = false;
+        let qrInstance = null;
+
+        // PUCCertificate ABI (read-only functions for verification)
+        const PUC_CERT_ABI = [
+            "function isValid(string memory _vehicleId) view returns (bool valid, uint256 tokenId, uint256 expiryTimestamp)",
+            "function getVerificationData(string memory _vehicleId) view returns (bool valid, uint256 tokenId, string vehicleId, address vehicleOwner, uint256 issueDate, uint256 expiryDate, uint256 averageCES, bool revoked)",
+            "function getCertificate(uint256 _tokenId) view returns (tuple(string vehicleId, address vehicleOwner, uint256 issueTimestamp, uint256 expiryTimestamp, uint256 averageCES, uint256 totalRecordsAtIssue, address issuedByStation, bool revoked, string revokeReason))"
+        ];
+
+        function escapeHtml(str) {
+            if (str == null) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function formatDate(ts) {
+            if (!ts || ts === 0) return '--';
+            return new Date(ts * 1000).toLocaleDateString('en-IN', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+        }
+
+        function truncAddr(addr) {
+            if (!addr || addr === '0x0000000000000000000000000000000000000000') return 'Not assigned';
+            return addr.slice(0, 8) + '...' + addr.slice(-6);
+        }
+
+        /* ---- Wallet Connect (matching other pages) ---- */
+        async function connectWallet() {
+            if (typeof window.ethereum === 'undefined') {
+                alert('MetaMask not detected. Please install MetaMask.');
+                return;
+            }
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (accounts.length > 0) {
+                    const addr = accounts[0];
+                    document.getElementById('walletAddress').textContent = addr.slice(0, 6) + '...' + addr.slice(-4);
+                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('connectWalletBtn').textContent = 'Connected';
+                }
+            } catch (err) {
+                console.error('Wallet connection failed:', err);
+            }
+        }
+
+        /* ---- QR Code Generation ---- */
+        function generateQRCode(vehicleId) {
+            const qrSection = document.getElementById('qrSection');
+            const qrContainer = document.getElementById('qrContainer');
+
+            // Clear previous QR
+            qrContainer.innerHTML = '';
+            if (qrInstance) {
+                qrInstance = null;
+            }
+
+            const verifyUrl = window.location.origin + '/verify.html?vid=' + encodeURIComponent(vehicleId);
+
+            qrInstance = new QRCode(qrContainer, {
+                text: verifyUrl,
+                width: 180,
+                height: 180,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            qrSection.style.display = 'block';
+        }
+
+        /* ---- Download QR as PNG ---- */
+        function downloadQRCode() {
+            const qrContainer = document.getElementById('qrContainer');
+            const canvas = qrContainer.querySelector('canvas');
+            if (!canvas) {
+                // Fallback: try the img element
+                const img = qrContainer.querySelector('img');
+                if (img) {
+                    const link = document.createElement('a');
+                    link.download = 'PUC_QR_' + lastVehicleId + '.png';
+                    link.href = img.src;
+                    link.click();
+                }
+                return;
+            }
+            const link = document.createElement('a');
+            link.download = 'PUC_QR_' + lastVehicleId + '.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        /* ---- Print Certificate ---- */
+        function printCertificate() {
+            window.print();
+        }
+
+        /* ---- Main Verification ---- */
+        async function verifyVehicle() {
+            const input = document.getElementById('verifyInput');
+            const vehicleId = input.value.trim().toUpperCase().replace(/\s/g, '');
+            if (!vehicleId) return;
+
+            lastVehicleId = vehicleId;
+            lastVerificationValid = false;
+            const resultDiv = document.getElementById('verifyResult');
+            const badge = document.getElementById('statusBadge');
+            const btn = document.getElementById('verifyBtn');
+            const qrSection = document.getElementById('qrSection');
+
+            resultDiv.style.display = 'block';
+            qrSection.style.display = 'none';
+            badge.className = 'verify-badge badge-checking';
+            badge.textContent = 'Verifying...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/verify/${encodeURIComponent(vehicleId)}`);
+                const data = await res.json();
+
+                if (!data.success) throw new Error(data.error || 'Verification failed');
+
+                const v = data.verification;
+                const s = data.stats;
+
+                // Update badge
+                if (v.valid) {
+                    badge.className = 'verify-badge badge-valid';
+                    badge.textContent = 'VALID';
+                    lastVerificationValid = true;
+                } else if (v.revoked) {
+                    badge.className = 'verify-badge badge-invalid';
+                    badge.textContent = 'REVOKED';
+                } else if (v.expiry_date > 0 && Date.now()/1000 > v.expiry_date) {
+                    badge.className = 'verify-badge badge-expired';
+                    badge.textContent = 'EXPIRED';
+                } else {
+                    badge.className = 'verify-badge badge-invalid';
+                    badge.textContent = 'NO CERTIFICATE';
+                }
+
+                // Update fields
+                document.getElementById('resVehicleId').textContent = escapeHtml(vehicleId);
+                document.getElementById('resCertStatus').textContent = v.valid ? 'Active' : (v.revoked ? 'Revoked' : 'Inactive');
+                document.getElementById('resIssueDate').textContent = formatDate(v.issue_date);
+                document.getElementById('resExpiryDate').textContent = formatDate(v.expiry_date);
+                document.getElementById('resAvgCES').textContent = v.average_ces ? v.average_ces.toFixed(4) : '--';
+                document.getElementById('resTokenId').textContent = v.token_id > 0 ? `#${v.token_id}` : 'None';
+                document.getElementById('resOwner').textContent = truncAddr(v.vehicle_owner);
+                document.getElementById('resRevoked').textContent = v.revoked ? 'Yes' : 'No';
+
+                // Stats
+                if (s && s.total_records > 0) {
+                    document.getElementById('statsRow').style.display = 'flex';
+                    document.getElementById('statRecords').textContent = `${s.total_records} Records`;
+                    document.getElementById('statViolations').textContent = `${s.violations} Violations`;
+                    document.getElementById('statAvgCES').textContent = `CES: ${s.avg_ces.toFixed(4)}`;
+                }
+
+                // Generate QR code if certificate is valid
+                if (lastVerificationValid) {
+                    generateQRCode(vehicleId);
+                }
+
+            } catch (err) {
+                badge.className = 'verify-badge badge-invalid';
+                badge.textContent = 'ERROR';
+                document.getElementById('resVehicleId').textContent = escapeHtml(vehicleId);
+                document.getElementById('resCertStatus').textContent = err.message;
+            }
+
+            btn.disabled = false;
+        }
+
+        /* ---- Direct Blockchain Verification (ethers v6) ---- */
+        async function verifyDirectFromChain() {
+            const resultDiv = document.getElementById('directChainResult');
+            resultDiv.style.display = 'block';
+
+            if (typeof window.ethereum === 'undefined') {
+                resultDiv.innerHTML = '<p style="color:#FF9800;">MetaMask not detected. Install MetaMask for direct chain verification.</p>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<p style="color:#007AFF;">Connecting to blockchain...</p>';
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const provider = new ethers.BrowserProvider(window.ethereum);
+
+                // Get contract address from backend
+                const statusRes = await fetch(`${API_BASE}/api/status`);
+                const statusData = await statusRes.json();
+                const certAddr = statusData.pucCertAddress;
+
+                if (!certAddr) {
+                    resultDiv.innerHTML = '<p style="color:#F44336;">PUCCertificate contract not deployed.</p>';
+                    return;
+                }
+
+                const contract = new ethers.Contract(certAddr, PUC_CERT_ABI, provider);
+                const [valid, tokenId, expiry] = await contract.isValid(lastVehicleId);
+
+                const blockNum = await provider.getBlockNumber();
+                const network = await provider.getNetwork();
+
+                let html = `<div style="background:rgba(0,188,212,0.08); padding:1rem; border-radius:10px; margin-top:0.5rem; text-align:left;">`;
+                html += `<p style="color:#00BCD4; font-weight:600;">Direct Blockchain Read (Block #${blockNum})</p>`;
+                html += `<p>Network: ${network.name} (Chain ID: ${network.chainId})</p>`;
+                html += `<p>Contract: ${certAddr}</p>`;
+                html += `<p>Certificate Valid: <strong style="color:${valid ? '#4CAF50' : '#F44336'};">${valid}</strong></p>`;
+                html += `<p>Token ID: ${tokenId.toString()}</p>`;
+                if (expiry > 0) {
+                    html += `<p>Expiry: ${new Date(Number(expiry) * 1000).toLocaleString()}</p>`;
+                }
+                html += `<p style="font-size:0.75rem; color:#8892b0; margin-top:0.5rem;">This data was read directly from the blockchain via your MetaMask wallet. No backend server was involved.</p>`;
+                html += `</div>`;
+
+                resultDiv.innerHTML = html;
+                document.getElementById('chainInfo').textContent = `Verified at block #${blockNum} on ${network.name}`;
+
+            } catch (err) {
+                resultDiv.innerHTML = `<p style="color:#F44336;">Chain verification failed: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        /* ---- Auto-verify from URL params ---- */
+        (function autoVerifyFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const vid = params.get('vid');
+            if (vid) {
+                document.getElementById('verifyInput').value = vid.toUpperCase();
+                // Small delay to ensure scripts/DOM are ready
+                setTimeout(() => verifyVehicle(), 300);
+            }
+        })();
+    </script>
+</body>
+</html>

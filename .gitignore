@@ -4,21 +4,30 @@ __pycache__/
 *.pyo
 *.egg-info/
 dist/
+build_py/
 .pytest_cache/
 *.egg
+htmlcov/
+.coverage
+*.cover
 
 # ─── Virtual Environment ──────────────────────────────────
 backend/venv/
 venv/
 .venv/
 env/
+ENV/
 
-# ─── ML Model Files ──────────────────────────────────────
+# ─── ML Model Files & Training Data ─────────────────────
 *.h5
 *.pkl
 *.npy
 *.keras
 *.savedmodel
+*.tflite
+*.onnx
+*.pt
+*.pth
 
 # ─── Node.js ──────────────────────────────────────────────
 node_modules/
@@ -28,11 +37,20 @@ package-lock.json
 build/
 artifacts/
 cache/
+typechain-types/
 
 # ─── Environment / Secrets ────────────────────────────────
 .env
 .env.local
 .env.production
+.env.*.local
+*.pem
+*.key
+*.p12
+*.keystore
+
+# ─── Docker ───────────────────────────────────────────────
+docker-compose.override.yml
 
 # ─── IDE / Editor ─────────────────────────────────────────
 .vscode/
@@ -40,9 +58,16 @@ cache/
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
+*.sublime-project
+*.sublime-workspace
 
 # ─── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
 *.log
 *.tmp
+
+# ─── Audit / Generated Reports ───────────────────────────
+AUDIT_REPORT_previous.md

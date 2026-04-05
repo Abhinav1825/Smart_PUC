@@ -23,6 +23,11 @@
             <div class="navbar-actions">
                 <a href="index.html" class="nav-link active">Vehicle Dashboard</a>
                 <a href="authority.html" class="nav-link">Authority Panel</a>
+                <a href="verify.html" class="nav-link">Verify PUC</a>
+                <a href="analytics.html" class="nav-link">Analytics</a>
+                <a href="fleet.html" class="nav-link">Fleet</a>
+                <a href="rto.html" class="nav-link">RTO Portal</a>
+                <a href="marketplace.html" class="nav-link">Marketplace</a>
                 <div class="wallet-status" id="walletStatus">
                     <span class="wallet-dot" id="walletDot"></span>
                     <span id="walletAddress">Not Connected</span>
@@ -210,38 +215,68 @@
             </div>
         </div>
 
-        <!-- NFT PUC Certificate Status -->
-        <div class="card mb-lg">
-            <div class="card-header">
-                <div class="card-title"><span class="icon">&#128196;</span> PUC Certificate (NFT)</div>
-                <button class="btn btn-outline btn-sm" onclick="loadCertificateStatus()">Check Status</button>
+        <!-- NFT PUC Certificate Status + Green Tokens -->
+        <div class="grid-2 mb-lg">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#128196;</span> PUC Certificate (NFT)</div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button class="btn btn-outline btn-sm" onclick="loadCertificateStatus()">Check</button>
+                        <button class="btn btn-accent btn-sm" id="claimCertBtn" onclick="requestCertificate()" style="display:none;">Claim Certificate</button>
+                    </div>
+                </div>
+                <div id="certificatePanel" class="certificate-panel">
+                    <div class="cert-grid">
+                        <div class="cert-item">
+                            <span class="cert-label">Status</span>
+                            <span class="cert-value" id="certStatus">Not Issued</span>
+                        </div>
+                        <div class="cert-item">
+                            <span class="cert-label">Issue Date</span>
+                            <span class="cert-value" id="certIssueDate">&mdash;</span>
+                        </div>
+                        <div class="cert-item">
+                            <span class="cert-label">Expiry Date</span>
+                            <span class="cert-value" id="certExpiryDate">&mdash;</span>
+                        </div>
+                        <div class="cert-item">
+                            <span class="cert-label">Avg CES</span>
+                            <span class="cert-value" id="certAvgCES">&mdash;</span>
+                        </div>
+                        <div class="cert-item">
+                            <span class="cert-label">Token ID</span>
+                            <span class="cert-value text-mono" id="certTokenId">&mdash;</span>
+                        </div>
+                        <div class="cert-item">
+                            <span class="cert-label">Validity</span>
+                            <span class="cert-value" id="certValidity">&mdash;</span>
+                        </div>
+                    </div>
+                    <div id="certEligibility" style="margin-top:0.75rem;padding:0.6rem;border-radius:8px;display:none;"></div>
+                </div>
             </div>
-            <div id="certificatePanel" class="certificate-panel">
-                <div class="cert-grid">
-                    <div class="cert-item">
-                        <span class="cert-label">Status</span>
-                        <span class="cert-value" id="certStatus">Not Issued</span>
+
+            <!-- Green Credit Tokens -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#127793;</span> Green Credit Tokens (GCT)</div>
+                </div>
+                <div style="text-align:center; padding:1.5rem 0;">
+                    <div style="font-size:2.5rem;font-weight:700;color:#4CAF50;" id="gctBalance">0</div>
+                    <div style="color:#8892b0;font-size:0.85rem;margin-top:0.3rem;">GCT Balance</div>
+                    <div style="margin-top:1rem;display:flex;gap:1rem;justify-content:center;">
+                        <div style="text-align:center;">
+                            <div style="font-size:1.2rem;font-weight:600;" id="gctEarned">0</div>
+                            <div style="color:#8892b0;font-size:0.75rem;">Total Earned</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1.2rem;font-weight:600;" id="gctPerCert">100</div>
+                            <div style="color:#8892b0;font-size:0.75rem;">Per Certificate</div>
+                        </div>
                     </div>
-                    <div class="cert-item">
-                        <span class="cert-label">Issue Date</span>
-                        <span class="cert-value" id="certIssueDate">&mdash;</span>
-                    </div>
-                    <div class="cert-item">
-                        <span class="cert-label">Expiry Date</span>
-                        <span class="cert-value" id="certExpiryDate">&mdash;</span>
-                    </div>
-                    <div class="cert-item">
-                        <span class="cert-label">Avg CES</span>
-                        <span class="cert-value" id="certAvgCES">&mdash;</span>
-                    </div>
-                    <div class="cert-item">
-                        <span class="cert-label">Token ID</span>
-                        <span class="cert-value text-mono" id="certTokenId">&mdash;</span>
-                    </div>
-                    <div class="cert-item">
-                        <span class="cert-label">Validity</span>
-                        <span class="cert-value" id="certValidity">&mdash;</span>
-                    </div>
+                    <p style="color:#8892b0;font-size:0.8rem;margin-top:1rem;">
+                        Earn GCT tokens by maintaining emission compliance. Tokens can be redeemed for toll discounts, parking waivers, and tax credits.
+                    </p>
                 </div>
             </div>
         </div>

@@ -1,0 +1,89 @@
+version: "3.8"
+
+# Smart PUC — 3-Node Architecture Docker Compose
+# Usage: docker-compose up
+# This starts all 3 nodes + Ganache blockchain
+
+services:
+  # ── Ethereum Local Blockchain ──
+  ganache:
+    image: trufflesuite/ganache:latest
+    ports:
+      - "7545:8545"
+    command: >
+      --deterministic
+      --accounts 10
+      --defaultBalanceEther 100
+      --gasLimit 12000000
+      --networkId 5777
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8545"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Contract Deployment (runs once) ──
+  deploy-contracts:
+    build:
+      context: .
+      dockerfile: Dockerfile.deploy
+    depends_on:
+      ganache:
+        condition: service_healthy
+    environment:
+      - RPC_URL=http://ganache:8545
+    volumes:
+      - contract-build:/app/build
+
+  # ── Node 2: Testing Station Backend ──
+  station:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      deploy-contracts:
+        condition: service_completed_successfully
+    environment:
+      - RPC_URL=http://ganache:8545
+      - FLASK_PORT=5000
+      - FLASK_DEBUG=false
+      - CORS_ORIGINS=*
+    volumes:
+      - contract-build:/app/build
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Node 1: OBD Device Simulator ──
+  obd-device:
+    build:
+      context: .
+      dockerfile: Dockerfile.obd
+    depends_on:
+      station:
+        condition: service_started
+    environment:
+      - STATION_URL=http://station:5000
+      - RPC_URL=http://ganache:8545
+    volumes:
+      - contract-build:/app/build
+
+  # ── Node 3: Frontend (Verification Portal + Dashboards) ──
+  frontend:
+    image: halverneus/static-file-server:latest
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./frontend:/web
+    depends_on:
+      - station
+    environment:
+      - API_URL=http://station:5000
+
+volumes:
+  contract-build:

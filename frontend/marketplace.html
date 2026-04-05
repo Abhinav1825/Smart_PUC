@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Smart PUC — Green Credit Token Marketplace. Redeem GCT for toll discounts, parking waivers, tax credits, and more.">
+    <title>Smart PUC — GCT Marketplace</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* ── Marketplace-specific styles ── */
+        .balance-hero {
+            text-align: center;
+            padding: 2.5rem 1.5rem;
+            background: linear-gradient(135deg, rgba(76,175,80,0.08) 0%, rgba(0,188,212,0.06) 100%);
+            border: 1px solid rgba(76,175,80,0.2);
+            border-radius: var(--radius-lg, 16px);
+            margin-bottom: 1.5rem;
+        }
+        .balance-hero .gct-big {
+            font-size: 3.5rem;
+            font-weight: 800;
+            color: #4CAF50;
+            line-height: 1;
+        }
+        .balance-hero .gct-label {
+            color: #8892b0;
+            font-size: 0.9rem;
+            margin-top: 0.4rem;
+        }
+        .balance-stats {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-top: 1.2rem;
+        }
+        .balance-stats .stat {
+            text-align: center;
+        }
+        .balance-stats .stat-val {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        .balance-stats .stat-lbl {
+            font-size: 0.75rem;
+            color: #8892b0;
+            margin-top: 0.15rem;
+        }
+        .balance-stats .stat-earned .stat-val { color: #4CAF50; }
+        .balance-stats .stat-redeemed .stat-val { color: #FF9800; }
+
+        /* Reward catalog grid */
+        .reward-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .reward-card {
+            background: var(--clr-surface-2, #111834);
+            border: 1px solid var(--clr-border, #1e2a4a);
+            border-radius: var(--radius-lg, 16px);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .reward-card:hover {
+            border-color: rgba(76,175,80,0.4);
+            box-shadow: 0 4px 20px rgba(76,175,80,0.08);
+        }
+        .reward-icon {
+            font-size: 2.2rem;
+            margin-bottom: 0.6rem;
+        }
+        .reward-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+        .reward-desc {
+            font-size: 0.82rem;
+            color: #8892b0;
+            flex: 1;
+            margin-bottom: 0.8rem;
+        }
+        .reward-cost {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #4CAF50;
+            margin-bottom: 0.8rem;
+        }
+        .reward-card .btn-redeem {
+            width: 100%;
+            padding: 0.6rem;
+            border: none;
+            border-radius: 10px;
+            background: #4CAF50;
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .reward-card .btn-redeem:hover { background: #43a047; }
+        .reward-card .btn-redeem:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Transfer section */
+        .transfer-section {
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .transfer-section .form-group { flex: 1; min-width: 200px; }
+        .transfer-section .form-group.amt { max-width: 150px; min-width: 120px; }
+
+        /* History table tweaks */
+        .history-table { width: 100%; }
+        .history-table th,
+        .history-table td {
+            padding: 0.65rem 0.75rem;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        /* Market stats bar */
+        .market-stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .market-stat-card {
+            flex: 1;
+            text-align: center;
+            padding: 1.2rem;
+            background: var(--clr-surface-2, #111834);
+            border: 1px solid var(--clr-border, #1e2a4a);
+            border-radius: var(--radius-lg, 16px);
+        }
+        .market-stat-card .ms-val {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+        .market-stat-card .ms-lbl {
+            font-size: 0.75rem;
+            color: #8892b0;
+            margin-top: 0.2rem;
+        }
+
+        /* Section heading */
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Spinner inline */
+        .spinner-sm {
+            display: inline-block;
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.15);
+            border-top-color: #4CAF50;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .balance-stats { flex-direction: column; gap: 0.75rem; }
+            .market-stats { flex-direction: column; }
+            .transfer-section { flex-direction: column; }
+            .transfer-section .form-group.amt { max-width: none; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <div class="logo">&#9889;</div>
+            <div><h1>Smart PUC</h1><span>GCT Marketplace</span></div>
+        </a>
+        <div class="navbar-actions">
+            <a href="index.html" class="nav-link">Vehicle Dashboard</a>
+            <a href="authority.html" class="nav-link">Authority Panel</a>
+            <a href="verify.html" class="nav-link">Verify PUC</a>
+            <a href="rto.html" class="nav-link">RTO Portal</a>
+            <a href="marketplace.html" class="nav-link active">Marketplace</a>
+            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect Wallet</button>
+        </div>
+    </nav>
+
+    <!-- Alerts -->
+    <div id="alertsContainer"></div>
+
+    <!-- 1. Token Balance Card -->
+    <div class="balance-hero" id="balanceHero">
+        <div class="gct-big" id="heroBalance">--</div>
+        <div class="gct-label">Green Credit Tokens (GCT)</div>
+        <div class="balance-stats">
+            <div class="stat stat-earned">
+                <div class="stat-val" id="heroEarned">0</div>
+                <div class="stat-lbl">Total Earned</div>
+            </div>
+            <div class="stat stat-redeemed">
+                <div class="stat-val" id="heroRedeemed">0</div>
+                <div class="stat-lbl">Total Redeemed</div>
+            </div>
+        </div>
+        <div style="color:#8892b0; font-size:0.8rem; margin-top:1rem;" id="balanceNote">
+            Connect your wallet to view balance.
+        </div>
+    </div>
+
+    <!-- 5. Market Stats -->
+    <div class="market-stats" id="marketStats">
+        <div class="market-stat-card">
+            <div class="ms-val" id="msTotalMinted">--</div>
+            <div class="ms-lbl">Total GCT Minted (All Users)</div>
+        </div>
+        <div class="market-stat-card">
+            <div class="ms-val" id="msTotalRedemptions">--</div>
+            <div class="ms-lbl">Total Redemptions</div>
+        </div>
+        <div class="market-stat-card">
+            <div class="ms-val" id="msTotalBurned">--</div>
+            <div class="ms-lbl">Total GCT Burned</div>
+        </div>
+    </div>
+
+    <!-- 2. Reward Catalog -->
+    <div class="section-title"><span>&#127793;</span> Reward Catalog</div>
+    <div class="reward-grid" id="rewardGrid">
+        <!-- Cards injected by JS -->
+    </div>
+
+    <!-- 4. Token Transfer -->
+    <div class="card mb-lg">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#128296;</span> Transfer GCT</div>
+        </div>
+        <div class="transfer-section">
+            <div class="form-group">
+                <label class="form-label">Recipient Address</label>
+                <input type="text" class="form-input" id="transferTo" placeholder="0x...">
+            </div>
+            <div class="form-group amt">
+                <label class="form-label">Amount (GCT)</label>
+                <input type="number" class="form-input" id="transferAmt" placeholder="0" min="1">
+            </div>
+            <div class="form-group" style="flex:0;">
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-accent" id="transferBtn" onclick="transferGCT()">Transfer GCT</button>
+            </div>
+        </div>
+        <div id="transferResult" style="margin-top:0.75rem;font-size:0.85rem;"></div>
+    </div>
+
+    <!-- 3. Redemption History -->
+    <div class="card mb-lg">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#128203;</span> Redemption History</div>
+            <span class="text-muted text-mono" id="historyCount">0 records</span>
+        </div>
+        <div class="table-container">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Reward Type</th>
+                        <th>Amount (GCT)</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td colspan="4" class="text-center text-dim" style="padding:2rem;">Connect wallet to view history.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Smart PUC &mdash; Green Credit Token Marketplace | ERC-20 Rewards for Emission Compliance
+        <br>
+        Built with Solidity | Ethers.js | Flask | GreenToken (ERC-20)
+    </footer>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="app.js"></script>
+<script>
+// ── Configuration ──
+const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+
+// ── Reward type metadata ──
+const REWARD_META = [
+    { id: 0, name: 'Toll Discount',    icon: '\uD83D\uDEE3\uFE0F', desc: 'Get 50% off on next 5 toll transactions',         defaultCost: 50 },
+    { id: 1, name: 'Parking Waiver',   icon: '\uD83C\uDD7F\uFE0F', desc: 'Free municipal parking for 30 days',               defaultCost: 30 },
+    { id: 2, name: 'Tax Credit',       icon: '\uD83D\uDCB0',       desc: 'Rs. 500 road tax credit on next renewal',          defaultCost: 100 },
+    { id: 3, name: 'Priority Service', icon: '\u26A1',              desc: 'Priority queue at RTO for next visit',             defaultCost: 20 }
+];
+
+let rewardCosts = REWARD_META.map(r => r.defaultCost);
+let connectedAddress = null;
+
+// ── Utilities ──
+function esc(str) {
+    return escapeHtml(str);
+}
+
+function formatDate(ts) {
+    if (!ts || ts === 0) return '--';
+    return new Date(ts * 1000).toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function rewardTypeName(typeId) {
+    const r = REWARD_META[typeId];
+    return r ? r.name : ('Unknown (' + typeId + ')');
+}
+
+// ── Render reward cards ──
+function renderRewardCards() {
+    const grid = document.getElementById('rewardGrid');
+    grid.innerHTML = REWARD_META.map((r, i) => {
+        const cost = rewardCosts[i] || r.defaultCost;
+        return `<div class="reward-card" id="rewardCard${i}">
+            <div class="reward-icon">${r.icon}</div>
+            <div class="reward-name">${esc(r.name)}</div>
+            <div class="reward-desc">${esc(r.desc)}</div>
+            <div class="reward-cost">${cost} GCT</div>
+            <button class="btn-redeem" id="redeemBtn${i}" onclick="redeemReward(${i})" disabled>Redeem</button>
+        </div>`;
+    }).join('');
+}
+
+// ── Enable/disable redeem buttons based on balance ──
+function updateRedeemButtons(balance) {
+    REWARD_META.forEach((r, i) => {
+        const btn = document.getElementById('redeemBtn' + i);
+        if (btn) {
+            const cost = rewardCosts[i] || r.defaultCost;
+            btn.disabled = !connectedAddress || balance < cost;
+        }
+    });
+}
+
+// ── Load token balance from API ──
+async function loadTokenBalance() {
+    if (!connectedAddress) return;
+
+    const balEl = document.getElementById('heroBalance');
+    const earnEl = document.getElementById('heroEarned');
+    const redEl = document.getElementById('heroRedeemed');
+    const noteEl = document.getElementById('balanceNote');
+
+    try {
+        const res = await fetch(`${API}/api/green-tokens/${encodeURIComponent(connectedAddress)}`);
+        const data = await res.json();
+
+        if (data.success) {
+            const balance = parseFloat(data.tokens.balance) || 0;
+            const earned = parseFloat(data.tokens.earned) || 0;
+            const redeemed = earned - balance;
+
+            balEl.textContent = Math.floor(balance);
+            earnEl.textContent = Math.floor(earned);
+            redEl.textContent = Math.floor(redeemed > 0 ? redeemed : 0);
+            noteEl.textContent = 'Wallet: ' + connectedAddress.slice(0, 6) + '...' + connectedAddress.slice(-4);
+
+            updateRedeemButtons(balance);
+        }
+    } catch (e) {
+        console.warn('Failed to load token balance:', e.message);
+        noteEl.textContent = 'Could not fetch balance. Is the backend running?';
+    }
+}
+
+// ── Load reward costs & market stats from API ──
+async function loadRewardsAndStats() {
+    try {
+        const res = await fetch(`${API}/api/tokens/rewards`);
+        const data = await res.json();
+
+        if (data.success) {
+            // Update costs if provided
+            if (data.rewards && Array.isArray(data.rewards)) {
+                data.rewards.forEach((r, i) => {
+                    if (r.cost != null) rewardCosts[i] = parseFloat(r.cost);
+                });
+            }
+            // Costs may also be in a map format
+            if (data.costs) {
+                Object.keys(data.costs).forEach(k => {
+                    const idx = parseInt(k);
+                    if (!isNaN(idx) && idx < rewardCosts.length) {
+                        rewardCosts[idx] = parseFloat(data.costs[k]);
+                    }
+                });
+            }
+
+            // Market stats
+            if (data.total_minted != null) {
+                document.getElementById('msTotalMinted').textContent = Math.floor(parseFloat(data.total_minted));
+            }
+            if (data.total_redemptions != null) {
+                document.getElementById('msTotalRedemptions').textContent = data.total_redemptions;
+            }
+            if (data.total_burned != null) {
+                document.getElementById('msTotalBurned').textContent = Math.floor(parseFloat(data.total_burned));
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load rewards data:', e.message);
+    }
+
+    renderRewardCards();
+}
+
+// ── Load redemption history from API ──
+async function loadRedemptionHistory() {
+    if (!connectedAddress) return;
+
+    const tbody = document.getElementById('historyBody');
+    const countEl = document.getElementById('historyCount');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center"><span class="spinner-sm"></span></td></tr>';
+
+    try {
+        const res = await fetch(`${API}/api/tokens/history/${encodeURIComponent(connectedAddress)}`);
+        const data = await res.json();
+
+        if (data.success && data.history && data.history.length > 0) {
+            const rows = data.history;
+            countEl.textContent = rows.length + ' records';
+            tbody.innerHTML = rows.map(r => {
+                return `<tr>
+                    <td class="mono">${esc(String(r.id != null ? r.id : r.redemption_id))}</td>
+                    <td>${esc(rewardTypeName(r.reward_type != null ? r.reward_type : r.type))}</td>
+                    <td class="mono" style="color:#FF9800;">${parseFloat(r.amount || 0).toFixed(0)}</td>
+                    <td class="text-muted">${esc(formatDate(r.timestamp || r.date))}</td>
+                </tr>`;
+            }).join('');
+        } else {
+            countEl.textContent = '0 records';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-dim" style="padding:2rem;">No redemptions yet.</td></tr>';
+        }
+    } catch (e) {
+        console.warn('Could not load history:', e.message);
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-dim" style="padding:2rem;">Could not load history.</td></tr>';
+    }
+}
+
+// ── Redeem a reward via API ──
+async function redeemReward(rewardType) {
+    if (!connectedAddress) {
+        showAlert('Connect your wallet first.', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('redeemBtn' + rewardType);
+    const prevText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Redeeming...';
+
+    try {
+        // Get JWT from localStorage if available
+        const token = localStorage.getItem('smart_puc_jwt') || '';
+
+        const res = await fetch(`${API}/api/tokens/redeem`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': token ? ('Bearer ' + token) : ''
+            },
+            body: JSON.stringify({
+                address: connectedAddress,
+                reward_type: rewardType
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showAlert('Redeemed ' + esc(REWARD_META[rewardType].name) + ' successfully!', 'success');
+            await loadTokenBalance();
+            await loadRedemptionHistory();
+        } else {
+            showAlert('Redemption failed: ' + esc(data.error || 'Unknown error'), 'warning');
+        }
+    } catch (e) {
+        showAlert('Redemption error: ' + esc(e.message), 'warning');
+    }
+
+    btn.textContent = prevText;
+    // Button enabled state managed by updateRedeemButtons via loadTokenBalance
+}
+
+// ── Transfer GCT via MetaMask (on-chain ERC-20 transfer) ──
+async function transferGCT() {
+    const toAddr = document.getElementById('transferTo').value.trim();
+    const amount = document.getElementById('transferAmt').value.trim();
+    const resultDiv = document.getElementById('transferResult');
+
+    if (!connectedAddress) {
+        showAlert('Connect your wallet first.', 'warning');
+        return;
+    }
+    if (!toAddr || !ethers.isAddress(toAddr)) {
+        resultDiv.innerHTML = '<span class="text-fail">Invalid recipient address.</span>';
+        return;
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+        resultDiv.innerHTML = '<span class="text-fail">Enter a valid amount.</span>';
+        return;
+    }
+
+    const btn = document.getElementById('transferBtn');
+    btn.disabled = true;
+    resultDiv.innerHTML = '<span style="color:#007AFF;">Preparing transaction...</span>';
+
+    try {
+        if (!greenTokenAddress) {
+            await loadContractAddresses();
+        }
+        if (!greenTokenAddress) {
+            resultDiv.innerHTML = '<span class="text-fail">GreenToken contract not found. Is the backend running?</span>';
+            btn.disabled = false;
+            return;
+        }
+
+        const transferABI = [
+            "function transfer(address to, uint256 amount) returns (bool)"
+        ];
+
+        const tokenContract = new ethers.Contract(greenTokenAddress, transferABI, signer);
+        const amountWei = ethers.parseUnits(String(amount), 18);
+
+        resultDiv.innerHTML = '<span style="color:#007AFF;">Confirm in MetaMask...</span>';
+        const tx = await tokenContract.transfer(toAddr, amountWei);
+
+        resultDiv.innerHTML = '<span style="color:#007AFF;">Transaction sent. Waiting for confirmation...</span>';
+        await tx.wait();
+
+        resultDiv.innerHTML = '<span class="text-pass">Transfer successful! TX: ' + esc(tx.hash.slice(0, 16)) + '...</span>';
+        showAlert('Transferred ' + esc(amount) + ' GCT to ' + esc(toAddr.slice(0, 6) + '...' + toAddr.slice(-4)), 'success');
+
+        document.getElementById('transferTo').value = '';
+        document.getElementById('transferAmt').value = '';
+
+        await loadTokenBalance();
+    } catch (e) {
+        resultDiv.innerHTML = '<span class="text-fail">Transfer failed: ' + esc(e.reason || e.message) + '</span>';
+    }
+
+    btn.disabled = false;
+}
+
+// ── Override connectWallet to also load marketplace data ──
+const _origConnectWallet = connectWallet;
+connectWallet = async function() {
+    await _origConnectWallet();
+    if (signer) {
+        connectedAddress = await signer.getAddress();
+        await loadTokenBalance();
+        await loadRedemptionHistory();
+    }
+};
+
+// ── Check if already connected ──
+async function checkExistingConnection() {
+    if (typeof window.ethereum !== 'undefined') {
+        try {
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            if (accounts && accounts.length > 0) {
+                provider = new ethers.BrowserProvider(window.ethereum);
+                signer = await provider.getSigner();
+                connectedAddress = await signer.getAddress();
+
+                const short = connectedAddress.slice(0, 6) + '...' + connectedAddress.slice(-4);
+                const dot = document.getElementById('walletDot');
+                if (dot) dot.classList.add('connected');
+                const addrEl = document.getElementById('walletAddress');
+                if (addrEl) addrEl.textContent = short;
+                const btn = document.getElementById('connectWalletBtn');
+                if (btn) { btn.textContent = 'Connected'; btn.disabled = true; }
+
+                await loadContractAddresses();
+                await loadTokenBalance();
+                await loadRedemptionHistory();
+            }
+        } catch (e) {
+            console.warn('Auto-connect check failed:', e.message);
+        }
+    }
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadRewardsAndStats();
+    await checkExistingConnection();
+});
+</script>
+</body>
+</html>

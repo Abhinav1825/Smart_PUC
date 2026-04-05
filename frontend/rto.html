@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PUC — RTO Integration Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* ── RTO-specific styles ── */
+        .rto-container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem; }
+
+        /* Verdict badges */
+        .verdict-badge {
+            display: inline-block; padding: 0.75rem 2rem; border-radius: 12px;
+            font-size: 1.4rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 2px; text-align: center; margin: 1rem 0;
+        }
+        .verdict-compliant {
+            background: rgba(76,175,80,0.15); color: #4CAF50;
+            border: 2px solid #4CAF50; box-shadow: 0 0 20px rgba(76,175,80,0.2);
+        }
+        .verdict-non-compliant {
+            background: rgba(244,67,54,0.15); color: #F44336;
+            border: 2px solid #F44336; box-shadow: 0 0 20px rgba(244,67,54,0.2);
+        }
+        .verdict-expired {
+            background: rgba(255,152,0,0.15); color: #FF9800;
+            border: 2px solid #FF9800; box-shadow: 0 0 20px rgba(255,152,0,0.2);
+        }
+        .verdict-unknown {
+            background: rgba(136,146,176,0.15); color: #8892b0;
+            border: 2px solid #8892b0;
+        }
+
+        /* Info grid */
+        .info-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.75rem; margin-top: 1rem;
+        }
+        .info-item {
+            padding: 0.85rem; background: rgba(255,255,255,0.03); border-radius: 10px;
+        }
+        .info-item label {
+            display: block; font-size: 0.7rem; color: #8892b0;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.25rem;
+        }
+        .info-item .value { font-size: 1rem; font-weight: 600; }
+
+        /* Emission history mini table */
+        .emission-history-mini { margin-top: 1rem; }
+        .emission-history-mini table { width: 100%; }
+
+        /* Heatmap grid */
+        .heatmap-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr);
+            gap: 6px; margin-top: 1rem;
+        }
+        .heatmap-cell {
+            padding: 1rem 0.5rem; border-radius: 8px; text-align: center;
+            font-size: 0.75rem; font-weight: 600; transition: transform 0.15s;
+            cursor: default;
+        }
+        .heatmap-cell:hover { transform: scale(1.05); }
+        .heatmap-cell .zone-name { display: block; font-size: 0.7rem; margin-bottom: 0.25rem; opacity: 0.8; }
+        .heatmap-cell .zone-pct { display: block; font-size: 1.1rem; font-weight: 800; }
+        .heat-high { background: rgba(76,175,80,0.25); color: #66BB6A; }
+        .heat-med { background: rgba(255,193,7,0.25); color: #FFC107; }
+        .heat-low { background: rgba(244,67,54,0.25); color: #EF5350; }
+        .heat-vlow { background: rgba(211,47,47,0.35); color: #F44336; }
+
+        .heatmap-legend {
+            display: flex; gap: 1rem; margin-top: 0.75rem; justify-content: center;
+            font-size: 0.75rem; color: #8892b0;
+        }
+        .legend-dot {
+            display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+            margin-right: 4px; vertical-align: middle;
+        }
+
+        /* Enforcement action panel */
+        .action-panel { margin-top: 1rem; }
+        .action-log {
+            margin-top: 1rem; max-height: 200px; overflow-y: auto;
+            padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 8px;
+        }
+        .action-log-entry {
+            padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.8rem;
+        }
+        .action-log-entry:last-child { border-bottom: none; }
+        .action-log-entry .action-time { color: #8892b0; font-size: 0.7rem; }
+
+        /* Severity badges */
+        .severity-critical { color: #F44336; font-weight: 700; }
+        .severity-high { color: #FF9800; font-weight: 700; }
+        .severity-medium { color: #FFC107; font-weight: 600; }
+        .severity-low { color: #8892b0; }
+
+        /* Section tabs */
+        .rto-tabs {
+            display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--clr-border, #2a3158); padding-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .rto-tab {
+            padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid transparent;
+            background: rgba(255,255,255,0.03); color: #8892b0; cursor: pointer;
+            font-size: 0.85rem; font-weight: 600; transition: all 0.2s;
+        }
+        .rto-tab:hover { background: rgba(255,255,255,0.06); color: #ccd6f6; }
+        .rto-tab.active {
+            background: rgba(0,122,255,0.15); color: #007AFF;
+            border-color: #007AFF;
+        }
+        .rto-section { display: none; }
+        .rto-section.active { display: block; }
+
+        /* Flagged table row hover */
+        .flagged-row { cursor: pointer; transition: background 0.15s; }
+        .flagged-row:hover { background: rgba(255,255,255,0.03); }
+        .flagged-row.selected { background: rgba(0,122,255,0.1); }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <div class="logo">&#9889;</div>
+            <div><h1>Smart PUC</h1><span>RTO Integration Portal</span></div>
+        </a>
+        <div class="navbar-actions">
+            <a href="index.html" class="nav-link">Vehicle</a>
+            <a href="authority.html" class="nav-link">Authority</a>
+            <a href="verify.html" class="nav-link">Verify PUC</a>
+            <a href="rto.html" class="nav-link active">RTO Portal</a>
+        </div>
+    </nav>
+
+    <div id="alertsContainer"></div>
+
+    <div class="rto-container">
+
+        <!-- Section Tabs -->
+        <div class="rto-tabs">
+            <div class="rto-tab active" onclick="switchTab('compliance')">Vehicle Compliance Check</div>
+            <div class="rto-tab" onclick="switchTab('flagged')">Flagged Vehicles</div>
+            <div class="rto-tab" onclick="switchTab('heatmap')">Compliance Heatmap</div>
+            <div class="rto-tab" onclick="switchTab('enforcement')">Enforcement Actions</div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Section 1: Vehicle Compliance Check                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div id="section-compliance" class="rto-section active">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#128269;</span> Vehicle Compliance Check</div>
+                </div>
+                <div style="display:flex; gap:1rem; align-items:end; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1; min-width:220px;">
+                        <label class="form-label">Vehicle Registration Number</label>
+                        <input class="form-input" id="complianceVehicleId" placeholder="MH12AB1234"
+                               style="text-transform:uppercase;" onkeypress="if(event.key==='Enter') checkCompliance()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-accent" id="checkComplianceBtn" onclick="checkCompliance()">
+                            Check Compliance
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compliance Result -->
+            <div id="complianceResult" style="display:none;">
+                <!-- Verdict Badge -->
+                <div style="text-align:center;">
+                    <div id="verdictBadge" class="verdict-badge verdict-unknown">AWAITING CHECK</div>
+                </div>
+
+                <!-- VAHAN Registration Info -->
+                <div class="card mb-lg">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">&#128203;</span> VAHAN Registration Info</div>
+                    </div>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>Vehicle ID</label>
+                            <div class="value" id="crVehicleId">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Owner</label>
+                            <div class="value" id="crOwner">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Fuel Type</label>
+                            <div class="value" id="crFuel">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>BS Norm</label>
+                            <div class="value" id="crBsNorm">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Manufacturer</label>
+                            <div class="value" id="crManufacturer">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Model</label>
+                            <div class="value" id="crModel">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Registration Status</label>
+                            <div class="value" id="crRegStatus">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Registration Date</label>
+                            <div class="value" id="crRegDate">&mdash;</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PUC Certificate Status -->
+                <div class="card mb-lg">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">&#128196;</span> PUC Certificate Status</div>
+                    </div>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>Certificate Valid</label>
+                            <div class="value" id="crCertValid">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Token ID</label>
+                            <div class="value" id="crTokenId">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Issue Date</label>
+                            <div class="value" id="crIssueDate">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Expiry Date</label>
+                            <div class="value" id="crExpiryDate">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Average CES</label>
+                            <div class="value" id="crAvgCES">&mdash;</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Revoked</label>
+                            <div class="value" id="crRevoked">&mdash;</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emission History -->
+                <div class="card mb-lg">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">&#128202;</span> Emission History</div>
+                        <span class="text-muted text-mono" id="crEmissionCount">0 records</span>
+                    </div>
+                    <div class="info-grid" style="grid-template-columns: repeat(4, 1fr);">
+                        <div class="info-item">
+                            <label>Total Records</label>
+                            <div class="value" id="crTotalRecords">0</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Violations</label>
+                            <div class="value" id="crViolations" style="color:#F44336;">0</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Fraud Alerts</label>
+                            <div class="value" id="crFraudAlerts" style="color:#FF9800;">0</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Avg CES (History)</label>
+                            <div class="value" id="crHistAvgCES">&mdash;</div>
+                        </div>
+                    </div>
+                    <div class="emission-history-mini">
+                        <div class="table-container" style="margin-top:1rem;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>#</th><th>CO&#8322;</th><th>CO</th><th>NOx</th><th>HC</th><th>PM2.5</th>
+                                        <th>CES</th><th>Fraud</th><th>Status</th><th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="crEmissionBody">
+                                    <tr><td colspan="10" class="text-center text-dim" style="padding:1.5rem;">No records</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Section 2: Flagged Vehicles Dashboard              -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div id="section-flagged" class="rto-section">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#9888;</span> Flagged Vehicles Dashboard</div>
+                    <button class="btn btn-accent btn-sm" onclick="loadFlaggedVehicles()">Refresh</button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Vehicle ID</th>
+                                <th>Issue Type</th>
+                                <th>Severity</th>
+                                <th>Last Activity</th>
+                                <th>Action Needed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="flaggedTableBody">
+                            <tr><td colspan="6" class="text-center text-dim" style="padding:2rem;">
+                                Click Refresh to load flagged vehicles
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Section 3: Compliance Heatmap                      -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div id="section-heatmap" class="rto-section">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#127758;</span> Compliance Heatmap &mdash; Mumbai Zones</div>
+                    <span class="text-muted text-mono">Static Mockup</span>
+                </div>
+                <p style="color:#8892b0; font-size:0.85rem; margin-bottom:0.5rem;">
+                    PUC compliance rates across Mumbai RTO jurisdictions. Data aggregated from fleet analytics.
+                </p>
+                <div class="heatmap-grid" id="heatmapGrid"></div>
+                <div class="heatmap-legend">
+                    <span><span class="legend-dot" style="background:#4CAF50;"></span> &gt;85% Compliant</span>
+                    <span><span class="legend-dot" style="background:#FFC107;"></span> 70-85% Compliant</span>
+                    <span><span class="legend-dot" style="background:#FF9800;"></span> 55-70% Compliant</span>
+                    <span><span class="legend-dot" style="background:#F44336;"></span> &lt;55% Compliant</span>
+                </div>
+            </div>
+
+            <!-- Zone Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#128200;</span> Zone Summary Statistics</div>
+                </div>
+                <div class="info-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="info-item">
+                        <label>Total Vehicles Tracked</label>
+                        <div class="value" style="color:#007AFF;">1,48,327</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Overall Compliance</label>
+                        <div class="value" style="color:#4CAF50;">76.3%</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Expired PUCs</label>
+                        <div class="value" style="color:#FF9800;">18,241</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Flagged for Action</label>
+                        <div class="value" style="color:#F44336;">4,612</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Section 4: Enforcement Actions                     -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <div id="section-enforcement" class="rto-section">
+            <div class="grid-2 mb-lg">
+                <!-- Take Action -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">&#9879;</span> Take Enforcement Action</div>
+                    </div>
+                    <div class="action-panel">
+                        <div class="form-group">
+                            <label class="form-label">Vehicle Registration Number</label>
+                            <input class="form-input" id="enfVehicleId" placeholder="MH12AB1234"
+                                   style="text-transform:uppercase;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Action Type</label>
+                            <select class="form-select" id="enfActionType">
+                                <option value="warning">Issue Warning Notice</option>
+                                <option value="retest">Schedule Re-Test</option>
+                                <option value="inspection">Flag for Inspection</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Remarks (optional)</label>
+                            <input class="form-input" id="enfRemarks" placeholder="Additional notes...">
+                        </div>
+                        <button class="btn btn-accent" onclick="takeEnforcementAction()">Submit Action</button>
+                        <div id="enfResult" style="margin-top:0.75rem; font-size:0.85rem;"></div>
+                    </div>
+                </div>
+
+                <!-- Action Log -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">&#128221;</span> Action Log</div>
+                        <button class="btn btn-outline btn-sm" onclick="clearActionLog()">Clear</button>
+                    </div>
+                    <div class="action-log" id="actionLog">
+                        <div class="action-log-entry" style="color:#8892b0; text-align:center; padding:2rem 0;">
+                            No enforcement actions recorded yet.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Smart PUC &mdash; Government RTO Integration Portal | Regional Transport Office &mdash; Blockchain-Verified Vehicle Compliance
+    </footer>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+
+    // ── Utility: HTML escaping ──
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function formatDate(ts) {
+        if (!ts || ts === 0) return '&mdash;';
+        return new Date(ts * 1000).toLocaleDateString('en-IN', {
+            year: 'numeric', month: 'short', day: 'numeric'
+        });
+    }
+
+    function formatDateTime(ts) {
+        if (!ts || ts === 0) return '&mdash;';
+        return new Date(ts * 1000).toLocaleString('en-IN', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    }
+
+    function nowISO() {
+        return new Date().toLocaleString('en-IN', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            day: 'numeric', month: 'short', year: 'numeric'
+        });
+    }
+
+    // ── Tab switching ──
+    window.switchTab = function(tabName) {
+        document.querySelectorAll('.rto-tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.rto-section').forEach(function(s) { s.classList.remove('active'); });
+
+        var idx = ['compliance', 'flagged', 'heatmap', 'enforcement'].indexOf(tabName);
+        if (idx >= 0) {
+            document.querySelectorAll('.rto-tab')[idx].classList.add('active');
+        }
+        var section = document.getElementById('section-' + tabName);
+        if (section) section.classList.add('active');
+
+        // Auto-load data for certain tabs
+        if (tabName === 'flagged') loadFlaggedVehicles();
+        if (tabName === 'heatmap') renderHeatmap();
+    };
+
+    // ═══════════════════════════════════════════════════════
+    // Section 1: Vehicle Compliance Check
+    // ═══════════════════════════════════════════════════════
+    window.checkCompliance = async function() {
+        var vehicleId = document.getElementById('complianceVehicleId').value.trim().toUpperCase();
+        if (!vehicleId) {
+            showAlert('Please enter a vehicle registration number.', 'warn');
+            return;
+        }
+
+        var btn = document.getElementById('checkComplianceBtn');
+        var resultDiv = document.getElementById('complianceResult');
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+        resultDiv.style.display = 'none';
+
+        try {
+            var res = await fetch(API_BASE + '/api/rto/check/' + encodeURIComponent(vehicleId));
+            var data = await res.json();
+
+            resultDiv.style.display = 'block';
+
+            if (data.success) {
+                renderComplianceResult(data, vehicleId);
+            } else {
+                // Fallback: try individual endpoints
+                await checkComplianceFallback(vehicleId);
+            }
+        } catch (err) {
+            // Fallback to individual API calls
+            try {
+                await checkComplianceFallback(vehicleId);
+            } catch (fallbackErr) {
+                resultDiv.style.display = 'block';
+                setVerdict('UNKNOWN', 'Could not reach server');
+                showAlert('Error: ' + escapeHtml(fallbackErr.message), 'error');
+            }
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Check Compliance';
+    };
+
+    async function checkComplianceFallback(vehicleId) {
+        var resultDiv = document.getElementById('complianceResult');
+        resultDiv.style.display = 'block';
+
+        var vahanData = null, certData = null, statsData = null;
+
+        // Fetch VAHAN info
+        try {
+            var vRes = await fetch(API_BASE + '/api/vehicle/verify/' + encodeURIComponent(vehicleId));
+            vahanData = await vRes.json();
+        } catch (e) { /* ignore */ }
+
+        // Fetch certificate info
+        try {
+            var cRes = await fetch(API_BASE + '/api/certificate/' + encodeURIComponent(vehicleId));
+            certData = await cRes.json();
+        } catch (e) { /* ignore */ }
+
+        // Fetch stats
+        try {
+            var sRes = await fetch(API_BASE + '/api/vehicle-stats/' + encodeURIComponent(vehicleId));
+            statsData = await sRes.json();
+        } catch (e) { /* ignore */ }
+
+        // Build combined result
+        var combined = {
+            success: true,
+            vehicle_id: vehicleId,
+            vahan: vahanData && vahanData.success ? vahanData.result.vehicle_info : null,
+            certificate: certData ? certData.certificate : null,
+            stats: statsData ? statsData.stats : null,
+            verdict: determineVerdict(certData, statsData)
+        };
+
+        renderComplianceResult(combined, vehicleId);
+    }
+
+    function determineVerdict(certData, statsData) {
+        var cert = certData ? certData.certificate : null;
+
+        if (!cert || !cert.valid) {
+            if (cert && cert.expiry_date && (Date.now() / 1000) > cert.expiry_date && cert.expiry_date > 0) {
+                return 'EXPIRED_PUC';
+            }
+            return 'NON_COMPLIANT';
+        }
+
+        if (cert.revoked) return 'NON_COMPLIANT';
+
+        var stats = statsData ? statsData.stats : null;
+        if (stats && stats.violations > 0 && stats.total_records > 0) {
+            var violRate = stats.violations / stats.total_records;
+            if (violRate > 0.3) return 'NON_COMPLIANT';
+        }
+
+        return 'COMPLIANT';
+    }
+
+    function setVerdict(verdict, subtitle) {
+        var badge = document.getElementById('verdictBadge');
+        badge.className = 'verdict-badge';
+        switch (verdict) {
+            case 'COMPLIANT':
+                badge.classList.add('verdict-compliant');
+                badge.innerHTML = 'COMPLIANT';
+                break;
+            case 'NON_COMPLIANT':
+                badge.classList.add('verdict-non-compliant');
+                badge.innerHTML = 'NON-COMPLIANT';
+                break;
+            case 'EXPIRED_PUC':
+                badge.classList.add('verdict-expired');
+                badge.innerHTML = 'EXPIRED PUC';
+                break;
+            default:
+                badge.classList.add('verdict-unknown');
+                badge.innerHTML = 'UNKNOWN';
+        }
+        if (subtitle) {
+            badge.innerHTML += '<br><span style="font-size:0.6rem;letter-spacing:0;font-weight:400;">'
+                + escapeHtml(subtitle) + '</span>';
+        }
+    }
+
+    function renderComplianceResult(data, vehicleId) {
+        // Verdict
+        var verdict = data.verdict || 'UNKNOWN';
+        setVerdict(verdict);
+
+        // VAHAN info
+        var v = data.vahan || {};
+        document.getElementById('crVehicleId').textContent = escapeHtml(vehicleId);
+        document.getElementById('crOwner').textContent = escapeHtml(v.owner_name || '\u2014');
+        document.getElementById('crFuel').textContent = escapeHtml(v.fuel_type || '\u2014');
+        document.getElementById('crBsNorm').textContent = escapeHtml(v.bs_norm || '\u2014');
+        document.getElementById('crManufacturer').textContent = escapeHtml(v.manufacturer || '\u2014');
+        document.getElementById('crModel').textContent = escapeHtml(v.model || '\u2014');
+        document.getElementById('crRegStatus').textContent = escapeHtml(v.registration_status || '\u2014');
+        document.getElementById('crRegDate').textContent = escapeHtml(v.registration_date || '\u2014');
+
+        // Certificate info
+        var cert = data.certificate || {};
+        document.getElementById('crCertValid').innerHTML = cert.valid
+            ? '<span style="color:#4CAF50;">Yes</span>'
+            : '<span style="color:#F44336;">No</span>';
+        document.getElementById('crTokenId').textContent = cert.token_id ? '#' + cert.token_id : '\u2014';
+        document.getElementById('crIssueDate').innerHTML = formatDate(cert.issue_date);
+        document.getElementById('crExpiryDate').innerHTML = formatDate(cert.expiry_date);
+        document.getElementById('crAvgCES').textContent = cert.average_ces
+            ? Number(cert.average_ces).toFixed(4) : '\u2014';
+        document.getElementById('crRevoked').innerHTML = cert.revoked
+            ? '<span style="color:#F44336;">Yes</span>'
+            : '<span style="color:#4CAF50;">No</span>';
+
+        // Stats
+        var s = data.stats || {};
+        document.getElementById('crTotalRecords').textContent = s.total_records || 0;
+        document.getElementById('crViolations').textContent = s.violations || 0;
+        document.getElementById('crFraudAlerts').textContent = s.fraud_alerts || 0;
+        document.getElementById('crHistAvgCES').textContent = s.avg_ces
+            ? Number(s.avg_ces).toFixed(4) : '\u2014';
+        document.getElementById('crEmissionCount').textContent = (s.total_records || 0) + ' records';
+
+        // Emission history table
+        var records = data.emission_history || [];
+        var tbody = document.getElementById('crEmissionBody');
+        if (records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-dim" style="padding:1.5rem;">No emission records found</td></tr>';
+        } else {
+            tbody.innerHTML = records.slice(0, 20).map(function(r, i) {
+                var statusClass = r.status === 'PASS' ? 'pass' : 'fail';
+                var fraudClass = r.fraud_score >= 0.65 ? 'text-fail' : r.fraud_score >= 0.35 ? 'text-warn' : 'text-pass';
+                return '<tr>'
+                    + '<td class="mono">' + (i + 1) + '</td>'
+                    + '<td class="mono">' + Number(r.co2 || 0).toFixed(1) + '</td>'
+                    + '<td class="mono">' + Number(r.co || 0).toFixed(3) + '</td>'
+                    + '<td class="mono">' + Number(r.nox || 0).toFixed(4) + '</td>'
+                    + '<td class="mono">' + Number(r.hc || 0).toFixed(4) + '</td>'
+                    + '<td class="mono">' + Number(r.pm25 || 0).toFixed(4) + '</td>'
+                    + '<td class="mono">' + Number(r.ces || 0).toFixed(3) + '</td>'
+                    + '<td class="mono ' + fraudClass + '">' + Number(r.fraud_score || 0).toFixed(3) + '</td>'
+                    + '<td><span class="status-badge ' + statusClass + '">' + escapeHtml(r.status) + '</span></td>'
+                    + '<td class="text-muted">' + formatDateTime(r.timestamp) + '</td>'
+                    + '</tr>';
+            }).join('');
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Section 2: Flagged Vehicles Dashboard
+    // ═══════════════════════════════════════════════════════
+    window.loadFlaggedVehicles = async function() {
+        var tbody = document.getElementById('flaggedTableBody');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner"></div></td></tr>';
+
+        try {
+            var res = await fetch(API_BASE + '/api/rto/flagged');
+            var data = await res.json();
+
+            if (data.success && data.flagged && data.flagged.length > 0) {
+                renderFlaggedTable(data.flagged);
+            } else {
+                // Use mock data as fallback
+                renderFlaggedTable(getMockFlaggedVehicles());
+            }
+        } catch (err) {
+            // Use mock data when API is unavailable
+            renderFlaggedTable(getMockFlaggedVehicles());
+        }
+    };
+
+    function getMockFlaggedVehicles() {
+        return [
+            { vehicle_id: 'MH01CA4521', issue_type: 'Expired PUC', severity: 'Critical', last_activity: '2026-04-02 14:23', action_needed: 'Impound Notice' },
+            { vehicle_id: 'MH02BG7832', issue_type: 'Multiple Violations', severity: 'Critical', last_activity: '2026-04-03 09:15', action_needed: 'License Suspension Review' },
+            { vehicle_id: 'MH04DK1290', issue_type: 'Fraud', severity: 'Critical', last_activity: '2026-04-01 11:40', action_needed: 'Criminal Investigation' },
+            { vehicle_id: 'MH12AB1234', issue_type: 'Expired PUC', severity: 'High', last_activity: '2026-04-04 16:05', action_needed: 'Issue Warning Notice' },
+            { vehicle_id: 'MH03EF5678', issue_type: 'Multiple Violations', severity: 'High', last_activity: '2026-04-03 08:30', action_needed: 'Schedule Re-Test' },
+            { vehicle_id: 'MH43AK9012', issue_type: 'Expired PUC', severity: 'High', last_activity: '2026-03-30 10:12', action_needed: 'Issue Warning Notice' },
+            { vehicle_id: 'MH14CD3456', issue_type: 'Fraud', severity: 'High', last_activity: '2026-04-02 13:55', action_needed: 'Flag for Inspection' },
+            { vehicle_id: 'MH47BJ6543', issue_type: 'Expired PUC', severity: 'Medium', last_activity: '2026-03-28 15:20', action_needed: 'Issue Warning Notice' },
+            { vehicle_id: 'MH05GH2109', issue_type: 'Multiple Violations', severity: 'Medium', last_activity: '2026-03-29 17:45', action_needed: 'Schedule Re-Test' },
+            { vehicle_id: 'MH46AL8765', issue_type: 'Expired PUC', severity: 'Low', last_activity: '2026-03-25 12:00', action_needed: 'Send Reminder' }
+        ];
+    }
+
+    var SEVERITY_ORDER = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
+
+    function renderFlaggedTable(vehicles) {
+        var tbody = document.getElementById('flaggedTableBody');
+
+        // Sort by severity
+        vehicles.sort(function(a, b) {
+            return (SEVERITY_ORDER[a.severity] || 99) - (SEVERITY_ORDER[b.severity] || 99);
+        });
+
+        if (vehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-dim" style="padding:2rem;">No flagged vehicles</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = vehicles.map(function(v, i) {
+            var sevClass = 'severity-' + (v.severity || 'low').toLowerCase();
+            var issueIcon = '';
+            switch (v.issue_type) {
+                case 'Expired PUC': issueIcon = '&#9200; '; break;
+                case 'Multiple Violations': issueIcon = '&#9888; '; break;
+                case 'Fraud': issueIcon = '&#128683; '; break;
+            }
+            return '<tr class="flagged-row" onclick="selectFlaggedVehicle(\'' + escapeHtml(v.vehicle_id) + '\')">'
+                + '<td class="mono">' + (i + 1) + '</td>'
+                + '<td><strong>' + escapeHtml(v.vehicle_id) + '</strong></td>'
+                + '<td>' + issueIcon + escapeHtml(v.issue_type) + '</td>'
+                + '<td class="' + sevClass + '">' + escapeHtml(v.severity) + '</td>'
+                + '<td class="text-muted">' + escapeHtml(v.last_activity) + '</td>'
+                + '<td>' + escapeHtml(v.action_needed) + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    window.selectFlaggedVehicle = function(vehicleId) {
+        // Highlight the selected row
+        document.querySelectorAll('.flagged-row').forEach(function(r) { r.classList.remove('selected'); });
+        event.currentTarget.classList.add('selected');
+
+        // Pre-fill enforcement form
+        document.getElementById('enfVehicleId').value = vehicleId;
+
+        showAlert('Vehicle ' + escapeHtml(vehicleId) + ' selected. Switch to Enforcement Actions tab to take action.', 'info');
+    };
+
+    // ═══════════════════════════════════════════════════════
+    // Section 3: Compliance Heatmap (Static Mockup)
+    // ═══════════════════════════════════════════════════════
+    var HEATMAP_DATA = [
+        { zone: 'Andheri', pct: 82, vehicles: 18420 },
+        { zone: 'Bandra', pct: 78, vehicles: 14310 },
+        { zone: 'Borivali', pct: 88, vehicles: 16250 },
+        { zone: 'Dadar', pct: 71, vehicles: 12100 },
+        { zone: 'Mulund', pct: 85, vehicles: 9870 },
+        { zone: 'Thane', pct: 74, vehicles: 21340 },
+        { zone: 'Navi Mumbai', pct: 91, vehicles: 15780 },
+        { zone: 'Kurla', pct: 62, vehicles: 8930 },
+        { zone: 'Chembur', pct: 68, vehicles: 7650 },
+        { zone: 'Worli', pct: 79, vehicles: 5420 },
+        { zone: 'Fort', pct: 93, vehicles: 3120 },
+        { zone: 'Goregaon', pct: 76, vehicles: 11240 },
+        { zone: 'Malad', pct: 73, vehicles: 10890 },
+        { zone: 'Vikhroli', pct: 58, vehicles: 6540 },
+        { zone: 'Powai', pct: 87, vehicles: 4320 }
+    ];
+
+    function renderHeatmap() {
+        var grid = document.getElementById('heatmapGrid');
+        grid.innerHTML = HEATMAP_DATA.map(function(d) {
+            var heatClass;
+            if (d.pct >= 85) heatClass = 'heat-high';
+            else if (d.pct >= 70) heatClass = 'heat-med';
+            else if (d.pct >= 55) heatClass = 'heat-low';
+            else heatClass = 'heat-vlow';
+
+            return '<div class="heatmap-cell ' + heatClass + '" title="'
+                + escapeHtml(d.zone) + ': ' + d.pct + '% compliance, '
+                + d.vehicles.toLocaleString() + ' vehicles">'
+                + '<span class="zone-name">' + escapeHtml(d.zone) + '</span>'
+                + '<span class="zone-pct">' + d.pct + '%</span>'
+                + '</div>';
+        }).join('');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Section 4: Enforcement Actions
+    // ═══════════════════════════════════════════════════════
+    var actionLogEntries = [];
+
+    window.takeEnforcementAction = async function() {
+        var vehicleId = document.getElementById('enfVehicleId').value.trim().toUpperCase();
+        var actionType = document.getElementById('enfActionType').value;
+        var remarks = document.getElementById('enfRemarks').value.trim();
+        var resultDiv = document.getElementById('enfResult');
+
+        if (!vehicleId) {
+            resultDiv.innerHTML = '<span class="text-fail">Vehicle registration number is required.</span>';
+            return;
+        }
+
+        var actionLabels = {
+            'warning': 'Issue Warning Notice',
+            'retest': 'Schedule Re-Test',
+            'inspection': 'Flag for Inspection'
+        };
+
+        resultDiv.innerHTML = '<span style="color:#007AFF;">Submitting action...</span>';
+
+        try {
+            var res = await fetch(API_BASE + '/api/rto/enforce', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    vehicle_id: vehicleId,
+                    action: actionType,
+                    remarks: remarks
+                })
+            });
+            var data = await res.json();
+
+            if (data.success) {
+                resultDiv.innerHTML = '<span class="text-pass">Action recorded successfully.</span>';
+            } else {
+                resultDiv.innerHTML = '<span class="text-warn">Server acknowledged. Action logged locally.</span>';
+            }
+        } catch (err) {
+            // Mock success: log locally even if server is unavailable
+            resultDiv.innerHTML = '<span class="text-pass">Action logged locally (server offline).</span>';
+        }
+
+        // Always add to local action log
+        var entry = {
+            time: nowISO(),
+            vehicleId: vehicleId,
+            action: actionLabels[actionType] || actionType,
+            remarks: remarks
+        };
+        actionLogEntries.unshift(entry);
+        renderActionLog();
+
+        // Clear form
+        document.getElementById('enfRemarks').value = '';
+    };
+
+    function renderActionLog() {
+        var logDiv = document.getElementById('actionLog');
+
+        if (actionLogEntries.length === 0) {
+            logDiv.innerHTML = '<div class="action-log-entry" style="color:#8892b0; text-align:center; padding:2rem 0;">No enforcement actions recorded yet.</div>';
+            return;
+        }
+
+        logDiv.innerHTML = actionLogEntries.map(function(e) {
+            var actionColor = '#007AFF';
+            if (e.action.indexOf('Warning') >= 0) actionColor = '#FF9800';
+            if (e.action.indexOf('Inspection') >= 0) actionColor = '#F44336';
+            if (e.action.indexOf('Re-Test') >= 0) actionColor = '#FFC107';
+
+            return '<div class="action-log-entry">'
+                + '<div><strong style="color:' + actionColor + ';">' + escapeHtml(e.action) + '</strong>'
+                + ' &mdash; <strong>' + escapeHtml(e.vehicleId) + '</strong></div>'
+                + (e.remarks ? '<div style="color:#8892b0;font-size:0.75rem;margin-top:0.15rem;">' + escapeHtml(e.remarks) + '</div>' : '')
+                + '<div class="action-time">' + escapeHtml(e.time) + '</div>'
+                + '</div>';
+        }).join('');
+    }
+
+    window.clearActionLog = function() {
+        actionLogEntries = [];
+        renderActionLog();
+    };
+
+    // ── Alert helper ──
+    function showAlert(msg, type) {
+        var container = document.getElementById('alertsContainer');
+        var alertClass = 'alert';
+        if (type === 'error') alertClass += ' alert-violation';
+        else if (type === 'warn') alertClass += ' alert-warning';
+        else alertClass += ' alert-info';
+
+        var alertEl = document.createElement('div');
+        alertEl.className = alertClass;
+        alertEl.style.cssText = 'padding:0.75rem 1rem;margin:0.5rem 1rem;border-radius:8px;'
+            + 'background:rgba(0,122,255,0.1);border-left:4px solid #007AFF;position:relative;';
+
+        if (type === 'error') {
+            alertEl.style.background = 'rgba(244,67,54,0.1)';
+            alertEl.style.borderLeftColor = '#F44336';
+        } else if (type === 'warn') {
+            alertEl.style.background = 'rgba(255,152,0,0.1)';
+            alertEl.style.borderLeftColor = '#FF9800';
+        }
+
+        alertEl.innerHTML = escapeHtml(msg)
+            + '<button style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);'
+            + 'background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.1rem;" '
+            + 'onclick="this.parentElement.remove()">&#10005;</button>';
+
+        container.appendChild(alertEl);
+        setTimeout(function() { if (alertEl.parentElement) alertEl.remove(); }, 6000);
+    }
+
+    // ── Init ──
+    document.addEventListener('DOMContentLoaded', function() {
+        renderHeatmap();
+    });
+
+})();
+</script>
+</body>
+</html>

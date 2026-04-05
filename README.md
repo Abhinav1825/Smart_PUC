@@ -1,24 +1,124 @@
-# Smart PUC — Multi-Pollutant Vehicle Emission Monitoring System
+# Smart PUC v3.0 — Blockchain Vehicle Emission Monitoring System
 
-Blockchain-based real-time vehicle emission monitoring and compliance system for India. Tracks **all 5 Bharat Stage VI regulated pollutants** (CO2, CO, NOx, HC, PM2.5) using physics-based models, ML fraud detection, and NFT-based digital PUC certificates.
+![CI](https://github.com/your-org/Smart_PUC/actions/workflows/ci.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+![Solidity](https://img.shields.io/badge/Solidity-0.8.21-363636.svg)
+![Node](https://img.shields.io/badge/Node.js-18%2B-339933.svg)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)
 
-Built with: Solidity | Web3.py | Flask | WLTC | EPA MOVES VSP | Isolation Forest | LSTM | ERC-721 NFT
+A production-grade, blockchain-based real-time vehicle emission monitoring and compliance system for India. Implements a **3-node trust architecture** where no single party can tamper with emission data. Tracks all 5 Bharat Stage VI pollutants (CO2, CO, NOx, HC, PM2.5) using physics-based models and ML fraud detection, issues NFT-based digital PUC certificates, and rewards compliant vehicles with ERC-20 Green Credit Tokens redeemable through an on-chain marketplace.
 
 ---
 
-## Architecture
+## 3-Node Trust Architecture
 
 ```
-  WLTC Simulator ──> VSP Physics ──> Multi-Pollutant Engine ──> Fraud Detector
-  (1800s cycle)      (EPA MOVES)     (5 BSVI pollutants)       (3-component ML)
-                                            |                         |
-                                            v                         v
-  NFT PUC Cert <── Blockchain (Solidity) <──┘    LSTM Predictor ──> Dashboard
-  (ERC-721)        (EmissionContract +           (25s forecast)     (Real-time
-                    PUCCertificate)                                   5 pollutants)
+  Node 1: OBD Device          Node 2: Testing Station         Node 3: Verification Portal
+  (Signs telemetry data)      (Validates + submits to chain)  (Read-only, no backend needed)
+        |                              |                              |
+        | ECDSA signature              | JWT auth + fraud detection   | Direct chain read
+        v                              v                              v
+  +------------------------------------------------------------------------+
+  |                        Ethereum Blockchain                             |
+  |  +------------------+  +-------------------+  +-------------------+    |
+  |  | EmissionRegistry |  | PUCCertificate    |  | GreenToken        |    |
+  |  | On-chain CES     |->| ERC-721 NFT certs |->| ERC-20 rewards    |    |
+  |  | Nonce replay     |  | IPFS tokenURI     |  | Marketplace with  |    |
+  |  | protection       |  | Base URI support  |  | 4 reward types    |    |
+  |  +------------------+  +-------------------+  +-------------------+    |
+  +------------------------------------------------------------------------+
 ```
 
-**Pipeline flow:** OBD-II data --> WLTC Simulator --> VSP Model --> Emission Engine (CO2, CO, NOx, HC, PM2.5 + CES score) --> Fraud Detection (physics + Isolation Forest + temporal) --> Blockchain Storage --> Dashboard
+**Why 3 nodes?** No single party can forge emission data:
+- The **OBD device** signs data with its private key (proves data provenance)
+- The **testing station** validates and runs fraud detection (independent verification)
+- The **blockchain** stores records immutably with on-chain CES calculation (tamper-proof history)
+- The **verification portal** reads directly from chain (no backend trust needed)
+
+---
+
+## Key Features
+
+| Category | Feature | Status |
+|----------|---------|--------|
+| Smart Contracts | On-chain CES calculation (trustless scoring) | **NEW** |
+| Smart Contracts | Nonce-based replay protection | **NEW** |
+| Smart Contracts | bytes32 gas-optimized vehicle tracking | **NEW** |
+| Smart Contracts | Bounded vehicle tracking (MAX_VEHICLES cap) | **NEW** |
+| Smart Contracts | O(1) violation index tracking | **NEW** |
+| Smart Contracts | IPFS tokenURI + base URI metadata linking | **NEW** |
+| Smart Contracts | GreenToken marketplace with 4 reward types | **NEW** |
+| Smart Contracts | Burn-to-redeem mechanism | **NEW** |
+| Backend | JWT authentication for authority endpoints | **NEW** |
+| Backend | Real OBD-II hardware support (ELM327 via python-obd) | **NEW** |
+| Backend | Analytics endpoints (trends, fleet, distribution, phases) | **NEW** |
+| Backend | Fleet management endpoints | **NEW** |
+| Backend | RTO integration endpoints | **NEW** |
+| Backend | Notification system | **NEW** |
+| Backend | Green Token marketplace endpoints | **NEW** |
+| Frontend | Analytics dashboard with Chart.js | **NEW** |
+| Frontend | Fleet management panel | **NEW** |
+| Frontend | RTO portal with compliance heatmap | **NEW** |
+| Frontend | Marketplace for token redemption | **NEW** |
+| Frontend | QR code generation + auto-verify from URL | **NEW** |
+| Testing | 30 comprehensive Truffle tests across 3 contracts | **NEW** |
+| CI/CD | 5-job GitHub Actions pipeline | **NEW** |
+| Deployment | Multi-chain: Ganache, Sepolia, Polygon, Amoy | **NEW** |
+| Deployment | Docker 3-node orchestration with healthchecks | **NEW** |
+| Core | WLTC Class 3b driving cycle simulation | -- |
+| Core | EPA MOVES3 VSP operating mode model | -- |
+| Core | 3-component ML fraud detection (Isolation Forest) | -- |
+| Core | LSTM emission forecasting (25s horizon) | -- |
+| Core | ERC-721 NFT PUC certificates | -- |
+| Core | ERC-20 Green Credit Token rewards | -- |
+| Core | VAHAN 4.0 vehicle registration bridge | -- |
+
+---
+
+## Smart Contract Architecture
+
+| Contract | Standard | Key Capabilities |
+|----------|----------|-----------------|
+| **EmissionRegistry** | Custom | On-chain CES calculation, ECDSA device signature verification, nonce replay protection, bytes32 gas optimization, bounded vehicle tracking, O(1) violation index, role-based access (Admin/Station/Device), paginated reads |
+| **PUCCertificate** | ERC-721 | NFT certificates with 180-day validity, auto-issuance after 3 consecutive passes, IPFS tokenURI support, base URI for metadata, revocable by authority, auto-mints GreenTokens on issuance |
+| **GreenToken** | ERC-20 | 100 GCT per certificate, burn-to-redeem marketplace, 4 reward types (Toll Discount 50 GCT, Parking Waiver 30 GCT, Tax Credit 100 GCT, Priority Service 20 GCT), authorized minter pattern, on-chain redemption tracking |
+
+### Pollutant Values and Scaling
+
+| Data Type | Scaling | Example |
+|-----------|---------|---------|
+| Pollutants (CO2, CO, NOx, HC, PM2.5) | x1000 | 120.5 g/km stored as 120500 |
+| CES / Fraud scores | x10000 | 0.85 stored as 8500 |
+| VSP value | x1000 | 15.2 kW/ton stored as 15200 |
+
+---
+
+## Account Roles
+
+| Account | Role | Permissions |
+|---------|------|-------------|
+| `accounts[0]` | Admin | Deploy contracts, manage system, register stations/devices, set reward costs |
+| `accounts[1]` | Testing Station | Submit emission records, run fraud detection, trigger certificate issuance |
+| `accounts[2]` | OBD Device | Sign telemetry data with ECDSA private key |
+| `accounts[3]` | Vehicle Owner | Claim NFT certificates, receive GCT tokens, redeem rewards, transfer tokens |
+
+---
+
+## Security Features
+
+| Layer | Mechanism | Description |
+|-------|-----------|-------------|
+| Blockchain | On-chain CES | CES calculated by the contract itself — stations cannot supply a falsified score |
+| Blockchain | Nonce replay protection | Each submission includes a nonce; prevents replaying old telemetry |
+| Blockchain | ECDSA signature verification | OBD device signatures verified on-chain to prove data provenance |
+| Blockchain | ReentrancyGuard | OpenZeppelin protection on all state-changing functions |
+| Blockchain | Role-based access | Admin, Testing Station, OBD Device roles enforced at contract level |
+| Backend | JWT authentication | Token-based auth for authority and protected endpoints |
+| Backend | Rate limiting | Per-IP request throttling to prevent abuse |
+| Backend | API key auth | HMAC-based authentication for write endpoints |
+| Frontend | XSS prevention | HTML escaping on all user-facing output |
+| Data | Input validation | Bounds checking on all telemetry values before submission |
+| Data | Fraud detection | 3-component ML ensemble (physics constraints, Isolation Forest, temporal consistency) |
 
 ---
 
@@ -29,142 +129,283 @@ Built with: Solidity | Web3.py | Flask | WLTC | EPA MOVES VSP | Isolation Forest
 | **Node.js** | v18+ | [nodejs.org](https://nodejs.org) |
 | **Python** | 3.10+ | [python.org](https://python.org) |
 | **MetaMask** | Latest | [Chrome extension](https://metamask.io) |
-
-Truffle, Ganache, and all other dependencies are installed automatically.
+| **Docker** (optional) | Latest | [docker.com](https://docker.com) |
+| **ELM327 OBD-II adapter** (optional) | USB/Bluetooth | For real vehicle hardware integration |
 
 ---
 
-## First-Time Setup (Single Command)
+## Quick Start
 
-Open a terminal in the project root folder and run:
+### Option A: Windows One-Click
 
-**Windows (CMD or PowerShell):**
 ```bash
 run_project.bat
 ```
 
-This single script will:
-1. Install all Node.js dependencies (Truffle, OpenZeppelin, http-server)
-2. Install Truffle and Ganache globally
-3. Create a Python virtual environment and install all Python packages
-4. Generate the `.env` configuration file
-5. Start Ganache (local blockchain) on port 7545
-6. Compile and deploy both smart contracts (EmissionContract + PUCCertificate)
-7. Start the Flask backend API on port 5000
-8. Start the frontend dashboard on port 3000
-9. Open `http://127.0.0.1:3000` in your browser
+This starts Ganache, deploys contracts, launches the backend, OBD simulator, and frontend.
 
-**Manual single-command alternative (Git Bash / WSL / Mac / Linux):**
+### Option B: Docker (Recommended for Production)
+
 ```bash
-npm install && npm install -g truffle ganache && \
-python -m venv backend/venv && \
-backend/venv/Scripts/pip install -r requirements.txt && \
-echo "RPC_URL=http://127.0.0.1:7545" > .env && \
-echo "PRIVATE_KEY=0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d" >> .env && \
-echo "FLASK_PORT=5000" >> .env && \
-echo "FLASK_DEBUG=true" >> .env && \
-echo "DEFAULT_VEHICLE_ID=MH12AB1234" >> .env && \
-ganache -d -p 7545 &
-sleep 5 && truffle migrate --reset && \
-cd backend && ../backend/venv/Scripts/python app.py &
-cd .. && npx http-server frontend -p 3000 -c-1 --cors
+docker-compose up --build
+```
+
+Starts 5 services with full healthchecks:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `ganache` | 7545 | Local Ethereum blockchain |
+| `deploy-contracts` | -- | One-shot: deploys all 3 contracts |
+| `station` | 5000 | Testing Station Flask API |
+| `obd-device` | -- | OBD Device simulator |
+| `frontend` | 3000 | Static file server for all 7 pages |
+
+### Option C: Manual Setup
+
+```bash
+# 1. Install dependencies
+npm install
+pip install -r requirements.txt
+
+# 2. Start Ganache (separate terminal)
+npx ganache --deterministic --accounts 10 --defaultBalanceEther 100 --port 7545
+
+# 3. Deploy all 3 contracts
+npx truffle migrate --reset
+
+# 4. Start Testing Station backend (separate terminal)
+cd backend && python app.py
+
+# 5. Start frontend (separate terminal)
+npx http-server frontend -p 3000 -c-1 --cors
+
+# 6. (Optional) Start OBD Device simulator
+python -m obd_node.obd_device --count 50 --interval 3
 ```
 
 ---
 
-## Starting the Project (After First-Time Setup)
+## Frontend Pages
 
-Everything is already installed. Just start the 3 services:
-
-**Windows (One Command):**
-```bash
-run_project.bat
-```
-
-**Or manually in 3 terminals:**
-
-| Terminal | Command | What it does |
-|----------|---------|-------------|
-| Terminal 1 | `ganache -d -p 7545` | Starts local blockchain |
-| Terminal 2 | `truffle migrate --reset && cd backend && venv\Scripts\activate && python app.py` | Deploys contracts + starts API |
-| Terminal 3 | `npx http-server frontend -p 3000 -c-1 --cors` | Starts dashboard |
-
-Then open **http://127.0.0.1:3000** in your browser.
+| # | Page | URL | Description |
+|---|------|-----|-------------|
+| 1 | **Vehicle Dashboard** | `localhost:3000/index.html` | Live emission metrics, route simulation, LSTM forecasting, NFT claiming, GCT balance display |
+| 2 | **Authority Panel** | `localhost:3000/authority.html` | Issue/revoke certificates, manage OBD devices and testing stations, live violation alerts |
+| 3 | **Verify PUC** | `localhost:3000/verify.html` | Public verification portal, QR code generation, auto-verify from URL parameters, print-friendly view |
+| 4 | **Analytics** | `localhost:3000/analytics.html` | Chart.js trend visualizations, CES histogram, phase breakdown charts, CSV data export |
+| 5 | **Fleet Management** | `localhost:3000/fleet.html` | Fleet vehicle table, compliance alerts, bulk certificate operations, comparison charts |
+| 6 | **RTO Portal** | `localhost:3000/rto.html` | Compliance checking, flagged vehicle list, enforcement heatmap, regulatory reporting |
+| 7 | **Marketplace** | `localhost:3000/marketplace.html` | Token balance display, reward catalog (4 types), redemption interface, token transfer |
 
 ---
 
-## How to Use
+## API Reference
 
-### 1. Open the Dashboard
-Go to **http://127.0.0.1:3000** in your browser.
+### Authentication
 
-### 2. Connect MetaMask (Optional)
-- Add a custom network in MetaMask:
-  - **Network Name:** Ganache
-  - **RPC URL:** `http://127.0.0.1:7545`
-  - **Chain ID:** `1337`
-  - **Currency:** ETH
-- Import an account using this private key (Ganache Account 2):
-  ```
-  0x6cbed15c793ce57650b9877cf6fa156fbef513c4e6134f022a85b1ffdd59b2a1
-  ```
-- Click **Connect Wallet** on the dashboard
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/auth/login` | None | Login with credentials, returns JWT token |
 
-### 3. Start a Simulation
-- Enter a vehicle registration number (default: `MH12AB1234`)
-- Pick a **Mumbai route** from the dropdown (e.g., "Bandra - Andheri")
-- Click **Start Route**
+### Core Pipeline
 
-### 4. What Happens Every 3 Seconds
-The car moves along the map and the system automatically:
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/record` | API Key | Full pipeline: validate, fraud detect, store on chain (accepts signed OBD data) |
+| `GET` | `/api/simulate` | None | Generate WLTC telemetry + all 5 pollutants |
+| `GET` | `/api/status` | None | System health + all contract addresses |
 
-1. **Generates telemetry** from the WLTC driving cycle (speed, RPM, fuel rate, acceleration)
-2. **Calculates VSP** using the EPA MOVES Vehicle Specific Power formula
-3. **Computes 5 pollutants** (CO2, CO, NOx, HC, PM2.5) with temperature and cold-start corrections
-4. **Calculates CES** (Composite Emission Score) — the single compliance metric
-5. **Runs fraud detection** (physics + Isolation Forest + temporal checks)
-6. **Runs LSTM prediction** forecasting emissions 25 seconds ahead
-7. **Writes to blockchain** (immutable record on Ganache)
-8. **Updates the dashboard** with all live metrics
+### Vehicle Data
 
-### 5. Dashboard Elements
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/history/<vehicleId>` | None | Paginated on-chain emission records |
+| `GET` | `/api/violations` | None | All FAIL records across vehicles |
+| `GET` | `/api/vehicle-stats/<vehicleId>` | None | Aggregated stats + certificate eligibility |
+| `GET` | `/api/vehicle/verify/<registration>` | None | VAHAN registration check |
+| `GET` | `/api/verify/<vehicleId>` | None | Public PUC verification (no auth) |
 
-| Element | What it shows |
-|---------|--------------|
-| **Map** | Car moving along a real Mumbai route (via OSRM) |
-| **CES Gauge** | Semicircular gauge (green = PASS, red = FAIL) |
-| **WLTC Phase** | L / M / H / EH indicator for current driving phase |
-| **8 Metric Cards** | RPM, Speed, Fuel, CO2, CO, NOx, HC, PM2.5 with bars |
-| **Compliance Badge** | Big PASS/FAIL with CES value |
-| **Fraud Alert** | Red banner if tampering detected (score >= 0.65) |
-| **LSTM Chart** | Predicted CES for next 25 seconds |
-| **Latest Tx** | Blockchain transaction hash, block number |
-| **NFT Certificate** | PUC certificate status, expiry date |
-| **Vehicle Stats** | Total records, violations, fraud alerts, avg CES |
-| **History Table** | All records with all 5 pollutant columns |
+### Certificate Management
 
-### 6. Authority Dashboard
-Click **Authority Panel** in the navbar to see aggregated stats, filter by violations or fraud alerts, and watch real-time violation events.
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/certificate/issue` | JWT | Issue PUC certificate NFT |
+| `POST` | `/api/certificate/revoke` | JWT | Revoke an existing certificate |
+| `GET` | `/api/certificate/<vehicleId>` | None | Certificate status from chain |
 
-### 7. API Endpoints
-The backend exposes these REST endpoints:
+### Green Token & Marketplace
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/status` | System health + module availability |
-| `GET` | `/api/simulate` | Generate one telemetry reading |
-| `POST` | `/api/record` | Full pipeline: calculate + detect + store on-chain |
-| `GET` | `/api/history/<vehicleId>` | All on-chain records for a vehicle |
-| `GET` | `/api/violations` | All FAIL records across vehicles |
-| `GET` | `/api/vehicle-stats/<vehicleId>` | Aggregated stats |
-| `GET` | `/api/certificate/<vehicleId>` | PUC certificate status |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/green-tokens/<address>` | None | Green Token balance for an address |
+| `POST` | `/api/tokens/redeem` | JWT | Burn tokens to redeem a reward |
+| `GET` | `/api/tokens/rewards` | None | List available reward types and costs |
+| `GET` | `/api/tokens/history/<address>` | None | Redemption history for an address |
 
-**Example:**
+### Analytics
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/analytics/trends/<vehicleId>` | None | CES trend data over time |
+| `GET` | `/api/analytics/fleet` | JWT | Fleet-wide emission statistics |
+| `GET` | `/api/analytics/distribution` | None | CES score distribution histogram |
+| `GET` | `/api/analytics/phase-breakdown/<vehicleId>` | None | Emissions by WLTC driving phase |
+
+### Fleet Management
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/fleet/vehicles` | JWT | List all fleet vehicles with status |
+| `GET` | `/api/fleet/alerts` | JWT | Active fleet compliance alerts |
+
+### RTO Integration
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/rto/check/<vehicleId>` | JWT | RTO compliance check for a vehicle |
+| `GET` | `/api/rto/flagged` | JWT | List of flagged/non-compliant vehicles |
+
+### Notifications & OBD Hardware
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/notifications` | JWT | System notifications (cert expiry, violations, alerts) |
+| `GET` | `/api/obd/status` | None | OBD-II hardware connection status |
+| `POST` | `/api/obd/read` | API Key | Read live data from connected OBD-II device |
+
+---
+
+## Green Token Marketplace
+
+Compliant vehicles earn **100 GCT** per PUC certificate. Tokens are redeemable through the on-chain burn-to-redeem marketplace:
+
+| Reward Type | Cost (GCT) | ID | Description |
+|-------------|------------|-----|-------------|
+| Toll Discount | 50 | `TOLL_DISCOUNT (0)` | 50% discount on highway toll charges |
+| Parking Waiver | 30 | `PARKING_WAIVER (1)` | Free municipal parking for 30 days |
+| Tax Credit | 100 | `TAX_CREDIT (2)` | Road tax credit applied to next renewal |
+| Priority Service | 20 | `PRIORITY_SERVICE (3)` | Priority lane at RTO service centers |
+
+**Redemption flow:**
+1. User selects reward type on the marketplace page
+2. Frontend calls `/api/tokens/redeem` with reward type
+3. Backend calls `GreenToken.redeemReward()` which burns the required tokens
+4. On-chain `Redemption` record is created with a unique ID
+5. User receives a confirmation with the redemption ID
+
+---
+
+## Testing
+
+### Solidity Tests (30 tests across 3 contracts)
+
 ```bash
-curl -X POST http://127.0.0.1:5000/api/record \
+npx truffle test
+```
+
+Covers:
+- EmissionRegistry: record submission, on-chain CES calculation, nonce replay protection, role access, device signature verification, bounded tracking, violation indexing
+- PUCCertificate: issuance, revocation, eligibility checks, IPFS tokenURI, metadata linking
+- GreenToken: minting, balance tracking, marketplace redemption, burn mechanics, reward cost validation
+
+Edge cases tested: replay attacks, invalid signatures, overflow protection, gas optimization, unauthorized access.
+
+### Python Tests
+
+```bash
+# Run all tests with coverage
+python -m pytest tests/ -v --cov=backend --cov=ml --cov=physics --cov=integrations --cov-report=term-missing
+
+# Individual test modules
+python -m pytest tests/test_emission_engine.py -v
+python -m pytest tests/test_fraud_detector.py -v
+python -m pytest tests/test_integration.py -v
+```
+
+Test modules: `test_blockchain_connector`, `test_emission_engine`, `test_fraud_detector`, `test_integration`, `test_lstm_predictor`, `test_obd_adapter`, `test_simulator`, `test_vaahan_bridge`, `test_vsp_model`.
+
+---
+
+## CI/CD Pipeline
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) runs **5 parallel jobs** on every push and pull request to `main`:
+
+| Job | Runner | What It Does |
+|-----|--------|-------------|
+| **solidity-tests** | ubuntu-latest | Compile contracts, start Ganache, run 30 Truffle tests, generate gas report |
+| **solidity-security** | ubuntu-latest | Run Slither static analysis for vulnerability detection |
+| **python-tests** | ubuntu-latest | Run pytest with coverage across backend, ml, physics, integrations; upload coverage artifact |
+| **lint** | ubuntu-latest | Flake8 linting on all Python modules (max-line-length=120, max-complexity=15) |
+| **docker-build** | ubuntu-latest | Build all 3 Dockerfiles to verify they compile successfully |
+
+---
+
+## Multi-Chain Deployment
+
+| Network | Chain ID | RPC | Use Case |
+|---------|----------|-----|----------|
+| **Ganache** | 5777 | `localhost:7545` | Local development and testing |
+| **Sepolia** | 11155111 | Infura | Ethereum testnet deployment |
+| **Polygon Mainnet** | 137 | Infura | Production deployment (low gas fees) |
+| **Polygon Amoy** | 80002 | Infura | Polygon testnet for staging |
+
+### Deploying to Testnets/Mainnet
+
+```bash
+# Create .env file with credentials
+echo "MNEMONIC=your twelve word mnemonic phrase here" > .env
+echo "INFURA_PROJECT_ID=your_infura_project_id" >> .env
+
+# Deploy to Sepolia
+npx truffle migrate --network sepolia
+
+# Deploy to Polygon Amoy testnet
+npx truffle migrate --network amoy
+
+# Deploy to Polygon mainnet
+npx truffle migrate --network polygon
+```
+
+---
+
+## Real OBD-II Hardware Integration
+
+Smart PUC supports direct connection to real vehicle OBD-II ports via ELM327 adapters.
+
+### Supported Hardware
+
+- ELM327 USB adapters
+- ELM327 Bluetooth adapters
+- Any python-obd compatible interface
+
+### Connection Setup
+
+```bash
+# 1. Install the optional OBD dependency
+pip install obd==0.7.2
+
+# 2. Connect ELM327 adapter to vehicle OBD-II port
+
+# 3. Check connection status
+curl http://localhost:5000/api/obd/status
+
+# 4. Read live data from the vehicle
+curl -X POST http://localhost:5000/api/obd/read \
   -H "Content-Type: application/json" \
-  -d '{"vehicle_id":"MH12AB1234","speed":60,"rpm":2500,"fuel_rate":7.0}'
+  -H "X-API-Key: your_api_key"
 ```
+
+### Supported OBD-II PIDs
+
+| PID | Parameter | Unit |
+|-----|-----------|------|
+| `0x0C` | Engine RPM | rev/min |
+| `0x0D` | Vehicle Speed | km/h |
+| `0x10` | MAF Air Flow Rate | g/s |
+| `0x11` | Throttle Position | % |
+| `0x05` | Engine Coolant Temperature | C |
+
+The OBD adapter module (`integrations/obd_adapter.py`) decodes raw PID data per SAE J1979 and feeds it into the emission engine for real-time pollutant calculation.
 
 ---
 
@@ -172,137 +413,100 @@ curl -X POST http://127.0.0.1:5000/api/record \
 
 ```
 Smart_PUC/
-|-- backend/
-|   |-- app.py                    # Flask API — pipeline orchestrator
-|   |-- emission_engine.py        # Multi-pollutant BSVI emission calculator
-|   |-- simulator.py              # WLTC Class 3b driving cycle simulator
-|   |-- blockchain_connector.py   # Web3.py blockchain interface
-|   |-- emission_engine_legacy.py # Original CO2-only engine (backup)
-|   |-- simulator_legacy.py       # Original random simulator (backup)
-|-- physics/
-|   |-- vsp_model.py              # EPA MOVES VSP + operating mode bins
-|-- ml/
-|   |-- fraud_detector.py         # Ensemble fraud detection (3 components)
-|   |-- lstm_predictor.py         # LSTM emission forecasting
-|   |-- generate_training_data.py # LSTM training data generator
-|-- contracts/
-|   |-- EmissionContract.sol      # Multi-pollutant + CES + fraud + access control
-|   |-- PUCCertificate.sol        # ERC-721 NFT PUC certificate
-|-- frontend/
-|   |-- index.html                # Vehicle owner dashboard
-|   |-- authority.html            # Authority/RTO dashboard
-|   |-- app.js                    # Frontend logic (Chart.js + Ethers.js)
-|   |-- style.css                 # Dark theme stylesheet
-|-- integrations/
-|   |-- vaahan_bridge.py          # VAHAN 4.0 vehicle verification
-|   |-- obd_adapter.py            # OBD-II PID mapping (SAE J1979)
-|-- benchmarks/
-|   |-- scalability_test.py       # 5-experiment benchmark suite
-|   |-- blockchain_comparison.py  # Ethereum vs Polygon vs Hyperledger
-|-- tests/                        # Python unit + integration tests
-|-- test/                         # Solidity (Truffle) tests
-|-- run_project.bat               # One-click Windows startup script
+├── contracts/
+│   ├── EmissionRegistry.sol     # On-chain CES, nonce replay, bytes32 optimization
+│   ├── PUCCertificate.sol       # ERC-721 NFT certs, IPFS tokenURI, base URI
+│   └── GreenToken.sol           # ERC-20 rewards, burn-to-redeem marketplace
+├── migrations/
+│   └── 1_initial_migration.js   # Deploys all 3 contracts + wires them together
+├── test/
+│   └── TestEmission.js          # 30 Truffle tests across all 3 contracts
+├── obd_node/
+│   └── obd_device.py            # Node 1: OBD device simulator + ECDSA signing
+├── backend/
+│   ├── app.py                   # Node 2: Flask API (27+ endpoints, JWT, analytics)
+│   ├── blockchain_connector.py  # Multi-contract Web3.py connector
+│   ├── emission_engine.py       # Multi-pollutant BSVI emission calculator
+│   └── simulator.py             # WLTC Class 3b driving cycle generator
+├── frontend/
+│   ├── index.html               # Vehicle Owner Dashboard
+│   ├── authority.html           # Authority Panel (certs, devices, stations)
+│   ├── verify.html              # Public Verification Portal + QR codes
+│   ├── analytics.html           # Analytics Dashboard (Chart.js)
+│   ├── fleet.html               # Fleet Management Panel
+│   ├── rto.html                 # RTO Portal (compliance, flagging)
+│   ├── marketplace.html         # Green Token Marketplace
+│   ├── app.js                   # Multi-contract frontend logic
+│   └── style.css                # Dark theme stylesheet
+├── physics/
+│   └── vsp_model.py             # EPA MOVES3 Vehicle Specific Power model
+├── ml/
+│   ├── fraud_detector.py        # 3-component ensemble fraud detection
+│   ├── lstm_predictor.py        # Emission forecasting (25s horizon)
+│   └── generate_training_data.py
+├── integrations/
+│   ├── obd_adapter.py           # OBD-II PID decoder (SAE J1979)
+│   └── vaahan_bridge.py         # VAHAN 4.0 vehicle registration bridge
+├── tests/                       # Python test suite (pytest + coverage)
+│   ├── test_blockchain_connector.py
+│   ├── test_emission_engine.py
+│   ├── test_fraud_detector.py
+│   ├── test_integration.py
+│   ├── test_lstm_predictor.py
+│   ├── test_obd_adapter.py
+│   ├── test_simulator.py
+│   ├── test_vaahan_bridge.py
+│   └── test_vsp_model.py
+├── benchmarks/                  # Scalability + gas cost experiments
+├── .github/workflows/ci.yml     # 5-job CI/CD pipeline
+├── docker-compose.yml           # 3-node Docker orchestration
+├── Dockerfile.backend           # Testing Station container
+├── Dockerfile.obd               # OBD Device container
+├── Dockerfile.deploy            # Contract deployment container
+├── truffle-config.js            # Ganache + Sepolia + Polygon config
+├── package.json                 # Node.js dependencies (v3.0.0)
+├── requirements.txt             # Python dependencies
+└── run_project.bat              # Windows one-click setup
 ```
 
 ---
 
-## Running Tests
+## Tech Stack
 
-```bash
-# Python tests (65 tests — unit + integration)
-python -m unittest discover tests -v
-
-# Solidity tests (requires Ganache running)
-truffle test
-
-# Benchmarks
-python benchmarks/scalability_test.py
-
-# Generate LSTM training data
-python -m ml.generate_training_data --cycles 3 --output ml/training_data.npy
-```
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Blockchain** | Solidity 0.8.21 | Smart contract language |
+| **Blockchain** | OpenZeppelin 4.9.6 | ERC-721, ERC-20, ReentrancyGuard, ECDSA |
+| **Blockchain** | Truffle | Compilation, migration, testing framework |
+| **Blockchain** | Ganache | Local Ethereum development blockchain |
+| **Backend** | Python 3.10+ | Testing Station server runtime |
+| **Backend** | Flask 3.0 | REST API framework |
+| **Backend** | Web3.py 6.15 | Ethereum blockchain interaction |
+| **Backend** | PyJWT 2.8 | JWT token authentication |
+| **Backend** | scikit-learn 1.4 | Isolation Forest fraud detection |
+| **Backend** | NumPy 1.26 | Numerical computation for emission models |
+| **Frontend** | HTML5 / CSS3 / JS | 7-page dashboard application |
+| **Frontend** | Web3.js | Browser-side blockchain interaction via MetaMask |
+| **Frontend** | Chart.js | Analytics visualizations and trend charts |
+| **Hardware** | python-obd | ELM327 OBD-II adapter communication |
+| **DevOps** | Docker Compose | Multi-container orchestration |
+| **DevOps** | GitHub Actions | 5-job CI/CD pipeline |
+| **Networks** | Infura | Sepolia and Polygon RPC provider |
+| **Networks** | HDWalletProvider | Mnemonic-based testnet/mainnet deployment |
 
 ---
 
 ## BSVI Compliance Thresholds
 
-| Pollutant | Threshold (g/km) | CES Weight | What it is |
-|-----------|----------------:|:----------:|------------|
-| CO2 | 120.0 | 35% | Carbon dioxide (greenhouse gas) |
-| NOx | 0.06 | 30% | Nitrogen oxides (smog, acid rain) |
-| CO | 1.0 | 15% | Carbon monoxide (toxic) |
-| HC | 0.10 | 12% | Hydrocarbons (ozone precursor) |
-| PM2.5 | 0.0045 | 8% | Fine particulate matter (lung damage) |
+| Pollutant | Threshold (g/km) | CES Weight |
+|-----------|-------------------|------------|
+| CO2 | 120 | 35% |
+| NOx | 0.06 | 30% |
+| CO | 1.0 | 15% |
+| HC | 0.10 | 12% |
+| PM2.5 | 0.0045 | 8% |
 
-**CES < 1.0 = PASS** | **CES >= 1.0 = FAIL**
-
----
-
-## Key Technologies
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Smart Contracts | Solidity 0.8.21, OpenZeppelin 4.9 | On-chain emission storage + NFT certs |
-| Backend | Python 3.10+, Flask, Web3.py | Pipeline orchestration + API |
-| Physics | EPA MOVES3 VSP model | Vehicle power demand calculation |
-| Driving Cycle | WLTC Class 3b (UN ECE R154) | Standardized test cycle simulation |
-| Emissions | MOVES + IPCC + COPERT 5 | Multi-pollutant calculation |
-| Fraud Detection | Isolation Forest + physics rules | OBD-II data tampering detection |
-| Prediction | LSTM / linear extrapolation | Preventive compliance warnings |
-| Frontend | HTML/CSS/JS, Chart.js, Leaflet, Ethers.js | Real-time dashboard |
-| Blockchain | Ganache (local) / Sepolia (testnet) | Immutable record storage |
-| Maps | Leaflet + OSRM | Route visualization |
-
----
-
-## Testnet Deployment (Sepolia / Polygon)
-
-For public deployment instead of local Ganache:
-
-1. Get an [Infura](https://infura.io) project ID
-2. Get Sepolia test ETH from a [faucet](https://sepoliafaucet.com)
-3. Update `.env`:
-   ```
-   RPC_URL=https://sepolia.infura.io/v3/YOUR_PROJECT_ID
-   MNEMONIC=your twelve word mnemonic phrase here
-   ```
-4. Deploy: `truffle migrate --network sepolia`
-5. Update `.env` with the new `CONTRACT_ADDRESS`
-6. Restart the backend
-
----
-
-## Academic References
-
-These are cited in the source code docstrings:
-
-| Reference | Used in |
-|-----------|---------|
-| US EPA MOVES3 Technical Report (2020) | VSP model, operating mode bins |
-| ARAI BSVI Notification, MoRTH India (2020) | Emission thresholds |
-| COPERT 5 Methodology, EEA Technical Report No. 19 | Cold-start corrections |
-| Ntziachristos & Samaras, EMEP/EEA (2019) | Emission factors |
-| UN ECE Regulation No. 154 (WLTP), Annex 1 | WLTC driving cycle |
-| Heywood, "Internal Combustion Engine Fundamentals" | Arrhenius NOx correction |
-| Rakha et al. (2004) | VSP to fuel rate polynomial |
-| Liu et al., "Isolation Forest", ICDM 2008 | Anomaly detection |
-| Kwon et al., CAN Bus Anomaly Detection, IEEE TIFS 2021 | OBD-II security |
-| Hochreiter & Schmidhuber (1997) | LSTM architecture |
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| Port 8080 already in use | Use port 3000: `npx http-server frontend -p 3000 -c-1 --cors` |
-| `truffle: command not found` | Run `npm install -g truffle` |
-| `ganache: command not found` | Run `npm install -g ganache` |
-| Backend says "Blockchain not connected" | Make sure Ganache is running on port 7545 |
-| MetaMask shows wrong network | Add custom network: RPC `http://127.0.0.1:7545`, Chain ID `1337` |
-| Python venv broken | Delete `backend/venv` folder and re-run `python -m venv backend/venv` |
-| Contracts won't compile | Run `npm install` to get OpenZeppelin, then `truffle compile` |
-| `invalid opcode` error on Ganache | Make sure Solidity version is 0.8.21 in `truffle-config.js` |
+**Composite Emission Score:** `CES = sum(pollutant_i / threshold_i * weight_i)`. Vehicle passes if `CES < 1.0`.
 
 ---
 

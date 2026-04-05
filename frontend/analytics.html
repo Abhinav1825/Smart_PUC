@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PUC — Analytics Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .analytics-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .analytics-full { grid-column: 1 / -1; }
+        .chart-container { position: relative; width: 100%; min-height: 320px; }
+        .chart-container canvas { width: 100% !important; }
+
+        /* Fleet overview cards */
+        .fleet-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+        .fleet-card {
+            background: var(--bg-card, #111834); border-radius: 14px;
+            padding: 1.5rem; text-align: center;
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .fleet-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+        .fleet-card .fleet-value {
+            font-size: 2.2rem; font-weight: 700;
+            background: linear-gradient(135deg, #007AFF, #00BCD4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .fleet-card .fleet-label {
+            font-size: 0.8rem; color: #8892b0; text-transform: uppercase;
+            letter-spacing: 1px; margin-top: 0.4rem;
+        }
+        .fleet-card.warn .fleet-value {
+            background: linear-gradient(135deg, #FF9800, #F44336);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .fleet-card.success .fleet-value {
+            background: linear-gradient(135deg, #4CAF50, #00BCD4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Controls bar */
+        .controls-bar {
+            display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;
+            padding: 1.25rem; background: var(--bg-card, #111834);
+            border-radius: 14px; margin-bottom: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .controls-bar .form-group { margin-bottom: 0; }
+        .controls-bar .form-label { font-size: 0.75rem; color: #8892b0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; display: block; }
+        .controls-bar .form-input,
+        .controls-bar .form-select {
+            padding: 0.6rem 0.8rem; border-radius: 8px;
+            border: 1px solid #2a3158; background: #0d1229; color: #fff;
+            font-size: 0.9rem;
+        }
+        .controls-bar .form-input:focus,
+        .controls-bar .form-select:focus { border-color: #007AFF; outline: none; }
+
+        /* Worst performers table */
+        .worst-table { width: 100%; border-collapse: collapse; }
+        .worst-table th {
+            text-align: left; font-size: 0.72rem; color: #8892b0;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            padding: 0.7rem 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .worst-table td {
+            padding: 0.65rem 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.88rem;
+        }
+        .worst-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .rank-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 26px; height: 26px; border-radius: 50%;
+            font-size: 0.75rem; font-weight: 700;
+            background: rgba(244,67,54,0.15); color: #F44336;
+        }
+        .rank-badge.top3 { background: rgba(244,67,54,0.25); }
+
+        /* Export button */
+        .btn-export {
+            padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #007AFF;
+            background: transparent; color: #007AFF; cursor: pointer;
+            font-size: 0.85rem; font-weight: 600; transition: all 0.2s;
+        }
+        .btn-export:hover { background: rgba(0,122,255,0.1); }
+
+        /* Status indicators */
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .status-dot.green { background: #4CAF50; }
+        .status-dot.red { background: #F44336; }
+        .status-dot.yellow { background: #FF9800; }
+
+        /* Loading spinner */
+        .chart-loading {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 280px; color: #8892b0; font-size: 0.9rem;
+        }
+        .chart-loading .spinner {
+            width: 28px; height: 28px; border: 3px solid rgba(0,122,255,0.2);
+            border-top-color: #007AFF; border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin-right: 0.75rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Section titles */
+        .section-title {
+            font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .section-title .icon { font-size: 1.2rem; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .analytics-grid { grid-template-columns: 1fr; }
+            .analytics-grid-3 { grid-template-columns: 1fr; }
+            .fleet-cards { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .fleet-cards { grid-template-columns: 1fr; }
+            .controls-bar { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <div class="logo">&#9889;</div>
+            <div><h1>Smart PUC</h1><span>Analytics Dashboard</span></div>
+        </a>
+        <div class="navbar-actions">
+            <a href="index.html" class="nav-link">Vehicle</a>
+            <a href="authority.html" class="nav-link">Authority</a>
+            <a href="verify.html" class="nav-link">Verify</a>
+            <a href="analytics.html" class="nav-link active">Analytics</a>
+            <a href="fleet.html" class="nav-link">Fleet</a>
+            <a href="rto.html" class="nav-link">RTO</a>
+            <a href="marketplace.html" class="nav-link">Marketplace</a>
+            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+        </div>
+    </nav>
+
+    <div id="alertsContainer"></div>
+
+    <!-- Fleet Overview Cards -->
+    <div class="fleet-cards" id="fleetCards">
+        <div class="fleet-card">
+            <div class="fleet-value" id="fleetTotalVehicles">--</div>
+            <div class="fleet-label">Total Vehicles</div>
+        </div>
+        <div class="fleet-card success">
+            <div class="fleet-value" id="fleetAvgCES">--</div>
+            <div class="fleet-label">Average CES</div>
+        </div>
+        <div class="fleet-card success">
+            <div class="fleet-value" id="fleetComplianceRate">--</div>
+            <div class="fleet-label">Compliance Rate</div>
+        </div>
+        <div class="fleet-card warn">
+            <div class="fleet-value" id="fleetTotalViolations">--</div>
+            <div class="fleet-label">Total Violations</div>
+        </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+        <div class="form-group" style="flex:1; min-width:180px;">
+            <label class="form-label" for="analyticsVehicleId">Vehicle Registration</label>
+            <input type="text" class="form-input" id="analyticsVehicleId" placeholder="MH12AB1234" style="text-transform:uppercase;" value="MH12AB1234">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="dateFrom">From</label>
+            <input type="date" class="form-input" id="dateFrom">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="dateTo">To</label>
+            <input type="date" class="form-input" id="dateTo">
+        </div>
+        <div class="form-group">
+            <label class="form-label">&nbsp;</label>
+            <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-accent" onclick="loadAllAnalytics()">Load Analytics</button>
+                <button class="btn-export" onclick="exportAllCSV()">Export CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Emission Trends + CES Distribution -->
+    <div class="analytics-grid">
+        <!-- Emission Trends (Line Chart) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128200;</span> Emission Trends Over Time</div>
+                <span class="text-muted text-mono" id="trendsStatus">Awaiting data</span>
+            </div>
+            <div class="chart-container">
+                <div class="chart-loading" id="trendsLoading">
+                    <div class="spinner"></div> Loading trends...
+                </div>
+                <canvas id="trendsChart" style="display:none;"></canvas>
+            </div>
+        </div>
+
+        <!-- CES Distribution (Bar Chart) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128202;</span> CES Score Distribution</div>
+                <span class="text-muted text-mono" id="distStatus">Awaiting data</span>
+            </div>
+            <div class="chart-container">
+                <div class="chart-loading" id="distLoading">
+                    <div class="spinner"></div> Loading distribution...
+                </div>
+                <canvas id="distChart" style="display:none;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- WLTC Phase Breakdown (Doughnut) + Worst Performers Table -->
+    <div class="analytics-grid">
+        <!-- WLTC Phase Breakdown -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#9881;</span> WLTC Phase Breakdown</div>
+                <span class="text-muted text-mono" id="phaseStatus">Awaiting data</span>
+            </div>
+            <div class="chart-container" style="min-height:300px; display:flex; align-items:center; justify-content:center;">
+                <div class="chart-loading" id="phaseLoading">
+                    <div class="spinner"></div> Loading phases...
+                </div>
+                <canvas id="phaseChart" style="display:none; max-height:300px;"></canvas>
+            </div>
+        </div>
+
+        <!-- Worst Performers -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#9888;</span> Worst Performers (Top 10)</div>
+                <span class="text-muted text-mono" id="worstStatus">Awaiting data</span>
+            </div>
+            <div class="table-container" style="max-height:380px; overflow-y:auto;">
+                <table class="worst-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Vehicle ID</th>
+                            <th>Avg CES</th>
+                            <th>Violations</th>
+                            <th>Records</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="worstBody">
+                        <tr><td colspan="6" class="text-center text-dim" style="padding:2rem;">Click "Load Analytics" to fetch data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Smart PUC &mdash; Analytics Dashboard | Blockchain-Based Multi-Pollutant Vehicle Emission Monitoring &amp; Compliance System (BSVI)
+    </footer>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+<script>
+const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+
+// ── Utility ──
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Chart instances (destroy before re-creating) ──
+let trendsChartInstance = null;
+let distChartInstance = null;
+let phaseChartInstance = null;
+
+// ── Cached data for CSV export ──
+let cachedTrends = null;
+let cachedDistribution = null;
+let cachedPhaseBreakdown = null;
+let cachedFleet = null;
+
+// ── Set default date range (last 30 days) ──
+function initDateRange() {
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - 30);
+    document.getElementById('dateTo').value = now.toISOString().split('T')[0];
+    document.getElementById('dateFrom').value = from.toISOString().split('T')[0];
+}
+
+// ── Load all analytics data ──
+async function loadAllAnalytics() {
+    const vid = document.getElementById('analyticsVehicleId').value.trim().toUpperCase();
+    if (!vid) {
+        showAlert('Please enter a Vehicle ID', 'warn');
+        return;
+    }
+
+    loadFleetOverview();
+    loadEmissionTrends(vid);
+    loadCESDistribution();
+    loadPhaseBreakdown(vid);
+}
+
+// ── Show inline alert ──
+function showAlert(msg, type) {
+    const container = document.getElementById('alertsContainer');
+    const cls = type === 'warn' ? 'alert-warning' : type === 'fail' ? 'alert-violation' : '';
+    container.innerHTML = `<div class="alert ${cls}" style="margin:0.5rem 0; padding:0.75rem 1rem; border-radius:8px; background:rgba(255,152,0,0.1); border-left:4px solid #FF9800; display:flex; justify-content:space-between; align-items:center;">
+        <span>${escapeHtml(msg)}</span>
+        <button style="background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.2rem;" onclick="this.parentElement.remove()">&#10005;</button>
+    </div>`;
+    setTimeout(() => { if (container.firstChild) container.firstChild.remove(); }, 5000);
+}
+
+// ── 1. Fleet Overview Cards ──
+async function loadFleetOverview() {
+    try {
+        const res = await fetch(`${API}/api/analytics/fleet`);
+        const data = await res.json();
+        cachedFleet = data;
+
+        if (data.success !== false) {
+            const f = data.fleet || data;
+            document.getElementById('fleetTotalVehicles').textContent = escapeHtml(String(f.total_vehicles ?? '--'));
+            document.getElementById('fleetAvgCES').textContent = f.avg_ces != null ? Number(f.avg_ces).toFixed(4) : '--';
+            document.getElementById('fleetComplianceRate').textContent = f.compliance_rate != null ? Number(f.compliance_rate).toFixed(1) + '%' : '--';
+            document.getElementById('fleetTotalViolations').textContent = escapeHtml(String(f.total_violations ?? '--'));
+
+            // Populate worst performers from fleet data
+            if (f.worst_performers && f.worst_performers.length) {
+                renderWorstPerformers(f.worst_performers);
+            }
+        }
+    } catch (e) {
+        console.warn('Fleet overview load failed:', e);
+    }
+}
+
+// ── 2. Emission Trends (Line Chart) ──
+async function loadEmissionTrends(vehicleId) {
+    const loadingEl = document.getElementById('trendsLoading');
+    const canvasEl = document.getElementById('trendsChart');
+    const statusEl = document.getElementById('trendsStatus');
+    loadingEl.style.display = 'flex';
+    canvasEl.style.display = 'none';
+
+    try {
+        const from = document.getElementById('dateFrom').value;
+        const to = document.getElementById('dateTo').value;
+        let url = `${API}/api/analytics/trends/${encodeURIComponent(vehicleId)}`;
+        const params = [];
+        if (from) params.push(`from=${from}`);
+        if (to) params.push(`to=${to}`);
+        if (params.length) url += '?' + params.join('&');
+
+        const res = await fetch(url);
+        const data = await res.json();
+        cachedTrends = data;
+
+        if (data.success === false) {
+            statusEl.textContent = 'No data';
+            loadingEl.innerHTML = '<span style="color:#8892b0;">No trend data available for this vehicle.</span>';
+            return;
+        }
+
+        const trends = data.trends || data;
+        const labels = (trends.timestamps || []).map(function(t) {
+            return new Date(t * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        });
+
+        if (trendsChartInstance) trendsChartInstance.destroy();
+
+        loadingEl.style.display = 'none';
+        canvasEl.style.display = 'block';
+
+        trendsChartInstance = new Chart(canvasEl.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'CO2 (g/km)',
+                        data: trends.co2 || [],
+                        borderColor: '#007AFF',
+                        backgroundColor: 'rgba(0,122,255,0.1)',
+                        borderWidth: 2, tension: 0.3, fill: true, pointRadius: 3
+                    },
+                    {
+                        label: 'NOx (g/km)',
+                        data: trends.nox || [],
+                        borderColor: '#F44336',
+                        backgroundColor: 'rgba(244,67,54,0.1)',
+                        borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
+                    },
+                    {
+                        label: 'CO (g/km)',
+                        data: trends.co || [],
+                        borderColor: '#FF9800',
+                        backgroundColor: 'rgba(255,152,0,0.1)',
+                        borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
+                    },
+                    {
+                        label: 'HC (g/km)',
+                        data: trends.hc || [],
+                        borderColor: '#9C27B0',
+                        backgroundColor: 'rgba(156,39,176,0.1)',
+                        borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
+                    },
+                    {
+                        label: 'PM2.5 (g/km)',
+                        data: trends.pm25 || [],
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76,175,80,0.1)',
+                        borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { labels: { color: '#8892b0', usePointStyle: true, padding: 16 } },
+                    tooltip: {
+                        backgroundColor: '#1a2044',
+                        titleColor: '#e6f1ff',
+                        bodyColor: '#8892b0',
+                        borderColor: '#2a3158',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#8892b0', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                }
+            }
+        });
+
+        statusEl.textContent = (trends.timestamps || []).length + ' data points';
+    } catch (e) {
+        statusEl.textContent = 'Error';
+        loadingEl.innerHTML = '<span style="color:#F44336;">Failed to load trends: ' + escapeHtml(e.message) + '</span>';
+        console.error('Trends error:', e);
+    }
+}
+
+// ── 3. CES Distribution (Bar Chart) ──
+async function loadCESDistribution() {
+    const loadingEl = document.getElementById('distLoading');
+    const canvasEl = document.getElementById('distChart');
+    const statusEl = document.getElementById('distStatus');
+    loadingEl.style.display = 'flex';
+    canvasEl.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API}/api/analytics/distribution`);
+        const data = await res.json();
+        cachedDistribution = data;
+
+        if (data.success === false) {
+            statusEl.textContent = 'No data';
+            loadingEl.innerHTML = '<span style="color:#8892b0;">No distribution data available.</span>';
+            return;
+        }
+
+        const dist = data.distribution || data;
+        const bucketLabels = ['0 - 0.25', '0.25 - 0.50', '0.50 - 0.75', '0.75 - 1.00', '1.00+'];
+        const bucketKeys = ['0-0.25', '0.25-0.5', '0.5-0.75', '0.75-1.0', '1.0+'];
+        const counts = bucketKeys.map(function(k) { return dist[k] || 0; });
+        const bucketColors = [
+            'rgba(76,175,80,0.8)',
+            'rgba(0,188,212,0.8)',
+            'rgba(255,193,7,0.8)',
+            'rgba(255,152,0,0.8)',
+            'rgba(244,67,54,0.8)'
+        ];
+        const bucketBorders = [
+            '#4CAF50', '#00BCD4', '#FFC107', '#FF9800', '#F44336'
+        ];
+
+        if (distChartInstance) distChartInstance.destroy();
+
+        loadingEl.style.display = 'none';
+        canvasEl.style.display = 'block';
+
+        distChartInstance = new Chart(canvasEl.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: bucketLabels,
+                datasets: [{
+                    label: 'Number of Readings',
+                    data: counts,
+                    backgroundColor: bucketColors,
+                    borderColor: bucketBorders,
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    maxBarThickness: 60
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1a2044',
+                        titleColor: '#e6f1ff',
+                        bodyColor: '#8892b0',
+                        borderColor: '#2a3158',
+                        borderWidth: 1,
+                        callbacks: {
+                            title: function(ctx) { return 'CES Range: ' + ctx[0].label; },
+                            label: function(ctx) {
+                                var total = counts.reduce(function(a, b) { return a + b; }, 0);
+                                var pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+                                return ctx.raw + ' readings (' + pct + '%)';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#8892b0' },
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        title: { display: true, text: 'CES Score Bucket', color: '#8892b0' }
+                    },
+                    y: {
+                        ticks: { color: '#8892b0', precision: 0 },
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        title: { display: true, text: 'Count', color: '#8892b0' },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        var total = counts.reduce(function(a, b) { return a + b; }, 0);
+        statusEl.textContent = total + ' total readings';
+    } catch (e) {
+        statusEl.textContent = 'Error';
+        loadingEl.innerHTML = '<span style="color:#F44336;">Failed to load distribution: ' + escapeHtml(e.message) + '</span>';
+        console.error('Distribution error:', e);
+    }
+}
+
+// ── 4. WLTC Phase Breakdown (Doughnut) ──
+async function loadPhaseBreakdown(vehicleId) {
+    const loadingEl = document.getElementById('phaseLoading');
+    const canvasEl = document.getElementById('phaseChart');
+    const statusEl = document.getElementById('phaseStatus');
+    loadingEl.style.display = 'flex';
+    canvasEl.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API}/api/analytics/phase-breakdown/${encodeURIComponent(vehicleId)}`);
+        const data = await res.json();
+        cachedPhaseBreakdown = data;
+
+        if (data.success === false) {
+            statusEl.textContent = 'No data';
+            loadingEl.innerHTML = '<span style="color:#8892b0;">No phase data available for this vehicle.</span>';
+            return;
+        }
+
+        const phases = data.phases || data;
+        const phaseLabels = ['Low (Urban)', 'Medium (Suburban)', 'High (Rural)', 'Extra High (Motorway)'];
+        const phaseKeys = ['low', 'medium', 'high', 'extra_high'];
+        const avgEmissions = phaseKeys.map(function(k) {
+            var p = phases[k];
+            if (!p) return 0;
+            return p.avg_ces != null ? p.avg_ces : 0;
+        });
+
+        const phaseColors = [
+            'rgba(0,122,255,0.85)',
+            'rgba(0,188,212,0.85)',
+            'rgba(255,152,0,0.85)',
+            'rgba(244,67,54,0.85)'
+        ];
+
+        if (phaseChartInstance) phaseChartInstance.destroy();
+
+        loadingEl.style.display = 'none';
+        canvasEl.style.display = 'block';
+
+        phaseChartInstance = new Chart(canvasEl.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: phaseLabels,
+                datasets: [{
+                    data: avgEmissions,
+                    backgroundColor: phaseColors,
+                    borderColor: '#0a0f1f',
+                    borderWidth: 3,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '55%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#8892b0', usePointStyle: true, padding: 16, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1a2044',
+                        titleColor: '#e6f1ff',
+                        bodyColor: '#8892b0',
+                        borderColor: '#2a3158',
+                        borderWidth: 1,
+                        callbacks: {
+                            label: function(ctx) {
+                                var phase = phaseKeys[ctx.dataIndex];
+                                var p = phases[phase] || {};
+                                return ctx.label + ': CES ' + ctx.raw.toFixed(4) +
+                                    (p.records != null ? ' (' + p.records + ' records)' : '');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        statusEl.textContent = phaseKeys.map(function(k) { return (phases[k] || {}).records || 0; }).reduce(function(a, b) { return a + b; }, 0) + ' records';
+    } catch (e) {
+        statusEl.textContent = 'Error';
+        loadingEl.innerHTML = '<span style="color:#F44336;">Failed to load phase data: ' + escapeHtml(e.message) + '</span>';
+        console.error('Phase breakdown error:', e);
+    }
+}
+
+// ── 5. Worst Performers Table ──
+function renderWorstPerformers(performers) {
+    const tbody = document.getElementById('worstBody');
+    const statusEl = document.getElementById('worstStatus');
+
+    if (!performers || !performers.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-dim" style="padding:2rem;">No data available</td></tr>';
+        statusEl.textContent = '0 vehicles';
+        return;
+    }
+
+    // Sort by CES descending, take top 10
+    var sorted = performers.slice().sort(function(a, b) { return (b.avg_ces || 0) - (a.avg_ces || 0); });
+    sorted = sorted.slice(0, 10);
+
+    tbody.innerHTML = sorted.map(function(v, i) {
+        var rank = i + 1;
+        var rankClass = rank <= 3 ? 'top3' : '';
+        var cesVal = v.avg_ces != null ? Number(v.avg_ces).toFixed(4) : '--';
+        var violations = v.violations != null ? v.violations : '--';
+        var records = v.total_records != null ? v.total_records : '--';
+        var statusColor = (v.avg_ces || 0) >= 1.0 ? 'red' : (v.avg_ces || 0) >= 0.75 ? 'yellow' : 'green';
+        var statusLabel = (v.avg_ces || 0) >= 1.0 ? 'FAIL' : (v.avg_ces || 0) >= 0.75 ? 'WARN' : 'PASS';
+
+        return '<tr>' +
+            '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
+            '<td><strong>' + escapeHtml(v.vehicle_id) + '</strong></td>' +
+            '<td class="mono">' + escapeHtml(cesVal) + '</td>' +
+            '<td class="mono" style="color:#F44336;">' + escapeHtml(String(violations)) + '</td>' +
+            '<td class="mono">' + escapeHtml(String(records)) + '</td>' +
+            '<td><span class="status-dot ' + statusColor + '"></span>' + statusLabel + '</td>' +
+            '</tr>';
+    }).join('');
+
+    statusEl.textContent = sorted.length + ' vehicles';
+}
+
+// ── 6. Export to CSV ──
+function exportAllCSV() {
+    var rows = [];
+    rows.push('Smart PUC Analytics Export');
+    rows.push('Generated: ' + new Date().toISOString());
+    rows.push('');
+
+    // Fleet overview
+    rows.push('=== Fleet Overview ===');
+    rows.push('Metric,Value');
+    rows.push('Total Vehicles,' + escapeCSV(document.getElementById('fleetTotalVehicles').textContent));
+    rows.push('Average CES,' + escapeCSV(document.getElementById('fleetAvgCES').textContent));
+    rows.push('Compliance Rate,' + escapeCSV(document.getElementById('fleetComplianceRate').textContent));
+    rows.push('Total Violations,' + escapeCSV(document.getElementById('fleetTotalViolations').textContent));
+    rows.push('');
+
+    // Emission trends
+    if (cachedTrends) {
+        rows.push('=== Emission Trends ===');
+        var trends = cachedTrends.trends || cachedTrends;
+        if (trends.timestamps && trends.timestamps.length) {
+            rows.push('Timestamp,CO2,NOx,CO,HC,PM2.5');
+            for (var i = 0; i < trends.timestamps.length; i++) {
+                var ts = new Date(trends.timestamps[i] * 1000).toISOString();
+                rows.push([
+                    ts,
+                    (trends.co2 || [])[i] || '',
+                    (trends.nox || [])[i] || '',
+                    (trends.co || [])[i] || '',
+                    (trends.hc || [])[i] || '',
+                    (trends.pm25 || [])[i] || ''
+                ].join(','));
+            }
+        }
+        rows.push('');
+    }
+
+    // CES Distribution
+    if (cachedDistribution) {
+        rows.push('=== CES Distribution ===');
+        rows.push('Bucket,Count');
+        var dist = cachedDistribution.distribution || cachedDistribution;
+        var bucketKeys = ['0-0.25', '0.25-0.5', '0.5-0.75', '0.75-1.0', '1.0+'];
+        bucketKeys.forEach(function(k) {
+            rows.push(k + ',' + (dist[k] || 0));
+        });
+        rows.push('');
+    }
+
+    // Worst performers
+    if (cachedFleet) {
+        var f = cachedFleet.fleet || cachedFleet;
+        if (f.worst_performers && f.worst_performers.length) {
+            rows.push('=== Worst Performers ===');
+            rows.push('Rank,Vehicle ID,Avg CES,Violations,Records');
+            var sorted = f.worst_performers.slice().sort(function(a, b) { return (b.avg_ces || 0) - (a.avg_ces || 0); });
+            sorted.slice(0, 10).forEach(function(v, i) {
+                rows.push([
+                    i + 1,
+                    escapeCSV(v.vehicle_id || ''),
+                    v.avg_ces != null ? v.avg_ces.toFixed(4) : '',
+                    v.violations || 0,
+                    v.total_records || 0
+                ].join(','));
+            });
+        }
+    }
+
+    var csvContent = rows.join('\n');
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'smart_puc_analytics_' + new Date().toISOString().split('T')[0] + '.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function escapeCSV(val) {
+    if (val == null) return '';
+    var s = String(val);
+    if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+}
+
+// ── Initialize ──
+document.addEventListener('DOMContentLoaded', function() {
+    initDateRange();
+});
+</script>
+</body>
+</html>

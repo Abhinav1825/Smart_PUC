@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY obd_node/ ./obd_node/
+COPY backend/ ./backend/
+COPY physics/ ./physics/
+COPY integrations/ ./integrations/
+COPY .env .env
+
+CMD ["python", "-m", "obd_node.obd_device", "--count", "100", "--interval", "5"]

@@ -2,51 +2,93 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+/**
+ * @title IEmissionRegistry
+ * @notice Interface for reading from the EmissionRegistry contract
+ */
+interface IEmissionRegistry {
+    function getVehicleStats(string memory _vehicleId)
+        external view returns (uint256 totalRecords, uint256 violations, uint256 fraudAlerts, uint256 averageCES);
+    function consecutivePassCount(string memory _vehicleId) external view returns (uint256);
+    function vehicleOwners(string memory _vehicleId) external view returns (address);
+}
+
+/**
+ * @title IGreenToken
+ * @notice Interface for minting Green Credit Tokens
+ */
+interface IGreenToken {
+    function mint(address _to, uint256 _amount) external;
+}
 
 /**
  * @title PUCCertificate
  * @author Smart PUC Team
  * @notice ERC-721 NFT representing a digital Pollution Under Control (PUC) certificate.
- * @dev Each token corresponds to a PUC certificate issued to a vehicle that has passed
- *      emission compliance checks. Certificates expire after 180 days and can be revoked
- *      by the issuing authority.
+ * @dev Reads from EmissionRegistry to verify eligibility before issuance.
+ *      Auto-mints Green Credit Tokens (GCT) as rewards on issuance.
+ *      Supports IPFS metadata via tokenURI override and base URI.
+ *
+ *      Certificate lifecycle:
+ *        1. Vehicle passes >= 3 consecutive emission checks (tracked in EmissionRegistry)
+ *        2. Testing station or vehicle owner calls issueCertificate()
+ *        3. Contract verifies eligibility via EmissionRegistry
+ *        4. NFT minted to vehicle owner, GreenTokens awarded
+ *        5. Certificate valid for 180 days, can be revoked by authority
  *
  *      Scaling: averageCES is scaled x10000 (e.g., 0.85 => 8500).
  */
-contract PUCCertificate is ERC721 {
+contract PUCCertificate is ERC721, ReentrancyGuard {
 
     // ───────────────────────── State Variables ─────────────────────────
 
-    /// @notice Authority address (deployer) — only authority can issue/revoke certificates
+    /// @notice Authority address (deployer) — can issue/revoke certificates
     address public authority;
+
+    /// @notice Reference to the EmissionRegistry contract
+    IEmissionRegistry public emissionRegistry;
+
+    /// @notice Reference to the GreenToken contract
+    IGreenToken public greenToken;
 
     /// @notice Auto-incrementing token ID counter
     uint256 private _tokenIdCounter;
 
-    /// @notice Certificate validity duration in seconds (180 days)
+    /// @notice Certificate validity duration (180 days)
     uint256 public constant VALIDITY_PERIOD = 180 days;
 
-    /// @notice CES score ceiling for certificate issuance (scaled x10000). Must be < 10000
+    /// @notice CES score ceiling for issuance (scaled x10000, must be < 10000)
     uint256 public constant CES_PASS_CEILING = 10000;
+
+    /// @notice Minimum consecutive passes required (matches EmissionRegistry)
+    uint256 public constant MIN_CONSECUTIVE_PASSES = 3;
+
+    /// @notice Green tokens rewarded per certificate issuance (100 GCT)
+    uint256 public constant GREEN_TOKEN_REWARD = 100 * 10**18;
+
+    /// @notice Authorized testing stations that can trigger issuance
+    mapping(address => bool) public authorizedIssuers;
+
+    /// @notice Per-token metadata URIs (IPFS or other)
+    mapping(uint256 => string) private _tokenURIs;
+
+    /// @notice Base URI for IPFS gateway (e.g. "https://ipfs.io/ipfs/")
+    string private _baseTokenURI;
 
     // ───────────────────────── Structs ─────────────────────────────────
 
-    /**
-     * @notice Data associated with each PUC certificate NFT.
-     * @param vehicleId       Vehicle registration number
-     * @param owner_          Address of the certificate holder
-     * @param issueTimestamp   Unix epoch when the certificate was issued
-     * @param expiryTimestamp  Unix epoch when the certificate expires (issue + 180 days)
-     * @param averageCES      Average Composite Emission Score at issuance (scaled x10000)
-     * @param emissionTxHash  Transaction hash of the emission record used for issuance
-     */
     struct CertificateData {
         string  vehicleId;
-        address owner_;
+        address vehicleOwner;
         uint256 issueTimestamp;
         uint256 expiryTimestamp;
-        uint256 averageCES;
-        bytes32 emissionTxHash;
+        uint256 averageCES;          // scaled x10000
+        uint256 totalRecordsAtIssue;
+        address issuedByStation;
+        bool    revoked;
+        string  revokeReason;
     }
 
     // ───────────────────────── Mappings ────────────────────────────────
@@ -57,176 +99,341 @@ contract PUCCertificate is ERC721 {
     /// @notice Vehicle ID => latest certificate token ID
     mapping(string => uint256) public vehicleToCertificate;
 
-    /// @notice Token ID => revoked flag
-    mapping(uint256 => bool) public revokedCertificates;
-
-    /// @notice Tracks whether a vehicle has ever been issued a certificate
+    /// @notice Vehicle ID => has ever been issued a certificate
     mapping(string => bool) private hasCertificate;
+
+    /// @notice Vehicle ID => total certificates issued (history count)
+    mapping(string => uint256) public certificateCount;
 
     // ───────────────────────── Events ──────────────────────────────────
 
-    /// @notice Emitted when a new PUC certificate is issued
     event CertificateIssued(
         uint256 indexed tokenId,
         string  vehicleId,
-        address owner_,
+        address indexed vehicleOwner,
+        address indexed issuedBy,
         uint256 issueTimestamp,
-        uint256 expiryTimestamp
+        uint256 expiryTimestamp,
+        uint256 averageCES
     );
 
-    /// @notice Emitted when a certificate is revoked
     event CertificateRevoked(
         uint256 indexed tokenId,
-        string  reason
+        string  vehicleId,
+        string  reason,
+        address revokedBy
     );
 
-    /// @notice Emitted when a validity check finds the certificate has expired
     event CertificateExpired(
         uint256 indexed tokenId,
         string  vehicleId
     );
 
+    event GreenTokensAwarded(
+        string  indexed vehicleId,
+        address indexed vehicleOwner,
+        uint256 amount
+    );
+
+    event TokenURISet(
+        uint256 indexed tokenId,
+        string  uri
+    );
+
+    event BaseURISet(
+        string  baseURI
+    );
+
     // ───────────────────────── Modifiers ───────────────────────────────
 
-    /// @notice Restricts function access to the authority (deployer)
     modifier onlyAuthority() {
         require(msg.sender == authority, "Only authority can call this function");
+        _;
+    }
+
+    modifier onlyAuthorizedIssuer() {
+        require(
+            msg.sender == authority || authorizedIssuers[msg.sender],
+            "Not authorized to issue certificates"
+        );
         _;
     }
 
     // ───────────────────────── Constructor ─────────────────────────────
 
     /**
-     * @notice Deploys the PUC Certificate NFT contract.
-     * @dev Sets the deployer as the authority and initialises the ERC-721 with
-     *      name "PUC Certificate" and symbol "PUC".
+     * @param _emissionRegistry Address of the deployed EmissionRegistry contract
+     * @param _greenToken       Address of the deployed GreenToken contract
      */
-    constructor() ERC721("PUC Certificate", "PUC") {
+    constructor(
+        address _emissionRegistry,
+        address _greenToken
+    ) ERC721("PUC Certificate", "PUC") {
         authority = msg.sender;
+        emissionRegistry = IEmissionRegistry(_emissionRegistry);
+        greenToken = IGreenToken(_greenToken);
         _tokenIdCounter = 0;
+    }
+
+    // ───────────────────────── Admin Functions ─────────────────────────
+
+    /// @notice Authorize a testing station to issue certificates
+    function setAuthorizedIssuer(address _issuer, bool _authorized) external onlyAuthority {
+        authorizedIssuers[_issuer] = _authorized;
+    }
+
+    /// @notice Update the EmissionRegistry address
+    function setEmissionRegistry(address _addr) external onlyAuthority {
+        emissionRegistry = IEmissionRegistry(_addr);
+    }
+
+    /// @notice Update the GreenToken address
+    function setGreenToken(address _addr) external onlyAuthority {
+        greenToken = IGreenToken(_addr);
+    }
+
+    /// @notice Transfer authority role
+    function transferAuthority(address _newAuthority) external onlyAuthority {
+        require(_newAuthority != address(0), "Invalid authority address");
+        authority = _newAuthority;
+    }
+
+    /// @notice Set the base URI for IPFS gateway (e.g. "https://ipfs.io/ipfs/")
+    function setBaseURI(string memory _newBaseURI) external onlyAuthority {
+        _baseTokenURI = _newBaseURI;
+        emit BaseURISet(_newBaseURI);
+    }
+
+    /**
+     * @notice Set or update the metadata URI for a specific certificate token.
+     * @param _tokenId The token ID to set the URI for
+     * @param _uri     The metadata URI (IPFS CID or full URL)
+     */
+    function setTokenURI(uint256 _tokenId, string memory _uri) external onlyAuthority {
+        require(_exists(_tokenId), "Token does not exist");
+        _tokenURIs[_tokenId] = _uri;
+        emit TokenURISet(_tokenId, _uri);
     }
 
     // ───────────────────────── Core Functions ──────────────────────────
 
     /**
-     * @notice Issue a new PUC certificate NFT to the caller.
-     * @param _vehicleId      Vehicle registration number
-     * @param _averageCES     Average CES score (scaled x10000); must be < 10000 to qualify
-     * @param _emissionTxHash Transaction hash of the underlying emission record
-     * @return tokenId        The newly minted token ID
+     * @notice Issue a PUC certificate NFT after verifying eligibility from EmissionRegistry.
+     * @param _vehicleId    Vehicle registration number
+     * @param _vehicleOwner Wallet address of the vehicle owner (receives NFT + tokens)
+     * @param _metadataURI  Optional IPFS metadata URI (pass "" if not ready yet)
+     * @return tokenId The newly minted token ID
      *
-     * @dev Only the authority can issue certificates. The certificate is minted to
-     *      msg.sender (the authority) and is valid for 180 days from issuance.
+     * @dev Eligibility checks:
+     *   1. Vehicle has >= MIN_CONSECUTIVE_PASSES consecutive PASS records
+     *   2. Average CES is below CES_PASS_CEILING
+     *   3. No existing valid (non-expired, non-revoked) certificate
      */
     function issueCertificate(
         string memory _vehicleId,
-        uint256 _averageCES,
-        bytes32 _emissionTxHash
-    ) public onlyAuthority returns (uint256) {
-        require(bytes(_vehicleId).length > 0, "Vehicle ID cannot be empty");
-        require(_averageCES < CES_PASS_CEILING, "Average CES must be below 10000 to qualify");
-
-        _tokenIdCounter++;
-        uint256 tokenId = _tokenIdCounter;
-
-        uint256 issueTime = block.timestamp;
-        uint256 expiryTime = issueTime + VALIDITY_PERIOD;
-
-        // Mint the NFT to the authority
-        _mint(msg.sender, tokenId);
-
-        // Store certificate data
-        certificates[tokenId] = CertificateData({
-            vehicleId:       _vehicleId,
-            owner_:          msg.sender,
-            issueTimestamp:   issueTime,
-            expiryTimestamp:  expiryTime,
-            averageCES:      _averageCES,
-            emissionTxHash:  _emissionTxHash
-        });
-
-        // Update latest certificate mapping
-        vehicleToCertificate[_vehicleId] = tokenId;
-        hasCertificate[_vehicleId] = true;
-
-        emit CertificateIssued(tokenId, _vehicleId, msg.sender, issueTime, expiryTime);
-
-        return tokenId;
+        address _vehicleOwner,
+        string memory _metadataURI
+    ) external onlyAuthorizedIssuer nonReentrant returns (uint256) {
+        return _issueCertificateInternal(_vehicleId, _vehicleOwner, _metadataURI);
     }
 
     /**
-     * @notice Check whether a vehicle has a valid (non-revoked, non-expired) PUC certificate.
-     * @param _vehicleId Vehicle registration number
-     * @return valid true if the vehicle's latest certificate exists, is not revoked, and has not expired
-     *
-     * @dev If the certificate is found to be expired, emits a CertificateExpired event
-     *      (note: this is a view function, so the event is only emitted in non-static calls).
+     * @notice Backward-compatible overload without metadata URI parameter.
+     * @param _vehicleId    Vehicle registration number
+     * @param _vehicleOwner Wallet address of the vehicle owner (receives NFT + tokens)
+     * @return tokenId The newly minted token ID
      */
-    function isValid(
-        string memory _vehicleId
-    ) public view returns (bool valid) {
-        // Check if the vehicle has ever been issued a certificate
-        if (!hasCertificate[_vehicleId]) {
-            return false;
+    function issueCertificate(
+        string memory _vehicleId,
+        address _vehicleOwner
+    ) external onlyAuthorizedIssuer nonReentrant returns (uint256) {
+        return _issueCertificateInternal(_vehicleId, _vehicleOwner, "");
+    }
+
+    /**
+     * @dev Internal implementation for certificate issuance.
+     */
+    function _issueCertificateInternal(
+        string memory _vehicleId,
+        address _vehicleOwner,
+        string memory _metadataURI
+    ) internal returns (uint256) {
+        require(bytes(_vehicleId).length > 0, "Vehicle ID cannot be empty");
+        require(_vehicleOwner != address(0), "Invalid vehicle owner address");
+
+        // Check if vehicle already has a valid certificate
+        if (hasCertificate[_vehicleId]) {
+            uint256 existingId = vehicleToCertificate[_vehicleId];
+            CertificateData storage existing = certificates[existingId];
+            require(
+                existing.revoked || block.timestamp > existing.expiryTimestamp,
+                "Vehicle already has a valid certificate"
+            );
         }
 
-        uint256 tokenId = vehicleToCertificate[_vehicleId];
+        // Verify eligibility from EmissionRegistry
+        uint256 consecutivePasses = emissionRegistry.consecutivePassCount(_vehicleId);
+        require(consecutivePasses >= MIN_CONSECUTIVE_PASSES, "Insufficient consecutive passes");
 
-        // Check if revoked
-        if (revokedCertificates[tokenId]) {
-            return false;
+        (uint256 totalRecords, , , uint256 averageCES) = emissionRegistry.getVehicleStats(_vehicleId);
+        require(totalRecords > 0, "No emission records found");
+        require(averageCES < CES_PASS_CEILING, "Average CES too high for certification");
+
+        // Mint NFT
+        _tokenIdCounter++;
+        uint256 tokenId = _tokenIdCounter;
+        uint256 issueTime = block.timestamp;
+        uint256 expiryTime = issueTime + VALIDITY_PERIOD;
+
+        _mint(_vehicleOwner, tokenId);
+
+        // Set metadata URI if provided
+        if (bytes(_metadataURI).length > 0) {
+            _tokenURIs[tokenId] = _metadataURI;
+            emit TokenURISet(tokenId, _metadataURI);
         }
 
-        // Check if expired
-        CertificateData storage cert = certificates[tokenId];
-        if (block.timestamp > cert.expiryTimestamp) {
-            return false;
+        // Store certificate data
+        certificates[tokenId] = CertificateData({
+            vehicleId:          _vehicleId,
+            vehicleOwner:       _vehicleOwner,
+            issueTimestamp:     issueTime,
+            expiryTimestamp:    expiryTime,
+            averageCES:         averageCES,
+            totalRecordsAtIssue: totalRecords,
+            issuedByStation:    msg.sender,
+            revoked:            false,
+            revokeReason:       ""
+        });
+
+        vehicleToCertificate[_vehicleId] = tokenId;
+        hasCertificate[_vehicleId] = true;
+        certificateCount[_vehicleId]++;
+
+        emit CertificateIssued(
+            tokenId, _vehicleId, _vehicleOwner, msg.sender,
+            issueTime, expiryTime, averageCES
+        );
+
+        // Award Green Credit Tokens
+        try greenToken.mint(_vehicleOwner, GREEN_TOKEN_REWARD) {
+            emit GreenTokensAwarded(_vehicleId, _vehicleOwner, GREEN_TOKEN_REWARD);
+        } catch {
+            // GreenToken minting failure should not block certificate issuance
         }
 
-        return true;
+        return tokenId;
     }
 
     /**
      * @notice Revoke a PUC certificate. Authority-only.
      * @param _tokenId Token ID of the certificate to revoke
      * @param _reason  Human-readable reason for revocation
-     *
-     * @dev Marks the certificate as revoked. Does not burn the NFT so the
-     *      historical record is preserved on-chain.
      */
-    function revoke(
-        uint256 _tokenId,
-        string memory _reason
-    ) public onlyAuthority {
+    function revokeCertificate(uint256 _tokenId, string memory _reason) external onlyAuthority {
         require(_exists(_tokenId), "Certificate does not exist");
-        require(!revokedCertificates[_tokenId], "Certificate already revoked");
+        CertificateData storage cert = certificates[_tokenId];
+        require(!cert.revoked, "Certificate already revoked");
 
-        revokedCertificates[_tokenId] = true;
+        cert.revoked = true;
+        cert.revokeReason = _reason;
 
-        emit CertificateRevoked(_tokenId, _reason);
+        emit CertificateRevoked(_tokenId, cert.vehicleId, _reason, msg.sender);
     }
 
+    // ───────────────────────── Token URI Functions ─────────────────────
+
     /**
-     * @notice Get the full certificate data for a token.
-     * @param _tokenId Token ID
-     * @return The CertificateData struct
+     * @notice Returns the metadata URI for a given token.
+     * @dev If a per-token URI is set, it is returned directly (or prepended with baseURI).
+     *      If no per-token URI is set, returns empty string.
+     * @param _tokenId The token ID to query
+     * @return The full metadata URI string
      */
-    function getCertificate(
-        uint256 _tokenId
-    ) public view returns (CertificateData memory) {
+    function tokenURI(uint256 _tokenId) public view virtual override returns (string memory) {
+        require(_exists(_tokenId), "ERC721Metadata: URI query for nonexistent token");
+
+        string memory _uri = _tokenURIs[_tokenId];
+
+        // If no per-token URI is set, return empty
+        if (bytes(_uri).length == 0) {
+            return "";
+        }
+
+        // If a base URI is set, concatenate base + per-token URI
+        if (bytes(_baseTokenURI).length > 0) {
+            return string(abi.encodePacked(_baseTokenURI, _uri));
+        }
+
+        // Otherwise return the per-token URI as-is (could be a full IPFS URL)
+        return _uri;
+    }
+
+    // ───────────────────────── View Functions ──────────────────────────
+
+    /**
+     * @notice Check if a vehicle has a valid PUC certificate.
+     * @param _vehicleId Vehicle registration number
+     * @return valid True if certificate exists, is not revoked, and not expired
+     * @return tokenId The certificate token ID (0 if none)
+     * @return expiryTimestamp When the certificate expires (0 if none)
+     */
+    function isValid(string memory _vehicleId)
+        external view returns (bool valid, uint256 tokenId, uint256 expiryTimestamp)
+    {
+        if (!hasCertificate[_vehicleId]) return (false, 0, 0);
+
+        tokenId = vehicleToCertificate[_vehicleId];
+        CertificateData storage cert = certificates[tokenId];
+
+        if (cert.revoked) return (false, tokenId, cert.expiryTimestamp);
+        if (block.timestamp > cert.expiryTimestamp) return (false, tokenId, cert.expiryTimestamp);
+
+        return (true, tokenId, cert.expiryTimestamp);
+    }
+
+    /// @notice Get full certificate data for a token
+    function getCertificate(uint256 _tokenId)
+        external view returns (CertificateData memory)
+    {
         require(_exists(_tokenId), "Certificate does not exist");
         return certificates[_tokenId];
     }
 
-    /**
-     * @notice Get the latest certificate token ID for a vehicle.
-     * @param _vehicleId Vehicle registration number
-     * @return tokenId The latest token ID (0 if none exists)
-     */
-    function getVehicleCertificate(
-        string memory _vehicleId
-    ) public view returns (uint256) {
+    /// @notice Get the latest certificate token ID for a vehicle
+    function getVehicleCertificate(string memory _vehicleId)
+        external view returns (uint256)
+    {
         require(hasCertificate[_vehicleId], "No certificate for this vehicle");
         return vehicleToCertificate[_vehicleId];
+    }
+
+    /// @notice Get certificate data for QR code verification
+    function getVerificationData(string memory _vehicleId)
+        external view returns (
+            bool valid,
+            uint256 tokenId,
+            string memory vehicleId,
+            address vehicleOwner,
+            uint256 issueDate,
+            uint256 expiryDate,
+            uint256 averageCES,
+            bool revoked
+        )
+    {
+        if (!hasCertificate[_vehicleId]) {
+            return (false, 0, _vehicleId, address(0), 0, 0, 0, false);
+        }
+
+        tokenId = vehicleToCertificate[_vehicleId];
+        CertificateData storage cert = certificates[tokenId];
+
+        valid = !cert.revoked && block.timestamp <= cert.expiryTimestamp;
+        vehicleId = cert.vehicleId;
+        vehicleOwner = cert.vehicleOwner;
+        issueDate = cert.issueTimestamp;
+        expiryDate = cert.expiryTimestamp;
+        averageCES = cert.averageCES;
+        revoked = cert.revoked;
     }
 }

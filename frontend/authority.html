@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Smart PUC Authority Dashboard — regulatory oversight of multi-pollutant vehicle emission compliance">
     <title>Smart PUC — Authority Dashboard</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -17,12 +16,23 @@
         <div class="navbar-actions">
             <a href="index.html" class="nav-link">Vehicle</a>
             <a href="authority.html" class="nav-link active">Authority</a>
+            <a href="verify.html" class="nav-link">Verify</a>
+            <a href="analytics.html" class="nav-link">Analytics</a>
+            <a href="fleet.html" class="nav-link">Fleet</a>
+            <a href="rto.html" class="nav-link">RTO</a>
+            <a href="marketplace.html" class="nav-link">Marketplace</a>
             <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
             <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
         </div>
     </nav>
+
     <div id="alertsContainer"></div>
-    <div class="metrics-grid">
+
+    <!-- Live Violation/Fraud Alerts (event-driven) -->
+    <div id="violationAlerts"></div>
+
+    <!-- Summary Stats -->
+    <div class="metrics-grid" style="grid-template-columns: repeat(6, 1fr);">
         <div class="metric-card"><div class="metric-label">Total Records</div><div class="metric-value" id="statTotal">0</div></div>
         <div class="metric-card"><div class="metric-label">Violations</div><div class="metric-value" id="statViol" style="-webkit-text-fill-color:var(--clr-fail)">0</div></div>
         <div class="metric-card"><div class="metric-label">Fraud Alerts</div><div class="metric-value" id="statFraud" style="-webkit-text-fill-color:var(--clr-warn)">0</div></div>
@@ -30,15 +40,117 @@
         <div class="metric-card"><div class="metric-label">Compliance %</div><div class="metric-value" id="statComp">&mdash;</div></div>
         <div class="metric-card"><div class="metric-label">Avg CES</div><div class="metric-value" id="statAvgCes">&mdash;</div></div>
     </div>
+
+    <!-- Authority Actions -->
+    <div class="grid-2 mb-lg">
+        <!-- Issue Certificate -->
+        <div class="card">
+            <div class="card-header"><div class="card-title">Issue PUC Certificate</div></div>
+            <div style="padding:0.5rem 0;">
+                <div class="form-group">
+                    <label class="form-label">Vehicle ID</label>
+                    <input class="form-input" id="issueVehicleId" placeholder="MH12AB1234" style="text-transform:uppercase">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Vehicle Owner Address</label>
+                    <input class="form-input" id="issueOwnerAddr" placeholder="0x...">
+                </div>
+                <button class="btn btn-accent" onclick="issueCertificate()" id="issueCertBtn">Issue Certificate NFT</button>
+                <div id="issueResult" style="margin-top:0.75rem;font-size:0.85rem;"></div>
+            </div>
+        </div>
+
+        <!-- Revoke Certificate -->
+        <div class="card">
+            <div class="card-header"><div class="card-title">Revoke Certificate</div></div>
+            <div style="padding:0.5rem 0;">
+                <div class="form-group">
+                    <label class="form-label">Token ID</label>
+                    <input class="form-input" id="revokeTokenId" placeholder="1" type="number">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Reason</label>
+                    <input class="form-input" id="revokeReason" placeholder="e.g. Fraudulent readings detected">
+                </div>
+                <button class="btn btn-danger" onclick="revokeCertificate()">Revoke Certificate</button>
+                <div id="revokeResult" style="margin-top:0.75rem;font-size:0.85rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device & Station Management -->
+    <div class="grid-2 mb-lg">
+        <div class="card">
+            <div class="card-header"><div class="card-title">Registered Devices</div></div>
+            <div style="padding:0.5rem 0;">
+                <div class="form-group">
+                    <label class="form-label">Device Address</label>
+                    <input class="form-input" id="deviceAddr" placeholder="0x...">
+                </div>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="btn btn-accent btn-sm" onclick="registerDevice(true)">Register</button>
+                    <button class="btn btn-danger btn-sm" onclick="registerDevice(false)">Deregister</button>
+                </div>
+                <div id="deviceResult" style="margin-top:0.75rem;font-size:0.85rem;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><div class="card-title">Testing Stations</div></div>
+            <div style="padding:0.5rem 0;">
+                <div class="form-group">
+                    <label class="form-label">Station Address</label>
+                    <input class="form-input" id="stationAddr" placeholder="0x...">
+                </div>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="btn btn-accent btn-sm" onclick="registerStation(true)">Authorize</button>
+                    <button class="btn btn-danger btn-sm" onclick="registerStation(false)">Deauthorize</button>
+                </div>
+                <div id="stationResult" style="margin-top:0.75rem;font-size:0.85rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vehicle Lookup -->
     <div class="card mb-lg">
-        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div class="card-header"><div class="card-title">Vehicle Lookup (VAHAN + Blockchain)</div></div>
+        <div style="display:flex;gap:1rem;align-items:end;flex-wrap:wrap;">
+            <div class="form-group" style="flex:1;min-width:200px;">
+                <label class="form-label">Vehicle Registration</label>
+                <input class="form-input" id="lookupVid" placeholder="MH12AB1234" style="text-transform:uppercase">
+            </div>
+            <button class="btn btn-accent" onclick="lookupVehicle()">Lookup</button>
+        </div>
+        <div id="lookupResult" style="margin-top:1rem;display:none;">
+            <div class="result-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
+                <div class="cert-item"><span class="cert-label">Owner</span><span class="cert-value" id="luOwner">—</span></div>
+                <div class="cert-item"><span class="cert-label">Fuel Type</span><span class="cert-value" id="luFuel">—</span></div>
+                <div class="cert-item"><span class="cert-label">BS Norm</span><span class="cert-value" id="luBs">—</span></div>
+                <div class="cert-item"><span class="cert-label">Manufacturer</span><span class="cert-value" id="luMfr">—</span></div>
+                <div class="cert-item"><span class="cert-label">Model</span><span class="cert-value" id="luModel">—</span></div>
+                <div class="cert-item"><span class="cert-label">Status</span><span class="cert-value" id="luRegStatus">—</span></div>
+                <div class="cert-item"><span class="cert-label">PUC Valid</span><span class="cert-value" id="luPucValid">—</span></div>
+                <div class="cert-item"><span class="cert-label">Records</span><span class="cert-value" id="luRecords">—</span></div>
+                <div class="cert-item"><span class="cert-label">Avg CES</span><span class="cert-value" id="luCes">—</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Records Table -->
+    <div class="card mb-lg">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
             <div class="form-group" style="flex:1;min-width:200px">
                 <label class="form-label">Search Vehicle ID</label>
                 <input class="form-input" id="searchVid" placeholder="MH12AB1234" style="text-transform:uppercase">
             </div>
             <div class="form-group">
                 <label class="form-label">Filter</label>
-                <select class="form-select" id="filterSt"><option value="all">All</option><option value="fail">Violations</option><option value="pass">Compliant</option><option value="fraud">Fraud Alerts</option></select>
+                <select class="form-select" id="filterSt">
+                    <option value="all">All</option>
+                    <option value="fail">Violations</option>
+                    <option value="pass">Compliant</option>
+                    <option value="fraud">Fraud Alerts</option>
+                </select>
             </div>
             <div class="form-group"><label class="form-label">&nbsp;</label>
                 <div style="display:flex;gap:.5rem">
@@ -48,72 +160,215 @@
                 </div>
             </div>
         </div>
-    </div>
-    <div id="violationAlerts"></div>
-    <div class="card">
         <div class="card-header"><div class="card-title">All Records</div><span class="text-muted text-mono" id="recCnt">0</span></div>
         <div class="table-container">
-            <table><thead><tr><th>#</th><th>Vehicle</th><th>CO&#8322;</th><th>NOx</th><th>CES</th><th>Fraud</th><th>Phase</th><th>Time</th><th>Status</th></tr></thead>
-            <tbody id="recBody"><tr><td colspan="9" class="text-center text-dim" style="padding:2rem">Click Refresh to load</td></tr></tbody></table>
+            <table><thead><tr><th>#</th><th>Vehicle</th><th>CO&#8322;</th><th>NOx</th><th>CES</th><th>Fraud</th><th>Phase</th><th>Station</th><th>Device</th><th>Time</th><th>Status</th></tr></thead>
+            <tbody id="recBody"><tr><td colspan="11" class="text-center text-dim" style="padding:2rem">Click Refresh to load</td></tr></tbody></table>
         </div>
     </div>
-    <footer class="footer">Smart PUC &mdash; Multi-pollutant BSVI compliance records immutable on blockchain</footer>
+
+    <footer class="footer">Smart PUC &mdash; 3-Node Blockchain Architecture | EmissionRegistry + PUCCertificate (ERC-721) + GreenToken (ERC-20)</footer>
 </div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <script src="app.js"></script>
 <script>
-const API=window.SMART_PUC_API||'http://127.0.0.1:5000';
-const PHASE_LABELS=['Low','Medium','High','Extra High'];
-function escapeHtmlAuth(str){if(str==null)return '';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-async function loadAll(){
-    const tb=document.getElementById('recBody'),search=document.getElementById('searchVid').value.trim().toUpperCase(),
-          filt=document.getElementById('filterSt').value;
-    tb.innerHTML='<tr><td colspan="9" class="text-center"><div class="spinner"></div></td></tr>';
-    try{
-        const contract=await getContract();
-        if(!contract){tb.innerHTML='<tr><td colspan="9" class="text-center text-dim">Connect wallet first</td></tr>';return;}
-        const vehs=await contract.getRegisteredVehicles();let all=[],viols=0,frauds=0,cesSum=0;
-        for(const v of vehs){
-            if(search&&v.toUpperCase()!==search)continue;
-            const recs=await contract.getAllRecords(v);
-            for(const r of recs){
-                const s=r[11]?'PASS':'FAIL';
-                const ces=Number(r[6])/10000;
-                const fraud=Number(r[7])/10000;
-                if(!r[11])viols++;
-                if(fraud>=0.65)frauds++;
-                cesSum+=ces;
-                if(filt==='fail'&&s!=='FAIL')continue;
-                if(filt==='pass'&&s!=='PASS')continue;
-                if(filt==='fraud'&&fraud<0.65)continue;
-                all.push({vehicleId:r[0],co2:Number(r[1])/1000,nox:Number(r[3])/1000,ces:ces,fraud:fraud,phase:Number(r[9]),timestamp:Number(r[10]),status:s});
+const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+const PHASE_LABELS = ['Low', 'Medium', 'High', 'Extra High'];
+
+function esc(str) { if (str == null) return ''; return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function truncAddr(a) { if (!a || a === '0x0000000000000000000000000000000000000000') return '—'; return a.slice(0,6)+'...'+a.slice(-4); }
+
+// ── Load all records from chain via MetaMask ──
+async function loadAll() {
+    const tb = document.getElementById('recBody');
+    const search = document.getElementById('searchVid').value.trim().toUpperCase();
+    const filt = document.getElementById('filterSt').value;
+    tb.innerHTML = '<tr><td colspan="11" class="text-center"><div class="spinner"></div></td></tr>';
+
+    try {
+        const contract = await getRegistryContract();
+        if (!contract) { tb.innerHTML = '<tr><td colspan="11" class="text-center text-dim">Connect wallet first</td></tr>'; return; }
+
+        const vehs = await contract.getRegisteredVehicles();
+        let all = [], viols = 0, frauds = 0, cesSum = 0;
+
+        for (const v of vehs) {
+            if (search && v.toUpperCase() !== search) continue;
+            const recs = await contract.getAllRecords(v);
+            for (const r of recs) {
+                const s = r[11] ? 'PASS' : 'FAIL';
+                const ces = Number(r[6]) / 10000;
+                const fraud = Number(r[7]) / 10000;
+                if (!r[11]) viols++;
+                if (fraud >= 0.65) frauds++;
+                cesSum += ces;
+                if (filt === 'fail' && s !== 'FAIL') continue;
+                if (filt === 'pass' && s !== 'PASS') continue;
+                if (filt === 'fraud' && fraud < 0.65) continue;
+                all.push({
+                    vehicleId: r[0], co2: Number(r[1]) / 1000, nox: Number(r[3]) / 1000,
+                    ces, fraud, phase: Number(r[9]), timestamp: Number(r[10]), status: s,
+                    device: r[12], station: r[13]
+                });
             }
         }
-        all.sort((a,b)=>b.timestamp-a.timestamp);
-        document.getElementById('statTotal').textContent=all.length;
-        document.getElementById('statViol').textContent=viols;
-        document.getElementById('statFraud').textContent=frauds;
-        document.getElementById('statVeh').textContent=vehs.length;
-        const pass=all.filter(r=>r.status==='PASS').length;
-        document.getElementById('statComp').textContent=all.length?((pass/all.length)*100).toFixed(1)+'%':'--';
-        document.getElementById('statAvgCes').textContent=all.length?(cesSum/all.length).toFixed(3):'--';
-        document.getElementById('recCnt').textContent=all.length+' records';
-        if(!all.length){tb.innerHTML='<tr><td colspan="9" class="text-center text-dim" style="padding:2rem">No records</td></tr>';return;}
-        tb.innerHTML=all.map((r,i)=>{
-            const d=new Date(r.timestamp*1000).toLocaleString();
-            const cl=r.status==='PASS'?'pass':'fail';
-            const fcl=r.fraud>=0.65?'text-fail':r.fraud>=0.35?'text-warn':'text-pass';
-            return '<tr><td class="mono">'+( i+1)+'</td><td><strong>'+escapeHtmlAuth(r.vehicleId)+'</strong></td><td class="mono">'+escapeHtmlAuth(r.co2.toFixed(1))+'</td><td class="mono">'+escapeHtmlAuth(r.nox.toFixed(4))+'</td><td class="mono">'+escapeHtmlAuth(r.ces.toFixed(3))+'</td><td class="mono '+fcl+'">'+escapeHtmlAuth(r.fraud.toFixed(3))+'</td><td>'+escapeHtmlAuth(PHASE_LABELS[r.phase])+'</td><td class="text-muted">'+escapeHtmlAuth(d)+'</td><td><span class="status-badge '+cl+'">'+escapeHtmlAuth(r.status)+'</span></td></tr>';
+
+        all.sort((a, b) => b.timestamp - a.timestamp);
+        document.getElementById('statTotal').textContent = all.length;
+        document.getElementById('statViol').textContent = viols;
+        document.getElementById('statFraud').textContent = frauds;
+        document.getElementById('statVeh').textContent = vehs.length;
+        const pass = all.filter(r => r.status === 'PASS').length;
+        document.getElementById('statComp').textContent = all.length ? ((pass / all.length) * 100).toFixed(1) + '%' : '--';
+        document.getElementById('statAvgCes').textContent = all.length ? (cesSum / all.length).toFixed(3) : '--';
+        document.getElementById('recCnt').textContent = all.length + ' records';
+
+        if (!all.length) { tb.innerHTML = '<tr><td colspan="11" class="text-center text-dim" style="padding:2rem">No records</td></tr>'; return; }
+        tb.innerHTML = all.map((r, i) => {
+            const d = new Date(r.timestamp * 1000).toLocaleString();
+            const cl = r.status === 'PASS' ? 'pass' : 'fail';
+            const fcl = r.fraud >= 0.65 ? 'text-fail' : r.fraud >= 0.35 ? 'text-warn' : 'text-pass';
+            return `<tr><td class="mono">${i + 1}</td><td><strong>${esc(r.vehicleId)}</strong></td><td class="mono">${r.co2.toFixed(1)}</td><td class="mono">${r.nox.toFixed(4)}</td><td class="mono">${r.ces.toFixed(3)}</td><td class="mono ${fcl}">${r.fraud.toFixed(3)}</td><td>${esc(PHASE_LABELS[r.phase])}</td><td class="mono" title="${r.station}">${truncAddr(r.station)}</td><td class="mono" title="${r.device}">${truncAddr(r.device)}</td><td class="text-muted">${esc(d)}</td><td><span class="status-badge ${cl}">${esc(r.status)}</span></td></tr>`;
         }).join('');
-    }catch(e){tb.innerHTML='<tr><td colspan="9" class="text-center text-fail">'+escapeHtmlAuth(e.message)+'</td></tr>';}
+    } catch (e) { tb.innerHTML = '<tr><td colspan="11" class="text-center text-fail">' + esc(e.message) + '</td></tr>'; }
 }
-async function listenViol(){try{const c=await getContract();if(!c)return;
-    c.on('ViolationDetected',(v,ces,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
-        '<div class="alert alert-violation">VIOLATION: '+escapeHtmlAuth(v)+' CES='+escapeHtmlAuth((Number(ces)/10000).toFixed(3))+' at '+escapeHtmlAuth(new Date(Number(t)*1000).toLocaleTimeString())+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
-    c.on('FraudDetected',(v,fs,t)=>{document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
-        '<div class="alert alert-warning">FRAUD ALERT: '+escapeHtmlAuth(v)+' Score='+escapeHtmlAuth((Number(fs)/10000).toFixed(3))+' at '+escapeHtmlAuth(new Date(Number(t)*1000).toLocaleTimeString())+'<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>');});
-}catch(e){console.warn(e);}}
-document.addEventListener('DOMContentLoaded',listenViol);
+
+// ── Issue Certificate ──
+async function issueCertificate() {
+    const vid = document.getElementById('issueVehicleId').value.trim().toUpperCase();
+    const owner = document.getElementById('issueOwnerAddr').value.trim();
+    const resultDiv = document.getElementById('issueResult');
+    if (!vid || !owner) { resultDiv.innerHTML = '<span class="text-fail">Both fields required</span>'; return; }
+
+    resultDiv.innerHTML = '<span style="color:#007AFF;">Issuing certificate...</span>';
+    try {
+        const res = await fetch(`${API}/api/certificate/issue`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ vehicle_id: vid, vehicle_owner: owner })
+        });
+        const data = await res.json();
+        if (data.success) {
+            resultDiv.innerHTML = `<span class="text-pass">Certificate issued! TX: ${data.result.tx_hash.slice(0,16)}...</span>`;
+        } else {
+            resultDiv.innerHTML = `<span class="text-fail">Failed: ${esc(data.error)}</span>`;
+        }
+    } catch (e) { resultDiv.innerHTML = `<span class="text-fail">Error: ${esc(e.message)}</span>`; }
+}
+
+// ── Revoke Certificate ──
+async function revokeCertificate() {
+    const tokenId = document.getElementById('revokeTokenId').value;
+    const reason = document.getElementById('revokeReason').value.trim();
+    const resultDiv = document.getElementById('revokeResult');
+    if (!tokenId) { resultDiv.innerHTML = '<span class="text-fail">Token ID required</span>'; return; }
+
+    resultDiv.innerHTML = '<span style="color:#007AFF;">Revoking...</span>';
+    try {
+        const res = await fetch(`${API}/api/certificate/revoke`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ token_id: parseInt(tokenId), reason: reason || 'Revoked by authority' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            resultDiv.innerHTML = `<span class="text-pass">Revoked! TX: ${data.result.tx_hash.slice(0,16)}...</span>`;
+        } else {
+            resultDiv.innerHTML = `<span class="text-fail">Failed: ${esc(data.error)}</span>`;
+        }
+    } catch (e) { resultDiv.innerHTML = `<span class="text-fail">Error: ${esc(e.message)}</span>`; }
+}
+
+// ── Register/Deregister Device (via MetaMask) ──
+async function registerDevice(authorize) {
+    const addr = document.getElementById('deviceAddr').value.trim();
+    const resultDiv = document.getElementById('deviceResult');
+    if (!addr) { resultDiv.innerHTML = '<span class="text-fail">Address required</span>'; return; }
+
+    try {
+        const contract = await getRegistryContract(true);
+        if (!contract) { resultDiv.innerHTML = '<span class="text-fail">Connect wallet first</span>'; return; }
+        resultDiv.innerHTML = '<span style="color:#007AFF;">Submitting transaction...</span>';
+        const tx = await contract.setRegisteredDevice(addr, authorize);
+        await tx.wait();
+        resultDiv.innerHTML = `<span class="text-pass">${authorize ? 'Registered' : 'Deregistered'}!</span>`;
+    } catch (e) { resultDiv.innerHTML = `<span class="text-fail">${esc(e.message)}</span>`; }
+}
+
+// ── Register/Deregister Station (via MetaMask) ──
+async function registerStation(authorize) {
+    const addr = document.getElementById('stationAddr').value.trim();
+    const resultDiv = document.getElementById('stationResult');
+    if (!addr) { resultDiv.innerHTML = '<span class="text-fail">Address required</span>'; return; }
+
+    try {
+        const contract = await getRegistryContract(true);
+        if (!contract) { resultDiv.innerHTML = '<span class="text-fail">Connect wallet first</span>'; return; }
+        resultDiv.innerHTML = '<span style="color:#007AFF;">Submitting transaction...</span>';
+        const tx = await contract.setTestingStation(addr, authorize);
+        await tx.wait();
+        resultDiv.innerHTML = `<span class="text-pass">${authorize ? 'Authorized' : 'Deauthorized'}!</span>`;
+    } catch (e) { resultDiv.innerHTML = `<span class="text-fail">${esc(e.message)}</span>`; }
+}
+
+// ── Vehicle Lookup (VAHAN + Chain) ──
+async function lookupVehicle() {
+    const vid = document.getElementById('lookupVid').value.trim().toUpperCase();
+    if (!vid) return;
+
+    const resultDiv = document.getElementById('lookupResult');
+    resultDiv.style.display = 'block';
+
+    try {
+        // VAHAN lookup
+        const vaahanRes = await fetch(`${API}/api/vehicle/verify/${encodeURIComponent(vid)}`);
+        const vaahanData = await vaahanRes.json();
+        const vi = vaahanData.success ? vaahanData.result.vehicle_info : {};
+
+        document.getElementById('luOwner').textContent = vi.owner_name || '—';
+        document.getElementById('luFuel').textContent = vi.fuel_type || '—';
+        document.getElementById('luBs').textContent = vi.bs_norm || '—';
+        document.getElementById('luMfr').textContent = vi.manufacturer || '—';
+        document.getElementById('luModel').textContent = vi.model || '—';
+        document.getElementById('luRegStatus').textContent = vi.registration_status || '—';
+
+        // Blockchain data
+        const certRes = await fetch(`${API}/api/certificate/${encodeURIComponent(vid)}`);
+        const certData = await certRes.json();
+        document.getElementById('luPucValid').textContent = certData.certificate?.valid ? 'Yes' : 'No';
+
+        const statsRes = await fetch(`${API}/api/vehicle-stats/${encodeURIComponent(vid)}`);
+        const statsData = await statsRes.json();
+        document.getElementById('luRecords').textContent = statsData.stats?.total_records || 0;
+        document.getElementById('luCes').textContent = statsData.stats?.avg_ces?.toFixed(4) || '—';
+
+    } catch (e) { console.error(e); }
+}
+
+// ── Listen for live events ──
+async function listenEvents() {
+    try {
+        const contract = await getRegistryContract();
+        if (!contract) return;
+
+        contract.on('ViolationDetected', (v, ces, t) => {
+            document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
+                `<div class="alert alert-violation">VIOLATION: ${esc(v)} CES=${(Number(ces)/10000).toFixed(3)} at ${new Date(Number(t)*1000).toLocaleTimeString()}<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>`);
+        });
+
+        contract.on('FraudDetected', (v, fs, t) => {
+            document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
+                `<div class="alert alert-warning">FRAUD ALERT: ${esc(v)} Score=${(Number(fs)/10000).toFixed(3)} at ${new Date(Number(t)*1000).toLocaleTimeString()}<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>`);
+        });
+
+        contract.on('CertificateEligible', (v, passes) => {
+            document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
+                `<div class="alert" style="background:rgba(76,175,80,0.1);border-left:4px solid #4CAF50;padding:0.75rem 1rem;margin-bottom:0.5rem;border-radius:8px;">CERT ELIGIBLE: ${esc(v)} (${Number(passes)} consecutive passes)<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>`);
+        });
+
+    } catch (e) { console.warn('Event listener setup failed:', e); }
+}
+
+document.addEventListener('DOMContentLoaded', listenEvents);
 </script>
 </body>
 </html>

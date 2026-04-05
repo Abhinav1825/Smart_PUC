@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+
+# Python virtual environments
+venv
+backend/venv
+.venv
+env
+
+# Build artifacts
+build
+artifacts
+cache
+
+# IDE
+.vscode
+.idea
+
+# Environment (injected via docker-compose)
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Tests & benchmarks (not needed in containers)
+tests
+test
+benchmarks
+.pytest_cache
+htmlcov
+
+# CI/CD
+.github
+
+# Docs
+*.md
+!README.md
+
+# Docker (prevent recursive copy)
+Dockerfile*
+docker-compose*
+.dockerignore
