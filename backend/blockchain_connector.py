@@ -492,6 +492,26 @@ class BlockchainConnector:
         """Get list of all vehicle IDs with records."""
         return self.registry.functions.getRegisteredVehicles().call()
 
+    def get_all_records(self, limit: int = 500) -> list:
+        """Aggregate the most recent records across all registered vehicles.
+
+        Iterates over every registered vehicle, pulls their history, and
+        returns up to *limit* records sorted by descending timestamp.
+        """
+        vehicles = self.get_registered_vehicles()
+        all_recs: list = []
+        for vid in vehicles:
+            try:
+                recs = self.get_history(vid)
+                for r in recs:
+                    r.setdefault("vehicleId", vid)
+                all_recs.extend(recs)
+            except Exception:  # noqa: BLE001
+                continue
+        # Sort newest-first and cap
+        all_recs.sort(key=lambda r: r.get("timestamp", 0), reverse=True)
+        return all_recs[:limit]
+
     def get_vehicle_stats(self, vehicle_id: str) -> dict:
         """Get aggregated stats for a vehicle."""
         try:

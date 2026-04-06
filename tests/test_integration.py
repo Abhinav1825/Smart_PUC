@@ -24,11 +24,11 @@ class TestFullPipeline(unittest.TestCase):
     """End-to-end integration tests for the SmartPUC pipeline."""
 
     def setUp(self):
-        self.sim = WLTCSimulator(vehicle_id="INTEG_TEST", dt=1.0)
+        self.sim = WLTCSimulator(vehicle_id="INTEG_TEST", dt=1.0, cycle="wltc")
         self.fraud = FraudDetector()
         # Train IF on simulator data
         training_data = []
-        tmp_sim = WLTCSimulator(vehicle_id="TRAIN", dt=1.0)
+        tmp_sim = WLTCSimulator(vehicle_id="TRAIN", dt=1.0, cycle="wltc")
         for _ in range(200):
             r = tmp_sim.generate_reading()
             training_data.append({

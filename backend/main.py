@@ -1614,7 +1614,7 @@ def predict_puc(vehicle_id: str, explain: bool = False):
     if not (blockchain_connected and blockchain is not None):
         return err("Blockchain not connected", 503)
     try:
-        history = blockchain.get_vehicle_history(vehicle_id) or []
+        history = blockchain.get_history(vehicle_id) or []
         # Normalise record shape for the predictor
         records = []
         for rec in history[-20:]:  # last 20 readings
