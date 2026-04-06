@@ -363,7 +363,7 @@ class TemporalConsistencyChecker:
                     and past.get("fuel_rate") == reading.get("fuel_rate")
                 )
             )
-            if identical_count >= 3:
+            if identical_count >= 2:
                 issues.append(
                     f"Reading is identical to {identical_count} of the "
                     f"last {len(self._window)} readings (possible replay "

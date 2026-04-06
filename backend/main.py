@@ -44,6 +44,8 @@ for _stream_name in ("stdout", "stderr"):
 import numpy as _np
 import jwt
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
@@ -300,7 +302,41 @@ def err(message: str, status_code: int = 500) -> JSONResponse:
     return JSONResponse({"success": False, "error": message}, status_code=status_code)
 
 
-# ────────────────────────── FastAPI app ──────────────────────────────────
+# ────────────────────────── Lifespan & FastAPI app ─────────────────────
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    """FastAPI lifespan handler — replaces the deprecated @app.on_event."""
+    # ── startup ──
+    print("=" * 65)
+    print("Smart PUC — Testing Station Backend (Node 2 of 3)")
+    print("=" * 65)
+    print(f"  Framework        : FastAPI {application.version}")
+    print(f"  Blockchain       : {'Connected' if blockchain_connected else 'Offline'}")
+    if blockchain_connected:
+        try:
+            s = blockchain.get_status()
+            print(f"  EmissionRegistry : {s.get('registry_address', 'N/A')}")
+            print(f"  PUCCertificate   : {s.get('puc_cert_address', 'N/A')}")
+            print(f"  GreenToken       : {s.get('green_token_address', 'N/A')}")
+            print(f"  Station Account  : {s.get('account', 'N/A')}")
+        except Exception:
+            pass
+    print(f"  VSP Model        : {'Available' if vsp_available else 'Not loaded'}")
+    print(f"  Fraud Detector   : {'Available' if fraud_available else 'Not loaded'}")
+    print(f"  LSTM Predictor   : {'Available' if predictor_available else 'Not loaded'}")
+    print(f"  VAHAN Bridge     : {'Available (simulated)' if vaahan_available else 'Not loaded'}")
+    print(f"  OBD Adapter      : {'Available' if obd_adapter_available else 'Not loaded'}")
+    print(f"  OBD Hardware     : {'Connected' if (_obd_connection and _obd_connection.is_connected()) else 'Not connected' if obd_hardware_available else 'Not installed'}")
+    print(f"  JWT Auth         : {'Configured' if auth_is_configured() else 'Disabled (not configured)'}")
+    print(f"  Persistence      : {'SQLite' if store.enabled else 'in-memory'}")
+    print(f"  Rate Limit       : {RATE_LIMIT_MAX} req/{RATE_LIMIT_WINDOW}s per IP")
+    print(f"  Privacy Mode     : {'On' if PRIVACY_MODE_ENABLED else 'Off'}")
+    print(f"  OpenAPI / Swagger: http://localhost:5000/docs")
+    print("=" * 65)
+    yield
+    # ── shutdown ──
+
 
 app = FastAPI(
     title="Smart PUC — Testing Station API",
@@ -309,10 +345,11 @@ app = FastAPI(
                 "signed emission telemetry from OBD devices and writes it to "
                 "on-chain EmissionRegistry / PUCCertificate / GreenToken "
                 "contracts. See /docs for the full OpenAPI schema.",
+    lifespan=_lifespan,
 )
 
 # CORS
-_cors_origins = os.getenv("CORS_ORIGINS", "*")
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000")
 if _cors_origins == "*":
     app.add_middleware(
         CORSMiddleware,
@@ -733,6 +770,26 @@ def record(body: EmissionRecordRequest, request: Request):
             "vehicle_stats": vehicle_stats,
             "timestamp": timestamp,
         }
+        # Attach pre-PUC failure forecast if predictor is available and
+        # we have enough historical records for the vehicle.
+        if _pre_puc_predictor is not None and blockchain_connected and blockchain is not None:
+            try:
+                hist = blockchain.get_emission_history(vehicle_id, limit=20)
+                if len(hist) >= 5:
+                    records_for_puc = [
+                        {
+                            "co2_g_per_km": r.get("co2Level", 0) / 1000,
+                            "co_g_per_km": r.get("coLevel", 0) / 1000,
+                            "nox_g_per_km": r.get("noxLevel", 0) / 1000,
+                            "hc_g_per_km": r.get("hcLevel", 0) / 1000,
+                            "pm25_g_per_km": r.get("pm25Level", 0) / 1000,
+                            "ces_score": r.get("cesScore", 0) / 10000,
+                        }
+                        for r in hist
+                    ]
+                    response_data["pre_puc_forecast"] = _pre_puc_predictor.predict(records_for_puc)
+            except Exception:  # noqa: BLE001 — non-critical augmentation
+                pass
         cached_body = {"success": True, "data": response_data}
         if idempotency_key:
             _idempotency_store(idempotency_key, cached_body)
@@ -1614,31 +1671,4 @@ def status_ep():
 
 
 # ────────────────────────── Startup banner ───────────────────────────────
-
-@app.on_event("startup")
-def _startup_banner():
-    print("=" * 65)
-    print("Smart PUC — Testing Station Backend (Node 2 of 3)")
-    print("=" * 65)
-    print(f"  Framework        : FastAPI {app.version}")
-    print(f"  Blockchain       : {'Connected' if blockchain_connected else 'Offline'}")
-    if blockchain_connected:
-        try:
-            s = blockchain.get_status()
-            print(f"  EmissionRegistry : {s.get('registry_address', 'N/A')}")
-            print(f"  PUCCertificate   : {s.get('puc_cert_address', 'N/A')}")
-            print(f"  GreenToken       : {s.get('green_token_address', 'N/A')}")
-            print(f"  Station Account  : {s.get('account', 'N/A')}")
-        except Exception:
-            pass
-    print(f"  VSP Model        : {'Available' if vsp_available else 'Not loaded'}")
-    print(f"  Fraud Detector   : {'Available' if fraud_available else 'Not loaded'}")
-    print(f"  LSTM Predictor   : {'Available' if predictor_available else 'Not loaded'}")
-    print(f"  VAHAN Bridge     : {'Available (simulated)' if vaahan_available else 'Not loaded'}")
-    print(f"  OBD Adapter      : {'Available' if obd_adapter_available else 'Not loaded'}")
-    print(f"  OBD Hardware     : {'Connected' if (_obd_connection and _obd_connection.is_connected()) else 'Not connected' if obd_hardware_available else 'Not installed'}")
-    print(f"  JWT Auth         : {'Configured' if auth_is_configured() else 'Disabled (not configured)'}")
-    print(f"  Persistence      : {'SQLite' if store.enabled else 'in-memory'}")
-    print(f"  Rate Limit       : {RATE_LIMIT_MAX} req/{RATE_LIMIT_WINDOW}s per IP")
-    print(f"  OpenAPI / Swagger: http://localhost:5000/docs")
-    print("=" * 65)
+# (moved to _lifespan() above — keeping this comment as a breadcrumb)

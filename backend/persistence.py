@@ -97,6 +97,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     details    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at);
+
+CREATE TABLE IF NOT EXISTS chain_outbox (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at   INTEGER NOT NULL,
+    vehicle_id   TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    last_error   TEXT,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    onchain_tx   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_status ON chain_outbox(status);
 """
 
 
@@ -340,3 +352,53 @@ class PersistenceStore:
                 (int(time.time()), actor, action, target, details_s),
             )
             return int(cur.lastrowid or 0)
+
+    # ─── Chain outbox (offline queue for failed chain writes) ────────
+
+    def enqueue_chain_write(self, vehicle_id: str, payload: dict) -> int:
+        """Queue a chain write for later retry when the RPC is down."""
+        if not self.enabled:
+            return 0
+        with self._lock, self._conn() as con:
+            cur = con.execute(
+                "INSERT INTO chain_outbox(created_at, vehicle_id, payload_json, status) "
+                "VALUES (?, ?, ?, 'pending')",
+                (int(time.time()), vehicle_id, json.dumps(payload, default=str)),
+            )
+            return int(cur.lastrowid or 0)
+
+    def get_pending_chain_writes(self, limit: int = 50) -> list[dict]:
+        """Retrieve pending outbox entries for retry."""
+        if not self.enabled:
+            return []
+        with self._lock, self._conn() as con:
+            con.row_factory = sqlite3.Row
+            rows = con.execute(
+                "SELECT id, vehicle_id, payload_json, attempts "
+                "FROM chain_outbox WHERE status = 'pending' "
+                "ORDER BY id ASC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def mark_chain_write_done(self, outbox_id: int, tx_hash: str) -> None:
+        """Mark an outbox entry as successfully submitted."""
+        if not self.enabled:
+            return
+        with self._lock, self._conn() as con:
+            con.execute(
+                "UPDATE chain_outbox SET status = 'done', onchain_tx = ?, "
+                "attempts = attempts + 1 WHERE id = ?",
+                (tx_hash, outbox_id),
+            )
+
+    def mark_chain_write_failed(self, outbox_id: int, error: str) -> None:
+        """Record a failed retry attempt on an outbox entry."""
+        if not self.enabled:
+            return
+        with self._lock, self._conn() as con:
+            con.execute(
+                "UPDATE chain_outbox SET attempts = attempts + 1, "
+                "last_error = ? WHERE id = ?",
+                (error, outbox_id),
+            )

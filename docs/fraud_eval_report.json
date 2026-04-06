@@ -1,39 +1,40 @@
 {
-  "generated_at": 1775407389,
+  "generated_at": 1775487105,
   "args": {
-    "samples": 200,
+    "samples": 5000,
     "clean_ratio": 0.7,
     "threshold": 0.5,
     "seed": 42,
-    "output": "docs/fraud_eval_report.json"
+    "output": "docs/fraud_eval_report.json",
+    "holdout": 0.3
   },
   "threshold": 0.5,
-  "total_samples": 196,
+  "total_samples": 1500,
   "confusion": {
-    "tp": 16,
-    "fp": 12,
-    "tn": 128,
-    "fn": 40
+    "tp": 134,
+    "fp": 57,
+    "tn": 1001,
+    "fn": 308
   },
   "metrics": {
-    "precision": 0.5714,
-    "recall": 0.2857,
-    "f1": 0.381,
-    "accuracy": 0.7347
+    "precision": 0.7016,
+    "recall": 0.3032,
+    "f1": 0.4234,
+    "accuracy": 0.7567
   },
   "per_attack_recall": {
-    "replay": 0.0,
-    "zero_pollutant": 0.0,
+    "replay": 0.0185,
+    "zero_pollutant": 0.058,
     "physics_violation": 1.0,
-    "gradual_drift": 0.0,
-    "sudden_spike": 1.0,
-    "frozen_sensor": 0.0,
-    "source_aware": 0.0
+    "gradual_drift": 0.0704,
+    "sudden_spike": 0.8125,
+    "frozen_sensor": 0.0303,
+    "source_aware": 0.04
   },
   "inference_latency_us": {
-    "p50": 1566.1,
-    "p95": 1956.4,
-    "p99": 2232.8,
-    "mean": 1727.48
+    "p50": 3090.3,
+    "p95": 5501.2,
+    "p99": 6878.4,
+    "mean": 3364.88
   }
 }

@@ -294,7 +294,7 @@ def build_dataset(n_clean: int, n_per_attack: int, seed: int = 42) -> list[tuple
 
 # ─────────────────────────── Evaluation ────────────────────────────────────
 
-def train_detector(seed_samples: int = 600) -> FraudDetector:
+def train_detector(seed_samples: int = 2000) -> FraudDetector:
     det = FraudDetector()
     sim = WLTCSimulator(vehicle_id="EVAL_TRAIN") if _HAS_SIMULATOR else None
     train = [make_clean_reading(t, sim) for t in range(seed_samples)]
@@ -383,6 +383,8 @@ def main() -> int:
                     help="Fraud score threshold for positive classification.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--output", default="docs/fraud_eval_report.json")
+    ap.add_argument("--holdout", type=float, default=0.3,
+                    help="Fraction of dataset reserved for evaluation (held-out test set).")
     args = ap.parse_args()
 
     n_clean = int(args.samples * args.clean_ratio)
@@ -391,11 +393,20 @@ def main() -> int:
 
     print(f"Dataset size: {n_clean} clean + {n_per_attack * len(ATTACK_TYPES)} fraud "
           f"({len(ATTACK_TYPES)} attack types)")
-    dataset = build_dataset(n_clean, n_per_attack, seed=args.seed)
-    print(f"Total: {len(dataset)} samples")
+    full_dataset = build_dataset(n_clean, n_per_attack, seed=args.seed)
 
-    print("Training Isolation Forest on 600 clean samples...")
+    # Train/test split: holdout fraction is reserved for evaluation only
+    split_idx = int(len(full_dataset) * (1.0 - args.holdout))
+    train_set = full_dataset[:split_idx]
+    dataset = full_dataset[split_idx:]
+    print(f"Total: {len(full_dataset)} samples  "
+          f"(train: {len(train_set)}, test: {len(dataset)}, holdout={args.holdout})")
+
+    print(f"Training Isolation Forest on 2000 clean samples...")
     detector = train_detector()
+
+    # Enable per-VIN baseline during evaluation for improved drift detection
+    os.environ["PER_VIN_BASELINE_ENABLED"] = "1"
 
     print(f"Evaluating at threshold = {args.threshold}...")
     report = evaluate(dataset, detector, threshold=args.threshold)

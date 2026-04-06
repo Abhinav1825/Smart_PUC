@@ -225,9 +225,9 @@ EMISSION_FACTORS: Dict[str, int] = {
 # source classification code 2160102010) and scaled to the Indian BSVI
 # emission tier [2].
 #
-# NOTE: These constants are representative values aligned with BSVI
-# certification data.  For regulatory-grade analysis, facility-specific
-# MOVES3 runs should be used.
+# NOTE: These constants are BSVI-calibrated representative values, NOT
+# raw MOVES3 output.  For regulatory-grade analysis, facility-specific
+# MOVES3 runs with local fleet data should be used.
 #
 # Bin  0  — Braking / deceleration
 # Bin  1  — Idle
@@ -374,7 +374,9 @@ def calculate_emissions(
 
     References
     ----------
-    [1] EPA MOVES3 (2020) — operating-mode emission rate bins.
+    [1] EPA MOVES3 (2020) — operating-mode bin structure; emission rates
+        are BSVI-calibrated representative values, not raw MOVES3
+        BaseRateOutput (see module-level DISCLOSURES §2).
     [2] IPCC / ARAI — fuel-based CO2: ``CO2 = fuel_rate * EF / 100``.
     [3] EMEP/EEA (Ntziachristos & Samaras, 2019) — NOx Arrhenius
         temperature correction: ``NOx' = NOx * exp[Ea/R*(1/T_ref - 1/T)]``.

@@ -20,6 +20,15 @@ The recommendation function returns a justified selection for the Smart PUC
 use case, weighing cost, latency, IoT friendliness, and Indian regulatory
 alignment.
 
+.. important::
+
+   The platform data in ``PLATFORM_DATA`` is a **literature-based comparison
+   table**, not live measurements from Smart PUC deployments.  TPS, latency,
+   and cost figures are sourced from the references below and vendor
+   documentation.  For a published paper, this table should be presented as
+   "published platform benchmarks" rather than "experimental results measured
+   by our system".
+
 References
 ----------
 [1] Ethereum Foundation, "Proof-of-Stake (PoS)," ethereum.org, 2024.

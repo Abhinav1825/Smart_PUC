@@ -174,7 +174,7 @@ class BlockchainConnector:
             abi=abi,
         )
 
-    def _send_tx(self, tx_func, gas=800000, from_address: Optional[str] = None):
+    def _send_tx(self, tx_func, gas=None, from_address: Optional[str] = None):
         """Build, sign, and send a transaction.
 
         ``from_address`` overrides the default station/admin account. This is
@@ -185,29 +185,50 @@ class BlockchainConnector:
         no local ``self.account`` private key is configured, the tx is sent
         via the node's unlocked-account path (``eth_sendTransaction``) — the
         standard Hardhat/Ganache dev-chain behaviour.
+
+        When *gas* is ``None`` (the default), the method calls
+        ``eth_estimateGas`` and applies a 1.2x safety buffer.  Pass an
+        explicit integer to override (useful for benchmarking).
         """
         sender = Web3.to_checksum_address(from_address) if from_address else self.address
-        tx = tx_func.build_transaction({
+        partial_tx = {
             "from": sender,
             "nonce": self.w3.eth.get_transaction_count(sender),
-            "gas": gas,
             "gasPrice": self.w3.eth.gas_price,
-        })
-
-        if self.account and sender == self.address:
-            signed = self.w3.eth.account.sign_transaction(tx, self.private_key)
-            raw_tx = getattr(signed, 'raw_transaction', None) or getattr(signed, 'rawTransaction', None)
-            tx_hash = self.w3.eth.send_raw_transaction(raw_tx)
-        else:
-            tx_hash = self.w3.eth.send_transaction(tx)
-
-        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
-        return {
-            "tx_hash": receipt.transactionHash.hex(),
-            "status": "success" if receipt.status == 1 else "failed",
-            "block_number": receipt.blockNumber,
-            "gas_used": receipt.gasUsed,
         }
+        if gas is not None:
+            partial_tx["gas"] = gas
+        else:
+            try:
+                estimated = tx_func.estimate_gas({"from": sender})
+                partial_tx["gas"] = int(estimated * 1.2)
+            except Exception:
+                partial_tx["gas"] = 800000  # fallback for offline/mock chains
+        tx = tx_func.build_transaction(partial_tx)
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if self.account and sender == self.address:
+                    signed = self.w3.eth.account.sign_transaction(tx, self.private_key)
+                    raw_tx = getattr(signed, 'raw_transaction', None) or getattr(signed, 'rawTransaction', None)
+                    tx_hash = self.w3.eth.send_raw_transaction(raw_tx)
+                else:
+                    tx_hash = self.w3.eth.send_transaction(tx)
+
+                receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
+                return {
+                    "tx_hash": receipt.transactionHash.hex(),
+                    "status": "success" if receipt.status == 1 else "failed",
+                    "block_number": receipt.blockNumber,
+                    "gas_used": receipt.gasUsed,
+                }
+            except Exception as exc:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt  # exponential backoff: 1s, 2s
+                import time as _time
+                _time.sleep(wait)
 
     # ─────────────────── Nonce Generation ────────────────────────────
 
@@ -407,7 +428,7 @@ class BlockchainConnector:
             device_signature,
         )
 
-        return self._send_tx(tx_func, gas=1000000)
+        return self._send_tx(tx_func)
 
     def compute_ces(
         self,
@@ -564,7 +585,7 @@ class BlockchainConnector:
                 owner_addr,
             )
 
-        return self._send_tx(tx_func, gas=500000)
+        return self._send_tx(tx_func)
 
     def set_token_uri(self, token_id: int, uri: str) -> dict:
         """Set the metadata URI for a specific certificate token."""

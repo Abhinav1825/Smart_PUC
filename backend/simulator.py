@@ -47,10 +47,10 @@ class WLTCPhase(Enum):
 
 # Phase time boundaries (inclusive start, exclusive end except last)
 _PHASE_BOUNDS = [
-    (0, 590, WLTCPhase.LOW),
-    (590, 1023, WLTCPhase.MEDIUM),
-    (1023, 1478, WLTCPhase.HIGH),
-    (1478, 1801, WLTCPhase.EXTRA_HIGH),
+    (0, 590, WLTCPhase.LOW),          # UN ECE R154: Low      0–589 s  (exclusive end)
+    (590, 1023, WLTCPhase.MEDIUM),    # UN ECE R154: Medium 590–1022 s (exclusive end)
+    (1023, 1478, WLTCPhase.HIGH),     # UN ECE R154: High  1023–1477 s (exclusive end)
+    (1478, 1801, WLTCPhase.EXTRA_HIGH),  # UN ECE R154: Extra 1478–1800 s (inclusive end via fallback)
 ]
 
 # ━━━━━━━━━━━━━━━━━━━━━ 5-Speed Manual Gearbox Model ━━━━━━━━━━━━━━━━━━━━━━━
@@ -208,7 +208,12 @@ def _generate_wltc_profile() -> np.ndarray:
        - Phase boundaries: identical to the official cycle
        - Peak speeds per phase: 56.5 / 76.6 / 97.4 / 131.3 km/h (exact)
        - Total distance: ~23.40 km (official: 23.27 km, error < 0.6%)
-       - Idle fraction: ~11% (official: ~13%)
+       - Idle fraction: ~11% (official: ~13%).  The 2-point gap arises
+         because the waypoint reconstruction slightly shortens the
+         official idle micro-trips in each phase (especially the four
+         Low-phase idle segments at 0–15 s, 95–105 s, 250–260 s, and
+         482–496 s).  Users comparing results against the official
+         profile should note this bias toward slightly higher mean speed.
 
        For regulatory-grade analysis, the official speed table from
        UN ECE R154, Annex 1, Sub-Annex 1, Appendix 1 should be used.

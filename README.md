@@ -93,7 +93,7 @@ and the mapping between paper claims and this artefact's evidence files.
 | Deployment | Multi-chain: Ganache, Sepolia, Polygon, Amoy | ✓ |
 | Deployment | Docker 3-node orchestration with healthchecks | ✓ |
 | Core | WLTC Class 3b driving cycle simulation | -- |
-| Core | EPA MOVES3 VSP operating mode model | -- |
+| Core | EPA MOVES3 VSP operating-mode bin structure (BSVI-calibrated rates) | -- |
 | Core | 3-component ML fraud detection (Isolation Forest) | -- |
 | Core | Emission forecasting (25s horizon; linear fallback by default, optional LSTM) | -- |
 | Core | ERC-721 NFT PUC certificates | -- |
@@ -481,7 +481,7 @@ Smart_PUC/
 │   ├── app.js                   # Multi-contract frontend logic
 │   └── style.css                # Dark theme stylesheet
 ├── physics/
-│   └── vsp_model.py             # EPA MOVES3 Vehicle Specific Power model
+│   └── vsp_model.py             # EPA MOVES3 VSP model (bin structure; BSVI-calibrated rates)
 ├── ml/
 │   ├── fraud_detector.py        # 3-component ensemble fraud detection
 │   ├── lstm_predictor.py        # Emission forecasting (25s horizon)
