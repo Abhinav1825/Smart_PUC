@@ -193,6 +193,26 @@ def _idempotency_store(key: str, body: dict) -> None:
         while len(_idempotency_cache) > IDEMPOTENCY_MAX_ENTRIES:
             _idempotency_cache.popitem(last=False)
 
+# ─── Calibration model (Phase 3, feature-flagged) ─────────────────────────
+CALIBRATION_ENABLED = os.getenv("CALIBRATION_ENABLED", "").lower() in ("1", "true")
+_calibration_model = None
+if CALIBRATION_ENABLED:
+    try:
+        from ml.calibration_model import CalibrationModel
+        _calibration_model = CalibrationModel.load_checkpoint("data/calibration_model_v1.pkl")
+    except Exception:
+        pass
+
+# ─── Micro-assessment engine (Phase 3) ────────────────────────────────────
+_micro_engine = None  # initialised after persistence store is ready
+
+try:
+    from ml.micro_assessment import MicroAssessmentEngine
+    _micro_assessment_available = True
+except ImportError:
+    MicroAssessmentEngine = None  # type: ignore[assignment,misc]
+    _micro_assessment_available = False
+
 # Optional physics module
 try:
     from physics.vsp_model import calculate_vsp, get_operating_mode_bin
@@ -331,6 +351,8 @@ async def _lifespan(application: FastAPI):
     print(f"  JWT Auth         : {'Configured' if auth_is_configured() else 'Disabled (not configured)'}")
     print(f"  Persistence      : {'SQLite' if store.enabled else 'in-memory'}")
     print(f"  Rate Limit       : {RATE_LIMIT_MAX} req/{RATE_LIMIT_WINDOW}s per IP")
+    print(f"  Calibration      : {'Enabled' if (_calibration_model and getattr(_calibration_model, 'is_trained', False)) else 'Disabled'}")
+    print(f"  Micro-Assessment : {'Available' if _micro_engine else 'Not loaded'}")
     print(f"  Privacy Mode     : {'On' if PRIVACY_MODE_ENABLED else 'Off'}")
     print(f"  OpenAPI / Swagger: http://localhost:5000/docs")
     print("=" * 65)
@@ -378,6 +400,12 @@ if _persistence_path and not os.path.isabs(_persistence_path):
     _persistence_path = os.path.join(os.path.dirname(__file__), "..", _persistence_path)
 store = PersistenceStore(_persistence_path or None)
 app.state.store = store  # exposed to the rate-limit middleware
+
+# Initialise micro-assessment engine now that persistence is ready
+if _micro_assessment_available and MicroAssessmentEngine is not None:
+    _micro_engine = MicroAssessmentEngine(store, calibration_model=_calibration_model)
+else:
+    _micro_engine = None
 
 
 # ────────────────────────── Backend state ────────────────────────────────
@@ -623,6 +651,29 @@ def record(body: EmissionRecordRequest, request: Request):
             fuel_type=fuel_type, acceleration=acceleration,
         )
         readings_count += 1
+
+        # Step 2b: Calibration correction (Phase 3, feature-flagged)
+        if _calibration_model is not None and getattr(_calibration_model, "is_trained", False):
+            try:
+                _cal_input = {
+                    "speed": speed, "rpm": rpm, "fuel_rate": fuel_rate,
+                    "acceleration": acceleration,
+                    "co2_g_per_km": emission.get("co2_g_per_km", 0),
+                    "co_g_per_km": emission.get("co_g_per_km", 0),
+                    "nox_g_per_km": emission.get("nox_g_per_km", 0),
+                    "hc_g_per_km": emission.get("hc_g_per_km", 0),
+                    "pm25_g_per_km": emission.get("pm25_g_per_km", 0),
+                }
+                _cal_result = _calibration_model.calibrate(_cal_input)
+                emission["calibrated_co2"] = _cal_result.get("calibrated_co2", 0)
+                emission["calibrated_co"] = _cal_result.get("calibrated_co", 0)
+                emission["calibrated_nox"] = _cal_result.get("calibrated_nox", 0)
+                emission["calibrated_hc"] = _cal_result.get("calibrated_hc", 0)
+                emission["calibrated_pm25"] = _cal_result.get("calibrated_pm25", 0)
+                emission["calibrated_ces"] = _cal_result.get("calibrated_ces", 0)
+                emission["calibration_confidence"] = _cal_result.get("confidence", 0)
+            except Exception:
+                pass  # calibration is best-effort; never blocks the pipeline
 
         # Step 3: Fraud detection
         fraud_result: dict = {"fraud_score": 0.0, "is_fraud": False, "severity": "LOW", "violations": []}
@@ -1636,6 +1687,133 @@ def fraud_station_analysis(limit: int = 500):
         return err(str(exc))
 
 
+# ─── v4.1: Tiered Compliance & Health Reporting ────────────────────
+
+@app.get("/api/vehicle/{vehicle_id}/tier")
+def get_vehicle_tier(vehicle_id: str):
+    """Get the compliance tier of a vehicle (Gold/Silver/Bronze/Unclassified)."""
+    try:
+        tier_info: dict = {"vehicle_id": vehicle_id, "tier": 0, "tier_name": "Unclassified",
+                           "validity_days": 180, "next_puc_due": None}
+
+        # If blockchain connected: query on-chain tier
+        if blockchain_connected and blockchain:
+            try:
+                chain_tier = blockchain.get_vehicle_tier(vehicle_id)
+                tier_info["tier"] = chain_tier.get("tier", 0)
+                tier_info["tier_name"] = chain_tier.get("tier_name", "Unclassified")
+            except Exception:
+                pass
+
+        # Fallback / supplement: compute from local telemetry if no chain tier
+        if tier_info["tier"] == 0 and _micro_engine is not None:
+            try:
+                report = _micro_engine.generate_weekly_report(vehicle_id)
+                tier_info["tier_name"] = report.get("tier", "Unclassified")
+                _name_to_int = {"Unclassified": 0, "Gold": 1, "Silver": 2, "Bronze": 3}
+                tier_info["tier"] = _name_to_int.get(tier_info["tier_name"], 0)
+            except Exception:
+                pass
+
+        from ml.micro_assessment import TIER_VALIDITY_DAYS as _tvd
+        tier_info["validity_days"] = _tvd.get(tier_info["tier_name"], 180)
+
+        import datetime as _dt
+        next_due = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=tier_info["validity_days"])
+        tier_info["next_puc_due"] = next_due.strftime("%Y-%m-%d")
+
+        return ok(**tier_info)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/vehicle/{vehicle_id}/health-report")
+def get_health_report(vehicle_id: str):
+    """Get the latest weekly health report for a vehicle."""
+    try:
+        if _micro_engine is None:
+            return err("Micro-assessment engine not available", 503)
+        report = _micro_engine.generate_weekly_report(vehicle_id)
+        return ok(report=report)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.get("/api/vehicle/{vehicle_id}/degradation")
+def get_degradation_status(vehicle_id: str):
+    """Get degradation analysis for a vehicle."""
+    try:
+        result: dict = {
+            "vehicle_id": vehicle_id,
+            "current_tier": "Unclassified",
+            "degradation_risk": "low",
+            "projected_failure_days": None,
+            "dtc_codes": [],
+            "events": [],
+        }
+
+        # Get health report for tier and degradation risk
+        if _micro_engine is not None:
+            try:
+                report = _micro_engine.generate_weekly_report(vehicle_id)
+                result["current_tier"] = report.get("tier", "Unclassified")
+                result["degradation_risk"] = report.get("degradation_risk", "low")
+                result["projected_failure_days"] = report.get("projected_failure_days")
+            except Exception:
+                pass
+
+        # Get degradation events from persistence
+        try:
+            events = store.get_degradation_events(vehicle_id, limit=50)
+            result["events"] = events
+        except Exception:
+            pass
+
+        return ok(**result)
+    except Exception as exc:
+        return err(str(exc))
+
+
+@app.post("/api/vehicle/{vehicle_id}/paired-reading")
+def submit_paired_reading(vehicle_id: str, body: dict):
+    """Submit a paired OBD+tailpipe reading for calibration training.
+
+    Body: {"obd": {speed, rpm, ...}, "tailpipe": {co2, co, nox, hc, pm25}}
+    """
+    try:
+        obd_data = body.get("obd", {})
+        tailpipe_data = body.get("tailpipe", {})
+
+        paired_record = {
+            "vehicle_id": vehicle_id,
+            "type": "paired_reading",
+            "obd": obd_data,
+            "tailpipe": tailpipe_data,
+            "timestamp": int(time.time()),
+        }
+
+        row_id = store.record_telemetry(
+            vehicle_id=vehicle_id,
+            reading=paired_record,
+            is_violation=False,
+        )
+
+        # Count total paired readings for this vehicle
+        all_telemetry = store.telemetry_for_vehicle(vehicle_id, limit=10000)
+        paired_count = sum(
+            1 for t in all_telemetry
+            if isinstance(t.get("reading"), dict) and t["reading"].get("type") == "paired_reading"
+        )
+
+        return ok(
+            vehicle_id=vehicle_id,
+            calibration_data_points=paired_count,
+            record_id=row_id,
+        )
+    except Exception as exc:
+        return err(str(exc))
+
+
 @app.get("/api/status")
 def status_ep():
     try:
@@ -1662,6 +1840,8 @@ def status_ep():
                 "chain_events": bool(phase_listener),
                 "pre_puc_predictor": bool(_pre_puc_predictor),
                 "station_fraud_detector": bool(_station_fraud_available),
+                "calibration_model": bool(_calibration_model and getattr(_calibration_model, "is_trained", False)),
+                "micro_assessment": bool(_micro_engine),
             },
             architecture="3-node",
             node="testing-station",

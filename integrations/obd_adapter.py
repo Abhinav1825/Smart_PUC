@@ -201,6 +201,128 @@ def parse_obd_frame(raw_pids: Dict[int, list[int]], speed_prev: float = 0.0, dt:
     }
 
 
+# ─── Emission-Related DTC Codes (SAE J2012 / ISO 15031-6) ───────
+DTC_EMISSION_CODES = {
+    "P0420": {"system": "catalyst", "description": "Catalyst System Efficiency Below Threshold (Bank 1)", "severity": "high"},
+    "P0421": {"system": "catalyst", "description": "Warm Up Catalyst Efficiency Below Threshold (Bank 1)", "severity": "high"},
+    "P0430": {"system": "catalyst", "description": "Catalyst System Efficiency Below Threshold (Bank 2)", "severity": "high"},
+    "P0401": {"system": "egr", "description": "EGR Flow Insufficient Detected", "severity": "high"},
+    "P0402": {"system": "egr", "description": "EGR Flow Excessive Detected", "severity": "medium"},
+    "P0171": {"system": "fuel", "description": "System Too Lean (Bank 1)", "severity": "medium"},
+    "P0172": {"system": "fuel", "description": "System Too Rich (Bank 1)", "severity": "medium"},
+    "P0130": {"system": "o2_sensor", "description": "O2 Sensor Circuit (Bank 1, Sensor 1)", "severity": "medium"},
+    "P0131": {"system": "o2_sensor", "description": "O2 Sensor Circuit Low Voltage (Bank 1, Sensor 1)", "severity": "medium"},
+    "P0300": {"system": "ignition", "description": "Random/Multiple Cylinder Misfire Detected", "severity": "high"},
+    "P0301": {"system": "ignition", "description": "Cylinder 1 Misfire Detected", "severity": "medium"},
+    "P2463": {"system": "dpf", "description": "Diesel Particulate Filter Restriction - Soot Accumulation", "severity": "high"},
+    "P244A": {"system": "dpf", "description": "DPF Differential Pressure Too Low", "severity": "high"},
+    "P0101": {"system": "maf", "description": "MAF Sensor Range/Performance", "severity": "medium"},
+}
+
+# DTC type prefixes per SAE J2012
+_DTC_TYPE_CHARS = {0: "P", 1: "C", 2: "B", 3: "U"}
+
+
+def decode_dtc_bytes(raw_bytes: list[int]) -> list[str]:
+    """Decode raw DTC response bytes (SAE J1979 Mode 03) into DTC strings.
+
+    Each DTC is 2 bytes:
+    - Byte 1: bits 7-6 = type (00=P, 01=C, 10=B, 11=U), bits 5-4 = digit 2, bits 3-0 = digit 3
+    - Byte 2: bits 7-4 = digit 4, bits 3-0 = digit 5
+
+    Returns: list of DTC strings like ["P0420", "P0171"]
+    """
+    dtcs: list[str] = []
+    if len(raw_bytes) < 2:
+        return dtcs
+    for i in range(0, len(raw_bytes) - 1, 2):
+        b1 = raw_bytes[i]
+        b2 = raw_bytes[i + 1]
+        # Skip null DTCs (0x0000)
+        if b1 == 0 and b2 == 0:
+            continue
+        dtc_type = (b1 >> 6) & 0x03
+        digit2 = (b1 >> 4) & 0x03
+        digit3 = b1 & 0x0F
+        digit4 = (b2 >> 4) & 0x0F
+        digit5 = b2 & 0x0F
+        type_char = _DTC_TYPE_CHARS.get(dtc_type, "P")
+        dtc_str = f"{type_char}{digit2}{digit3:X}{digit4:X}{digit5:X}"
+        dtcs.append(dtc_str)
+    return dtcs
+
+
+def classify_dtcs(dtc_codes: list[str]) -> dict:
+    """Classify DTCs by emission system and severity.
+
+    Returns: {
+        "emission_related": [{"code": "P0420", "system": "catalyst", ...}],
+        "other": ["P0442", ...],
+        "highest_severity": "high" or "medium" or "low" or "none",
+        "degradation_signal": bool (True if any high-severity emission DTC)
+    }
+    """
+    emission_related: list[dict] = []
+    other: list[str] = []
+    highest_severity = "none"
+    severity_rank = {"none": 0, "low": 1, "medium": 2, "high": 3}
+
+    for code in dtc_codes:
+        if code in DTC_EMISSION_CODES:
+            info = DTC_EMISSION_CODES[code]
+            emission_related.append({
+                "code": code,
+                "system": info["system"],
+                "description": info["description"],
+                "severity": info["severity"],
+            })
+            if severity_rank.get(info["severity"], 0) > severity_rank.get(highest_severity, 0):
+                highest_severity = info["severity"]
+        else:
+            other.append(code)
+
+    degradation_signal = any(
+        e["severity"] == "high" for e in emission_related
+    )
+
+    return {
+        "emission_related": emission_related,
+        "other": other,
+        "highest_severity": highest_severity,
+        "degradation_signal": degradation_signal,
+    }
+
+
+def dtc_to_degradation_type(dtc_codes: list[str]) -> Optional[str]:
+    """Map DTCs to degradation model failure types.
+
+    P0420/P0421/P0430 -> "catalyst_aging"
+    P0401/P0402       -> "egr_failure"
+    P0130/P0131       -> "o2_sensor_drift"
+    P0300/P0301       -> "injector_fouling"
+    P2463/P244A       -> "dpf_removal_diesel"
+
+    Returns: failure type string or None if no match
+    """
+    _DTC_DEGRADATION_MAP = {
+        "P0420": "catalyst_aging",
+        "P0421": "catalyst_aging",
+        "P0430": "catalyst_aging",
+        "P0401": "egr_failure",
+        "P0402": "egr_failure",
+        "P0130": "o2_sensor_drift",
+        "P0131": "o2_sensor_drift",
+        "P0300": "injector_fouling",
+        "P0301": "injector_fouling",
+        "P2463": "dpf_removal_diesel",
+        "P244A": "dpf_removal_diesel",
+    }
+    for code in dtc_codes:
+        if code in _DTC_DEGRADATION_MAP:
+            return _DTC_DEGRADATION_MAP[code]
+    return None
+
+
 # Hardware integration path (documented, not implemented):
 #
 # ELM327 Bluetooth dongle

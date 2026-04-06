@@ -1,0 +1,55 @@
+{
+  "_source": "NAEI Emission Degradation Methodology (2024), COPERT 5 v5.6, EEA Guidebook 2023 Ch.1.A.3.b",
+  "_note": "Linear deterioration: EF(km) = EF_base * (1 + rate_per_km * min(mileage_km, cap_km)). Rates are fractional increase per km.",
+  "euro6_petrol": {
+    "cap_km": 160000,
+    "rates": {
+      "co2": 0.000002,
+      "co": 0.000004,
+      "nox": 0.000003,
+      "hc": 0.000006,
+      "pm25": 0.000002
+    },
+    "_comment": "Euro 6 ~ BS-VI. CO2 +0.2%/10k km, CO +0.4%/10k km, NOx +0.3%/10k km, HC +0.6%/10k km, PM +0.2%/10k km"
+  },
+  "euro4_petrol": {
+    "cap_km": 120000,
+    "rates": {
+      "co2": 0.000003,
+      "co": 0.000008,
+      "nox": 0.000006,
+      "hc": 0.000010,
+      "pm25": 0.000004
+    },
+    "_comment": "Euro 4 ~ BS-IV. Higher degradation rates due to less durable aftertreatment"
+  },
+  "euro6_diesel": {
+    "cap_km": 160000,
+    "rates": {
+      "co2": 0.000002,
+      "co": 0.000003,
+      "nox": 0.000005,
+      "hc": 0.000004,
+      "pm25": 0.000008
+    },
+    "_comment": "Diesel NOx and PM degrade faster due to SCR/DPF aging"
+  },
+  "euro4_diesel": {
+    "cap_km": 120000,
+    "rates": {
+      "co2": 0.000003,
+      "co": 0.000006,
+      "nox": 0.000010,
+      "hc": 0.000008,
+      "pm25": 0.000015
+    }
+  },
+  "sudden_failures": {
+    "catalyst_removal": {"co": 5.0, "hc": 8.0, "nox": 3.0, "pm25": 2.0, "co2": 1.05},
+    "dpf_removal_diesel": {"pm25": 50.0, "nox": 1.5, "co": 1.2, "hc": 1.3, "co2": 1.02},
+    "egr_failure": {"nox": 4.0, "co": 1.3, "hc": 1.5, "pm25": 1.2, "co2": 1.03},
+    "o2_sensor_drift": {"co": 2.5, "hc": 2.0, "nox": 0.8, "pm25": 1.1, "co2": 1.08},
+    "injector_fouling": {"hc": 3.0, "co": 2.0, "pm25": 1.5, "nox": 1.1, "co2": 1.05},
+    "_comment": "Multiplicative factors applied to base emissions when failure occurs"
+  }
+}

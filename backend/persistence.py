@@ -109,6 +109,37 @@ CREATE TABLE IF NOT EXISTS chain_outbox (
     onchain_tx   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_status ON chain_outbox(status);
+
+CREATE TABLE IF NOT EXISTS vehicle_health_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id TEXT NOT NULL,
+    report_date TEXT NOT NULL,
+    period_days INTEGER DEFAULT 7,
+    ces_mean REAL,
+    ces_slope REAL,
+    ces_max REAL,
+    co2_mean REAL,
+    nox_mean REAL,
+    co_mean REAL,
+    hc_mean REAL,
+    pm25_mean REAL,
+    driving_score REAL,
+    degradation_risk TEXT DEFAULT 'low',
+    tier TEXT DEFAULT 'Unclassified',
+    report_json TEXT,
+    UNIQUE(vehicle_id, report_date)
+);
+CREATE INDEX IF NOT EXISTS idx_health_vehicle ON vehicle_health_reports(vehicle_id);
+
+CREATE TABLE IF NOT EXISTS degradation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id TEXT NOT NULL,
+    detected_at INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    severity TEXT DEFAULT 'warning',
+    details_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_degrad_vehicle ON degradation_events(vehicle_id);
 """
 
 
@@ -402,3 +433,103 @@ class PersistenceStore:
                 "last_error = ? WHERE id = ?",
                 (error, outbox_id),
             )
+
+    # ─── Vehicle health reports ─────────────────────────────────────────
+
+    def store_health_report(self, vehicle_id: str, report_date: str,
+                            report_data: dict) -> int:
+        """Insert or replace a weekly health report."""
+        if not self.enabled:
+            return 0
+        with self._lock, self._conn() as con:
+            cur = con.execute(
+                "INSERT OR REPLACE INTO vehicle_health_reports("
+                "vehicle_id, report_date, period_days, ces_mean, ces_slope, "
+                "ces_max, co2_mean, nox_mean, co_mean, hc_mean, pm25_mean, "
+                "driving_score, degradation_risk, tier, report_json"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    vehicle_id,
+                    report_date,
+                    report_data.get("period_days", 7),
+                    report_data.get("ces_mean"),
+                    report_data.get("ces_slope"),
+                    report_data.get("ces_max"),
+                    report_data.get("co2_mean"),
+                    report_data.get("nox_mean"),
+                    report_data.get("co_mean"),
+                    report_data.get("hc_mean"),
+                    report_data.get("pm25_mean"),
+                    report_data.get("driving_score"),
+                    report_data.get("degradation_risk", "low"),
+                    report_data.get("tier", "Unclassified"),
+                    json.dumps(report_data, default=str),
+                ),
+            )
+            return int(cur.lastrowid or 0)
+
+    def get_health_reports(self, vehicle_id: str, limit: int = 12) -> list[dict]:
+        """Get latest N health reports for a vehicle."""
+        if not self.enabled:
+            return []
+        with self._lock, self._conn() as con:
+            rows = con.execute(
+                "SELECT id, vehicle_id, report_date, period_days, ces_mean, "
+                "ces_slope, ces_max, co2_mean, nox_mean, co_mean, hc_mean, "
+                "pm25_mean, driving_score, degradation_risk, tier, report_json "
+                "FROM vehicle_health_reports WHERE vehicle_id = ? "
+                "ORDER BY report_date DESC LIMIT ?",
+                (vehicle_id, limit),
+            ).fetchall()
+            out = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["report"] = json.loads(d.pop("report_json"))
+                except Exception:
+                    d["report"] = {}
+                out.append(d)
+            return out
+
+    # ─── Degradation events ─────────────────────────────────────────────
+
+    def store_degradation_event(self, vehicle_id: str, event_type: str,
+                                severity: str, details: dict | str | None = None) -> int:
+        """Record a degradation detection event."""
+        if not self.enabled:
+            return 0
+        if isinstance(details, dict):
+            details_s = json.dumps(details, default=str)
+        elif details is None:
+            details_s = None
+        else:
+            details_s = str(details)
+        with self._lock, self._conn() as con:
+            cur = con.execute(
+                "INSERT INTO degradation_events("
+                "vehicle_id, detected_at, event_type, severity, details_json"
+                ") VALUES (?, ?, ?, ?, ?)",
+                (vehicle_id, int(time.time()), event_type, severity, details_s),
+            )
+            return int(cur.lastrowid or 0)
+
+    def get_degradation_events(self, vehicle_id: str, limit: int = 50) -> list[dict]:
+        """Get degradation events for a vehicle."""
+        if not self.enabled:
+            return []
+        with self._lock, self._conn() as con:
+            rows = con.execute(
+                "SELECT id, vehicle_id, detected_at, event_type, severity, details_json "
+                "FROM degradation_events WHERE vehicle_id = ? "
+                "ORDER BY id DESC LIMIT ?",
+                (vehicle_id, limit),
+            ).fetchall()
+            out = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["details"] = json.loads(d.pop("details_json")) if d.get("details_json") else {}
+                except Exception:
+                    d["details"] = {}
+                out.append(d)
+            return out

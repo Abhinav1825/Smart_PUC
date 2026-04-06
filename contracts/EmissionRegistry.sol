@@ -236,6 +236,18 @@ contract EmissionRegistry is
     ///         listener — continue to work without any change.
     bool public privacyMode;
 
+    // ─── v4.1: Tiered Compliance (PUC interval extension) ───────────
+    enum ComplianceTier { Unclassified, Bronze, Silver, Gold }
+
+    mapping(bytes32 => ComplianceTier) private _vehicleTier;
+    mapping(bytes32 => uint256) private _tierLastUpdated;
+    // Tier thresholds (CES scaled x10000)
+    uint256 public constant TIER_GOLD_CES_MAX = 5000;      // CES < 0.5
+    uint256 public constant TIER_SILVER_CES_MAX = 7500;     // CES < 0.75
+    uint256 public constant TIER_GOLD_MIN_RECORDS = 50;
+    uint256 public constant TIER_SILVER_MIN_RECORDS = 20;
+    uint256 public constant TIER_BRONZE_MIN_RECORDS = 5;
+
     // ───────────────────────── Events ─────────────────────────────────────
 
     event RecordStored(
@@ -286,6 +298,9 @@ contract EmissionRegistry is
 
     /// @notice Emitted when the admin toggles privacy mode on/off.
     event PrivacyModeSet(bool enabled);
+
+    /// @notice Emitted when a vehicle's compliance tier changes.
+    event VehicleTierUpdated(string vehicleId, uint8 oldTier, uint8 newTier, uint256 timestamp);
 
     event StationUpdated(address indexed station, bool authorized);
     event DeviceUpdated(address indexed device, bool registered);
@@ -339,8 +354,9 @@ contract EmissionRegistry is
     //   v3.2.1 added _lastWriteTimestamp mapping (+1 slot)
     //   v3.2.1 added perVehicleRateLimitSeconds (+1 slot)
     //   v3.2.2 added privacyMode bool (+1 slot; packed into its own slot)
-    //   Current remaining = 47
-    uint256[47] private __gap;
+    //   v4.1   added _vehicleTier mapping (+1 slot), _tierLastUpdated mapping (+1 slot)
+    //   Current remaining = 45
+    uint256[45] private __gap;
 
     // ───────────────────────── Initializer (UUPS) ────────────────────────
 
@@ -721,6 +737,9 @@ contract EmissionRegistry is
                 _timestamp
             );
         }
+
+        // v4.1: Update tiered compliance after every emission record
+        _updateVehicleTier(vid, _vehicleId);
     }
 
     // ───────────────────────── Per-phase summary ─────────────────────────
@@ -1021,5 +1040,66 @@ contract EmissionRegistry is
     {
         passes = _consecutivePassCount[_vid(_vehicleId)];
         eligible = passes >= CONSECUTIVE_PASS_REQUIRED;
+    }
+
+    // ───────────────────────── v4.1 Tiered Compliance ───────────────────
+
+    /**
+     * @notice Get the compliance tier of a vehicle.
+     * @param _vehicleId The vehicle registration number
+     * @return tier The ComplianceTier enum value (0=Unclassified, 1=Bronze, 2=Silver, 3=Gold)
+     */
+    function getVehicleTier(string memory _vehicleId) external view returns (uint8) {
+        bytes32 vid = keccak256(bytes(_vehicleId));
+        return uint8(_vehicleTier[vid]);
+    }
+
+    /**
+     * @notice Admin override to manually set a vehicle's tier.
+     * @param _vehicleId The vehicle registration number
+     * @param _tier The tier to assign (0-3)
+     */
+    function setVehicleTierManually(string memory _vehicleId, uint8 _tier)
+        external onlyAdmin whenNotPaused
+    {
+        require(_tier <= uint8(ComplianceTier.Gold), "Invalid tier");
+        bytes32 vid = keccak256(bytes(_vehicleId));
+        ComplianceTier oldTier = _vehicleTier[vid];
+        _vehicleTier[vid] = ComplianceTier(_tier);
+        _tierLastUpdated[vid] = block.timestamp;
+        emit VehicleTierUpdated(_vehicleId, uint8(oldTier), _tier, block.timestamp);
+    }
+
+    /**
+     * @dev Internal: recompute and update a vehicle's compliance tier.
+     *      Called at the end of every storeEmission(). O(1) — no loops.
+     */
+    function _updateVehicleTier(bytes32 _vid, string memory _vehicleId) internal {
+        // Get vehicle stats
+        uint256 totalRecs = emissionRecords[_vid].length;
+        uint256 avgCES = (totalRecs > 0) ? cesSumByVehicle[_vid] / totalRecs : CES_PASS_CEILING;
+        uint256 fraudAlerts = _fraudAlertCount[_vid];
+
+        ComplianceTier oldTier = _vehicleTier[_vid];
+        ComplianceTier newTier = ComplianceTier.Unclassified;
+
+        // Gold: avgCES < 5000, 50+ records, 0 fraud
+        if (avgCES < TIER_GOLD_CES_MAX && totalRecs >= TIER_GOLD_MIN_RECORDS && fraudAlerts == 0) {
+            newTier = ComplianceTier.Gold;
+        }
+        // Silver: avgCES < 7500, 20+ records, <=1 fraud
+        else if (avgCES < TIER_SILVER_CES_MAX && totalRecs >= TIER_SILVER_MIN_RECORDS && fraudAlerts <= 1) {
+            newTier = ComplianceTier.Silver;
+        }
+        // Bronze: avgCES < 10000, 5+ records
+        else if (avgCES < CES_PASS_CEILING && totalRecs >= TIER_BRONZE_MIN_RECORDS) {
+            newTier = ComplianceTier.Bronze;
+        }
+
+        if (newTier != oldTier) {
+            _vehicleTier[_vid] = newTier;
+            _tierLastUpdated[_vid] = block.timestamp;
+            emit VehicleTierUpdated(_vehicleId, uint8(oldTier), uint8(newTier), block.timestamp);
+        }
     }
 }

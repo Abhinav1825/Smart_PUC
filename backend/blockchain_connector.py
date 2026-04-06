@@ -750,6 +750,38 @@ class BlockchainConnector:
             "total_spent": raw[1],
         }
 
+    # ─────────────────── Tiered Compliance ──────────────────────────────
+
+    def get_vehicle_tier(self, vehicle_id: str) -> dict:
+        """Query the vehicle's compliance tier from the registry contract.
+
+        Returns:
+            dict: {tier: int, tier_name: str} where tier is the enum
+                  value (0=Unclassified, 1=Gold, 2=Silver, 3=Bronze).
+        """
+        _TIER_NAMES = {0: "Unclassified", 1: "Gold", 2: "Silver", 3: "Bronze"}
+        try:
+            tier_int = self.registry.functions.getVehicleTier(vehicle_id).call()
+            return {
+                "tier": tier_int,
+                "tier_name": _TIER_NAMES.get(tier_int, "Unclassified"),
+            }
+        except Exception:
+            return {"tier": 0, "tier_name": "Unclassified"}
+
+    def set_vehicle_tier(self, vehicle_id: str, tier: int) -> dict:
+        """Admin override to set a vehicle's tier.
+
+        Args:
+            vehicle_id: Vehicle registration number
+            tier: Tier enum value (0-3)
+
+        Returns:
+            dict: tx receipt
+        """
+        tx_func = self.registry.functions._updateVehicleTier(vehicle_id, tier)
+        return self._send_tx(tx_func)
+
     # ─────────────────── Status ───────────────────────────────────────
 
     def get_status(self) -> dict:

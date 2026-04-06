@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "tiers": {
+    "0": {"name": "Unclassified", "ces_max_scaled": 10000, "min_records": 0, "max_fraud_alerts": 999, "validity_days": 180, "reward_multiplier": 1.0},
+    "1": {"name": "Bronze", "ces_max_scaled": 10000, "min_records": 5, "max_fraud_alerts": 3, "validity_days": 180, "reward_multiplier": 1.0},
+    "2": {"name": "Silver", "ces_max_scaled": 7500, "min_records": 20, "max_fraud_alerts": 1, "validity_days": 365, "reward_multiplier": 1.2},
+    "3": {"name": "Gold", "ces_max_scaled": 5000, "min_records": 50, "max_fraud_alerts": 0, "validity_days": 730, "reward_multiplier": 1.5}
+  },
+  "_note": "CES values scaled x10000. Gold = CES < 0.5, Silver = CES < 0.75, Bronze = CES < 1.0"
+}

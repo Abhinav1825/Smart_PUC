@@ -1125,3 +1125,218 @@ describe("GreenToken.mint nonReentrant (audit G5/S8)", () => {
     ).to.be.revertedWith("Not authorized to mint");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v4.1 Tiered Compliance Framework
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("v4.1 Tiered Compliance Framework", function () {
+  let admin, station, device, vehicleOwner, unauthorized;
+  let registry, greenToken, puc;
+
+  // Increase timeout for tests that store many records
+  this.timeout(300000);
+
+  beforeEach(async () => {
+    const [_admin, _station, _device, _vehicleOwner, _unauthorized] = await ethers.getSigners();
+    admin = _admin;
+    station = _station;
+    device = _device;
+    vehicleOwner = _vehicleOwner;
+    unauthorized = _unauthorized;
+
+    const GreenToken = await ethers.getContractFactory("GreenToken", admin);
+    const greenTokenProxy = await upgrades.deployProxy(GreenToken, [], { kind: "uups", initializer: "initialize" });
+    await greenTokenProxy.waitForDeployment();
+    greenToken = greenTokenProxy;
+
+    const EmissionRegistry = await ethers.getContractFactory("EmissionRegistry", admin);
+    const registryProxy = await upgrades.deployProxy(EmissionRegistry, [], { kind: "uups", initializer: "initialize" });
+    await registryProxy.waitForDeployment();
+    registry = registryProxy;
+
+    const PUCCertificate = await ethers.getContractFactory("PUCCertificate", admin);
+    const pucProxy = await upgrades.deployProxy(
+      PUCCertificate,
+      [await registry.getAddress(), await greenToken.getAddress()],
+      { kind: "uups", initializer: "initialize" }
+    );
+    await pucProxy.waitForDeployment();
+    puc = pucProxy;
+
+    // Wiring
+    await (await registry.setTestingStation(station.address, true)).wait();
+    await (await registry.setRegisteredDevice(device.address, true)).wait();
+    await (await registry.setPUCCertificateContract(await puc.getAddress())).wait();
+    await (await greenToken.setMinter(await puc.getAddress(), true)).wait();
+    await (await puc.setAuthorizedIssuer(station.address, true)).wait();
+  });
+
+  /**
+   * Helper: store N pass records with low pollutant values (CES ~ 5500, below Silver threshold 7500).
+   */
+  async function storeCleanRecords(vid, count, seedStart) {
+    for (let i = 0; i < count; i++) {
+      const co2 = 80000n;
+      const co = 500n;
+      const nox = 30n;
+      const hc = 50n;
+      const pm25 = 2n;
+      const fraudScore = 1000n;
+      const vspValue = 15000n;
+      const wltcPhase = 2;
+      const ts = BigInt(1700100000 + i * 100);
+      const n = nonceFromSeed(seedStart + i);
+      const sig = await signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
+      await registry
+        .connect(station)
+        .storeEmission(vid, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig);
+    }
+  }
+
+  /**
+   * Helper: store N pass records with very low pollutant values (CES ~ 3990, below Gold threshold 5000).
+   */
+  async function storeVeryCleanRecords(vid, count, seedStart) {
+    for (let i = 0; i < count; i++) {
+      const co2 = 60000n;
+      const co = 400n;
+      const nox = 20n;
+      const hc = 40n;
+      const pm25 = 1n;
+      const fraudScore = 1000n;
+      const vspValue = 15000n;
+      const wltcPhase = 2;
+      const ts = BigInt(1700100000 + i * 100);
+      const n = nonceFromSeed(seedStart + i);
+      const sig = await signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
+      await registry
+        .connect(station)
+        .storeEmission(vid, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig);
+    }
+  }
+
+  /**
+   * Helper: store a single record with a high fraud score (above threshold).
+   */
+  async function storeFraudRecord(vid, seedVal, tsVal) {
+    const co2 = 80000n;
+    const co = 500n;
+    const nox = 30n;
+    const hc = 50n;
+    const pm25 = 2n;
+    const fraudScore = 7500n;
+    const vspValue = 15000n;
+    const wltcPhase = 2;
+    const ts = BigInt(tsVal || 1700200000);
+    const n = nonceFromSeed(seedVal);
+    const sig = await signEmission(device, registry, vid, co2, co, nox, hc, pm25, ts, n);
+    await registry
+      .connect(station)
+      .storeEmission(vid, co2, co, nox, hc, pm25, fraudScore, vspValue, wltcPhase, ts, n, sig);
+  }
+
+  it("TC-74: After 5 PASS records, vehicle tier auto-upgrades to Bronze", async () => {
+    const vid = "TIER_BRONZE";
+    expect(await registry.getVehicleTier(vid)).to.equal(0);
+    await storeCleanRecords(vid, 5, 5000);
+    expect(await registry.getVehicleTier(vid)).to.equal(1);
+  });
+
+  it("TC-75: After 20 PASS records with low CES (<7500), tier upgrades to Silver", async () => {
+    const vid = "TIER_SILVER";
+    await storeCleanRecords(vid, 20, 5100);
+    expect(await registry.getVehicleTier(vid)).to.equal(2);
+  });
+
+  it("TC-76: After 50 PASS records with very low CES (<5000) and 0 fraud, tier upgrades to Gold", async () => {
+    const vid = "TIER_GOLD";
+    await storeVeryCleanRecords(vid, 50, 5200);
+    expect(await registry.getVehicleTier(vid)).to.equal(3);
+  });
+
+  it("TC-77: getVehicleTier() returns correct tier value", async () => {
+    const vid = "TIER_QUERY";
+    expect(await registry.getVehicleTier(vid)).to.equal(0);
+    await storeCleanRecords(vid, 5, 5300);
+    expect(await registry.getVehicleTier(vid)).to.equal(1);
+    await storeCleanRecords(vid, 15, 5305);
+    expect(await registry.getVehicleTier(vid)).to.equal(2);
+  });
+
+  it("TC-78: setVehicleTierManually() by admin works; non-admin reverts", async () => {
+    const vid = "TIER_MANUAL";
+    await storeCleanRecords(vid, 1, 5400);
+    await registry.connect(admin).setVehicleTierManually(vid, 3);
+    expect(await registry.getVehicleTier(vid)).to.equal(3);
+    await expect(
+      registry.connect(unauthorized).setVehicleTierManually(vid, 2)
+    ).to.be.revertedWith("Only admin can call this function");
+  });
+
+  it("TC-79: A fraud alert prevents Gold tier (downgrades to Silver or Bronze)", async () => {
+    const vid = "TIER_FRAUD";
+    await storeVeryCleanRecords(vid, 49, 5500);
+    await storeFraudRecord(vid, 5549, 1700100000 + 49 * 100);
+    const tier = await registry.getVehicleTier(vid);
+    expect(tier).to.be.lte(2);
+    expect(tier).to.be.gte(1);
+  });
+
+  it("TC-80: PUC certificate for Gold-tier vehicle gets 730-day validity", async () => {
+    const vid = "TIER_GOLD_PUC";
+    await storeVeryCleanRecords(vid, 50, 5600);
+    expect(await registry.getVehicleTier(vid)).to.equal(3);
+    await registry.connect(admin).setVehicleOwner(vid, vehicleOwner.address);
+    const tx = await puc
+      .connect(station)
+      .issueCertificateWithFirstFlag(vid, vehicleOwner.address, "", false);
+    const rcpt = await tx.wait();
+    const issued = rcpt.logs.map((l) => {
+      try { return puc.interface.parseLog(l); } catch { return null; }
+    }).find((e) => e && e.name === "CertificateIssued");
+    const tokenId = issued.args.tokenId;
+    const cert = await puc.getCertificate(tokenId);
+    const duration = BigInt(cert.expiryTimestamp) - BigInt(cert.issueTimestamp);
+    expect(duration).to.equal(730n * 24n * 60n * 60n);
+    expect(cert.complianceTier).to.equal(3);
+  });
+
+  it("TC-81: PUC certificate for Silver-tier vehicle gets 365-day validity", async () => {
+    const vid = "TIER_SILVER_PUC";
+    await storeCleanRecords(vid, 20, 5700);
+    expect(await registry.getVehicleTier(vid)).to.equal(2);
+    await registry.connect(admin).setVehicleOwner(vid, vehicleOwner.address);
+    const tx = await puc
+      .connect(station)
+      .issueCertificateWithFirstFlag(vid, vehicleOwner.address, "", false);
+    const rcpt = await tx.wait();
+    const issued = rcpt.logs.map((l) => {
+      try { return puc.interface.parseLog(l); } catch { return null; }
+    }).find((e) => e && e.name === "CertificateIssued");
+    const tokenId = issued.args.tokenId;
+    const cert = await puc.getCertificate(tokenId);
+    const duration = BigInt(cert.expiryTimestamp) - BigInt(cert.issueTimestamp);
+    expect(duration).to.equal(365n * 24n * 60n * 60n);
+    expect(cert.complianceTier).to.equal(2);
+  });
+
+  it("TC-82: First PUC always gets 360-day validity regardless of tier", async () => {
+    const vid = "TIER_FIRST_PUC";
+    await storeVeryCleanRecords(vid, 50, 5800);
+    expect(await registry.getVehicleTier(vid)).to.equal(3);
+    await registry.connect(admin).setVehicleOwner(vid, vehicleOwner.address);
+    const tx = await puc
+      .connect(station)
+      ["issueCertificate(string,address,string)"](vid, vehicleOwner.address, "");
+    const rcpt = await tx.wait();
+    const issued = rcpt.logs.map((l) => {
+      try { return puc.interface.parseLog(l); } catch { return null; }
+    }).find((e) => e && e.name === "CertificateIssued");
+    const tokenId = issued.args.tokenId;
+    const cert = await puc.getCertificate(tokenId);
+    const duration = BigInt(cert.expiryTimestamp) - BigInt(cert.issueTimestamp);
+    expect(duration).to.equal(360n * 24n * 60n * 60n);
+    expect(cert.isFirstPUC).to.equal(true);
+  });
+});

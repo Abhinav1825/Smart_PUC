@@ -16,6 +16,7 @@ interface IEmissionRegistry {
         external view returns (uint256 totalRecords, uint256 violations, uint256 fraudAlerts, uint256 averageCES);
     function consecutivePassCount(string memory _vehicleId) external view returns (uint256);
     function vehicleOwners(string memory _vehicleId) external view returns (address);
+    function getVehicleTier(string memory _vehicleId) external view returns (uint8);
 }
 
 /**
@@ -124,6 +125,7 @@ contract PUCCertificate is
         bool    revoked;
         string  revokeReason;
         bool    isFirstPUC;          // true => 360-day validity; false => 180-day renewal
+        uint8   complianceTier;      // 0=Unclassified, 1=Bronze, 2=Silver, 3=Gold
     }
 
     // ───────────────────────── Mappings ────────────────────────────────
@@ -179,6 +181,9 @@ contract PUCCertificate is
         string  baseURI
     );
 
+    event TierValidityUpdated(uint8 tier, uint256 validitySeconds);
+    event TieredCertificateIssued(string vehicleId, uint8 tier, uint256 validityDays, uint256 tokenId);
+
     // ───────────────────────── Modifiers ───────────────────────────────
 
     modifier onlyAuthority() {
@@ -194,10 +199,13 @@ contract PUCCertificate is
         _;
     }
 
+    // ─── v4.1: Tiered validity periods ──────────────────────────────
+    mapping(uint8 => uint256) public tierValidityPeriods;
+
     // ───────────────────────── Storage Gap (UUPS) ─────────────────────
     // Reserved slots for future upgrades. Shrink only when adding new
     // state variables immediately before the gap.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     // ───────────────────────── Initializer (UUPS) ─────────────────────
 
@@ -223,6 +231,12 @@ contract PUCCertificate is
         emissionRegistry = IEmissionRegistry(_emissionRegistry);
         greenToken = IGreenToken(_greenToken);
         _tokenIdCounter = 0;
+
+        // v4.1: Tiered validity defaults
+        tierValidityPeriods[0] = 180 days;  // Unclassified
+        tierValidityPeriods[1] = 180 days;  // Bronze
+        tierValidityPeriods[2] = 365 days;  // Silver
+        tierValidityPeriods[3] = 730 days;  // Gold
     }
 
     // ───────────────────────── UUPS Upgrade Auth ─────────────────────
@@ -269,6 +283,14 @@ contract PUCCertificate is
     function setBaseURI(string memory _newBaseURI) external onlyAuthority {
         _baseTokenURI = _newBaseURI;
         emit BaseURISet(_newBaseURI);
+    }
+
+    /// @notice Set the validity period for a specific compliance tier.
+    function setTierValidity(uint8 _tier, uint256 _seconds) external onlyAuthority {
+        require(_tier <= 3, "Invalid tier");
+        require(_seconds >= 90 days && _seconds <= 1095 days, "Validity out of range");
+        tierValidityPeriods[_tier] = _seconds;
+        emit TierValidityUpdated(_tier, _seconds);
     }
 
     /**
@@ -413,13 +435,22 @@ contract PUCCertificate is
         require(totalRecords > 0, "No emission records found");
         require(averageCES < CES_PASS_CEILING, "Average CES too high for certification");
 
+        // Query compliance tier from EmissionRegistry
+        uint8 tier = emissionRegistry.getVehicleTier(_vehicleId);
+
         // Mint NFT
         _tokenIdCounter++;
         uint256 tokenId = _tokenIdCounter;
         uint256 issueTime = block.timestamp;
         // CMVR Rule 115 branch: a first post-registration PUC is valid for
-        // one year, subsequent renewals for 180 days.
-        uint256 validity = _isFirstPUC ? FIRST_PUC_VALIDITY_PERIOD : VALIDITY_PERIOD;
+        // one year; subsequent renewals use tier-based validity.
+        uint256 validity;
+        if (_isFirstPUC) {
+            validity = FIRST_PUC_VALIDITY_PERIOD;
+        } else {
+            uint256 tierValidity = tierValidityPeriods[tier];
+            validity = tierValidity > 0 ? tierValidity : VALIDITY_PERIOD;
+        }
         uint256 expiryTime = issueTime + validity;
 
         _mint(_vehicleOwner, tokenId);
@@ -441,7 +472,8 @@ contract PUCCertificate is
             issuedByStation:    msg.sender,
             revoked:            false,
             revokeReason:       "",
-            isFirstPUC:         _isFirstPUC
+            isFirstPUC:         _isFirstPUC,
+            complianceTier:     tier
         });
 
         vehicleToCertificate[_vehicleId] = tokenId;
@@ -452,6 +484,8 @@ contract PUCCertificate is
             tokenId, _vehicleId, _vehicleOwner, msg.sender,
             issueTime, expiryTime, averageCES
         );
+
+        emit TieredCertificateIssued(_vehicleId, tier, validity / 1 days, tokenId);
 
         // Award Green Credit Tokens — amount is proportional to the
         // vehicle's averageCES so that cleaner vehicles receive larger

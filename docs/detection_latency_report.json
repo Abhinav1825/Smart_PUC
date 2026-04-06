@@ -1,0 +1,64 @@
+{
+  "config": {
+    "n_vehicles": 1000,
+    "n_months": 12,
+    "seed": 42,
+    "cohort_distribution": {
+      "clean": 692,
+      "gradual": 200,
+      "sudden": 108
+    }
+  },
+  "metrics": {
+    "mean_advantage_days": 109.1,
+    "median_advantage_days": 90,
+    "pct_caught_before_puc": 93.2,
+    "pct_never_caught_by_puc": 17.5,
+    "clean_false_positive_rate": 0.14
+  },
+  "per_failure_type": {
+    "catalyst_aging": {
+      "count": 68,
+      "smartpuc_detection_rate": 0.9705882352941176,
+      "puc_detection_rate": 0.9117647058823529,
+      "mean_advantage_days": 103.63636363636364
+    },
+    "o2_sensor_drift": {
+      "count": 74,
+      "smartpuc_detection_rate": 0.972972972972973,
+      "puc_detection_rate": 0.8648648648648649,
+      "mean_advantage_days": 93.75
+    },
+    "egr_valve_wear": {
+      "count": 58,
+      "smartpuc_detection_rate": 0.9827586206896551,
+      "puc_detection_rate": 0.9310344827586207,
+      "mean_advantage_days": 93.6842105263158
+    },
+    "dpf_removal": {
+      "count": 26,
+      "smartpuc_detection_rate": 0.8846153846153846,
+      "puc_detection_rate": 0.0,
+      "mean_advantage_days": 176.08695652173913
+    },
+    "catalyst_removal": {
+      "count": 27,
+      "smartpuc_detection_rate": 1.0,
+      "puc_detection_rate": 1.0,
+      "mean_advantage_days": 94.44444444444444
+    },
+    "injector_fouling": {
+      "count": 27,
+      "smartpuc_detection_rate": 1.0,
+      "puc_detection_rate": 0.7037037037037037,
+      "mean_advantage_days": 186.66666666666666
+    },
+    "egr_failure": {
+      "count": 28,
+      "smartpuc_detection_rate": 1.0,
+      "puc_detection_rate": 1.0,
+      "mean_advantage_days": 77.14285714285714
+    }
+  },
+  "runtime_seconds": 0.08
+}
