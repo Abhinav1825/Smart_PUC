@@ -1339,4 +1339,63 @@ describe("v4.1 Tiered Compliance Framework", function () {
     expect(duration).to.equal(360n * 24n * 60n * 60n);
     expect(cert.isFirstPUC).to.equal(true);
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  describe("v4.1.1 Audit fixes", function () {
+    it("TC-83: transferAdmin emits AdminTransferred event on EmissionRegistry", async () => {
+      const [, , , , , newAdmin] = await ethers.getSigners();
+      await expect(registry.connect(admin).transferAdmin(newAdmin.address))
+        .to.emit(registry, "AdminTransferred")
+        .withArgs(admin.address, newAdmin.address);
+      expect(await registry.admin()).to.equal(newAdmin.address);
+    });
+
+    it("TC-84: transferAuthority emits AuthorityTransferred event on PUCCertificate", async () => {
+      const [, , , , , newAuthority] = await ethers.getSigners();
+      await expect(puc.connect(admin).transferAuthority(newAuthority.address))
+        .to.emit(puc, "AuthorityTransferred")
+        .withArgs(admin.address, newAuthority.address);
+      expect(await puc.authority()).to.equal(newAuthority.address);
+    });
+
+    it("TC-85: transferAdmin emits AdminTransferred event on GreenToken", async () => {
+      const [, , , , , newAdmin] = await ethers.getSigners();
+      await expect(greenToken.connect(admin).transferAdmin(newAdmin.address))
+        .to.emit(greenToken, "AdminTransferred")
+        .withArgs(admin.address, newAdmin.address);
+      expect(await greenToken.admin()).to.equal(newAdmin.address);
+    });
+
+    it("TC-86: PUC certificate is non-transferable (soul-bound)", async () => {
+      const vid = "SBT_TEST_VEH";
+      // Store 3 consecutive pass records for eligibility
+      for (let i = 0; i < 3; i++) {
+        await storePassRecord(registry, vid, station, device, 9000 + i, 1700200000 + i * 100);
+      }
+      // Set vehicle owner
+      await registry.connect(admin).setVehicleOwner(vid, vehicleOwner.address);
+      // Issue certificate
+      const tx = await puc
+        .connect(station)
+        ["issueCertificate(string,address,string)"](vid, vehicleOwner.address, "");
+      const rcpt = await tx.wait();
+      const issued = rcpt.logs.map((l) => {
+        try { return puc.interface.parseLog(l); } catch { return null; }
+      }).find((e) => e && e.name === "CertificateIssued");
+      const tokenId = issued.args.tokenId;
+
+      // Attempt to transfer — should revert (soul-bound)
+      const [, , , , , recipient] = await ethers.getSigners();
+      await expect(
+        puc.connect(vehicleOwner).transferFrom(vehicleOwner.address, recipient.address, tokenId)
+      ).to.be.revertedWith("PUC certificates are non-transferable (soul-bound)");
+
+      // Also test safeTransferFrom
+      await expect(
+        puc.connect(vehicleOwner)["safeTransferFrom(address,address,uint256)"](
+          vehicleOwner.address, recipient.address, tokenId
+        )
+      ).to.be.revertedWith("PUC certificates are non-transferable (soul-bound)");
+    });
+  });
 });

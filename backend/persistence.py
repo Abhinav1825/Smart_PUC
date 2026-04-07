@@ -23,7 +23,8 @@ and fast enough for the pilot-scale workloads discussed in
 
 For larger deployments this module can be swapped for PostgreSQL by
 changing only the connection string; all queries use ANSI-SQL syntax where
-possible.
+possible.  See ``docs/SCALABILITY_NOTES.md`` for capacity measurements and
+the recommended migration path.
 
 Thread safety
 -------------
@@ -140,6 +141,35 @@ CREATE TABLE IF NOT EXISTS degradation_events (
     details_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_degrad_vehicle ON degradation_events(vehicle_id);
+
+CREATE TABLE IF NOT EXISTS privacy_consent (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id TEXT NOT NULL,
+    consent_type TEXT NOT NULL,
+    granted INTEGER NOT NULL DEFAULT 1,
+    granted_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    ip_address TEXT,
+    UNIQUE(vehicle_id, consent_type)
+);
+
+CREATE TABLE IF NOT EXISTS erasure_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id TEXT NOT NULL,
+    requested_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending',
+    data_types TEXT NOT NULL DEFAULT 'all',
+    requester_ip TEXT
+);
+
+CREATE TABLE IF NOT EXISTS data_retention_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purged_at INTEGER NOT NULL,
+    data_type TEXT NOT NULL,
+    records_purged INTEGER NOT NULL DEFAULT 0,
+    retention_days INTEGER NOT NULL
+);
 """
 
 
@@ -533,3 +563,211 @@ class PersistenceStore:
                     d["details"] = {}
                 out.append(d)
             return out
+
+    # ─── DPDP Act Privacy Compliance ───────────────────────────────────
+
+    def record_consent(self, vehicle_id: str, consent_type: str,
+                       granted: bool = True,
+                       ip_address: str | None = None) -> int:
+        """Record or update a privacy consent decision for a vehicle.
+
+        Compliant with the Digital Personal Data Protection (DPDP) Act 2023,
+        Section 6 -- consent must be free, specific, informed, unconditional,
+        and unambiguous.  Each ``consent_type`` (e.g. ``"telemetry_collection"``,
+        ``"data_sharing"``, ``"analytics"``) is stored independently so that
+        data principals can grant granular permissions.
+
+        Returns the row id of the consent record.
+        """
+        if not self.enabled:
+            return 0
+        now = int(time.time())
+        with self._lock, self._conn() as con:
+            cur = con.execute(
+                "INSERT INTO privacy_consent"
+                "(vehicle_id, consent_type, granted, granted_at, ip_address) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(vehicle_id, consent_type) DO UPDATE SET "
+                "granted = excluded.granted, granted_at = excluded.granted_at, "
+                "revoked_at = NULL, ip_address = excluded.ip_address",
+                (vehicle_id, consent_type, 1 if granted else 0, now, ip_address),
+            )
+            return int(cur.lastrowid or 0)
+
+    def get_consent(self, vehicle_id: str) -> list[dict]:
+        """Return all consent records for a vehicle (active and revoked)."""
+        if not self.enabled:
+            return []
+        with self._lock, self._conn() as con:
+            rows = con.execute(
+                "SELECT id, vehicle_id, consent_type, granted, granted_at, "
+                "revoked_at, ip_address FROM privacy_consent "
+                "WHERE vehicle_id = ? ORDER BY id",
+                (vehicle_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def revoke_consent(self, vehicle_id: str, consent_type: str) -> bool:
+        """Revoke a previously granted consent.
+
+        Per DPDP Act Section 6(6), the data principal may withdraw consent
+        at any time with the ease of giving it.  Returns ``True`` if a
+        matching active consent was found and revoked.
+        """
+        if not self.enabled:
+            return False
+        now = int(time.time())
+        with self._lock, self._conn() as con:
+            cur = con.execute(
+                "UPDATE privacy_consent SET granted = 0, revoked_at = ? "
+                "WHERE vehicle_id = ? AND consent_type = ? AND granted = 1",
+                (now, vehicle_id, consent_type),
+            )
+            return (cur.rowcount or 0) > 0
+
+    def request_erasure(self, vehicle_id: str, data_types: str = "all",
+                        requester_ip: str | None = None) -> int:
+        """File a right-to-erasure request (DPDP Act Section 12).
+
+        The request is logged with ``status='pending'`` and must be
+        fulfilled by calling :meth:`execute_erasure` within the statutory
+        time-frame.  Returns the erasure request id.
+        """
+        if not self.enabled:
+            return 0
+        now = int(time.time())
+        with self._lock, self._conn() as con:
+            cur = con.execute(
+                "INSERT INTO erasure_requests"
+                "(vehicle_id, requested_at, status, data_types, requester_ip) "
+                "VALUES (?, ?, 'pending', ?, ?)",
+                (vehicle_id, now, data_types, requester_ip),
+            )
+            return int(cur.lastrowid or 0)
+
+    def execute_erasure(self, vehicle_id: str) -> dict:
+        """Execute data erasure for a vehicle.
+
+        Deletes telemetry, notifications, and health reports associated
+        with the vehicle.  Updates the earliest pending erasure request to
+        ``'completed'``.  Returns a dict with counts of purged records per
+        table, suitable for audit logging.
+        """
+        if not self.enabled:
+            return {}
+        now = int(time.time())
+        counts: dict[str, int] = {}
+        with self._lock, self._conn() as con:
+            # Delete telemetry
+            cur = con.execute(
+                "DELETE FROM telemetry WHERE vehicle_id = ?", (vehicle_id,)
+            )
+            counts["telemetry"] = cur.rowcount or 0
+
+            # Delete notifications
+            cur = con.execute(
+                "DELETE FROM notifications WHERE vehicle_id = ?", (vehicle_id,)
+            )
+            counts["notifications"] = cur.rowcount or 0
+
+            # Delete health reports
+            cur = con.execute(
+                "DELETE FROM vehicle_health_reports WHERE vehicle_id = ?",
+                (vehicle_id,),
+            )
+            counts["health_reports"] = cur.rowcount or 0
+
+            # Delete degradation events
+            cur = con.execute(
+                "DELETE FROM degradation_events WHERE vehicle_id = ?",
+                (vehicle_id,),
+            )
+            counts["degradation_events"] = cur.rowcount or 0
+
+            # Mark the earliest pending erasure request as completed
+            con.execute(
+                "UPDATE erasure_requests SET status = 'completed', "
+                "completed_at = ? WHERE vehicle_id = ? AND status = 'pending' "
+                "AND id = ("
+                "  SELECT id FROM erasure_requests "
+                "  WHERE vehicle_id = ? AND status = 'pending' "
+                "  ORDER BY id ASC LIMIT 1"
+                ")",
+                (now, vehicle_id, vehicle_id),
+            )
+            counts["vehicle_id"] = vehicle_id  # type: ignore[assignment]
+            return counts
+
+    def get_erasure_requests(self, status: str | None = None) -> list[dict]:
+        """Return erasure requests, optionally filtered by status."""
+        if not self.enabled:
+            return []
+        with self._lock, self._conn() as con:
+            if status:
+                rows = con.execute(
+                    "SELECT id, vehicle_id, requested_at, completed_at, "
+                    "status, data_types, requester_ip "
+                    "FROM erasure_requests WHERE status = ? ORDER BY id DESC",
+                    (status,),
+                ).fetchall()
+            else:
+                rows = con.execute(
+                    "SELECT id, vehicle_id, requested_at, completed_at, "
+                    "status, data_types, requester_ip "
+                    "FROM erasure_requests ORDER BY id DESC",
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def purge_old_data(self, retention_days: int = 365) -> dict:
+        """Auto-purge telemetry records older than the retention period.
+
+        Implements the storage-limitation principle under DPDP Act
+        Section 8(7) -- personal data shall not be retained beyond the
+        period necessary for the purpose.  Each purge is logged to the
+        ``data_retention_log`` table for audit trail.
+
+        Returns a dict with counts of purged records per data type.
+        """
+        if not self.enabled:
+            return {}
+        cutoff = int(time.time()) - retention_days * 86400
+        now = int(time.time())
+        counts: dict[str, int] = {}
+        with self._lock, self._conn() as con:
+            # Purge old telemetry
+            cur = con.execute(
+                "DELETE FROM telemetry WHERE observed_at < ?", (cutoff,)
+            )
+            counts["telemetry"] = cur.rowcount or 0
+            con.execute(
+                "INSERT INTO data_retention_log"
+                "(purged_at, data_type, records_purged, retention_days) "
+                "VALUES (?, 'telemetry', ?, ?)",
+                (now, counts["telemetry"], retention_days),
+            )
+
+            # Purge old notifications
+            cur = con.execute(
+                "DELETE FROM notifications WHERE created_at < ?", (cutoff,)
+            )
+            counts["notifications"] = cur.rowcount or 0
+            con.execute(
+                "INSERT INTO data_retention_log"
+                "(purged_at, data_type, records_purged, retention_days) "
+                "VALUES (?, 'notifications', ?, ?)",
+                (now, counts["notifications"], retention_days),
+            )
+
+            # Purge old audit log entries
+            cur = con.execute(
+                "DELETE FROM audit_log WHERE created_at < ?", (cutoff,)
+            )
+            counts["audit_log"] = cur.rowcount or 0
+            con.execute(
+                "INSERT INTO data_retention_log"
+                "(purged_at, data_type, records_purged, retention_days) "
+                "VALUES (?, 'audit_log', ?, ?)",
+                (now, counts["audit_log"], retention_days),
+            )
+
+            return counts

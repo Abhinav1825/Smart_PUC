@@ -10,18 +10,35 @@
 <body>
 <div class="app-container">
     <nav class="navbar">
-        <a href="index.html" class="navbar-brand">
-            <div class="logo">&#9889;</div>
-            <div><h1>Smart PUC</h1><span>Authority Dashboard</span></div>
-        </a>
-        <div class="navbar-actions">
-            <a href="index.html" class="nav-link">Vehicle</a>
-            <a href="authority.html" class="nav-link active">Authority</a>
-            <a href="verify.html" class="nav-link">Verify</a>
-            <a href="analytics.html" class="nav-link">Analytics</a>
-            <a href="fleet.html" class="nav-link">Fleet</a>
-            <a href="rto.html" class="nav-link">RTO</a>
-            <a href="marketplace.html" class="nav-link">Marketplace</a>
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div><h1>Smart PUC</h1><span>Authority Dashboard</span></div>
+            </a>
+            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
+            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+            <a href="authority.html" class="nav-link active" data-i18n="nav_authority">Authority</a>
+            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+            <a href="twin.html" class="nav-link">Twin</a>
+            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+            <a href="explorer.html" class="nav-link">Explorer</a>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                </div>
+            </div>
             <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
             <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
         </div>
@@ -162,7 +179,7 @@
             </div>
         </div>
         <div class="card-header"><div class="card-title">All Records</div><span class="text-muted text-mono" id="recCnt">0</span></div>
-        <div class="table-container">
+        <div class="table-container table-responsive">
             <table><thead><tr><th>#</th><th>Vehicle</th><th>CO&#8322;</th><th>NOx</th><th>CES</th><th>Fraud</th><th>Phase</th><th>Station</th><th>Device</th><th>Time</th><th>Status</th></tr></thead>
             <tbody id="recBody"><tr><td colspan="11" class="text-center text-dim" style="padding:2rem">Click Refresh to load</td></tr></tbody></table>
         </div>
@@ -174,6 +191,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <script src="wallet.js"></script>
 <script src="app.js"></script>
+<script src="i18n.js"></script>
 <script>
 const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
 const PHASE_LABELS = ['Low', 'Medium', 'High', 'Extra High'];
@@ -379,7 +397,16 @@ async function listenEvents() {
     } catch (e) { console.warn('Event listener setup failed:', e); }
 }
 
-document.addEventListener('DOMContentLoaded', listenEvents);
+document.addEventListener('DOMContentLoaded', function() {
+    listenEvents();
+    // Hamburger menu
+    var hBtn = document.getElementById('hamburgerBtn');
+    var hNav = document.getElementById('navbarActions');
+    if (hBtn && hNav) {
+        hBtn.addEventListener('click', function() { hNav.classList.toggle('active'); });
+        hNav.querySelectorAll('.nav-link').forEach(function(l) { l.addEventListener('click', function() { hNav.classList.remove('active'); }); });
+    }
+});
 </script>
 </body>
 </html>

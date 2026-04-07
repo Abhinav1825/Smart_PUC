@@ -18,7 +18,7 @@
       style-src  'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net;
       img-src    'self' data: blob: https://*.tile.openstreetmap.org;
       font-src   'self' data:;
-      connect-src 'self' http://localhost:5000 http://127.0.0.1:5000 https://router.project-osrm.org ws://localhost:* http://localhost:*;
+      connect-src 'self' http://localhost:5000 http://127.0.0.1:5000 https://router.project-osrm.org ws://localhost:* ws://127.0.0.1:* http://localhost:*;
       object-src 'none';
       base-uri   'self';
       form-action 'self';
@@ -27,28 +27,230 @@
     <title>Smart PUC — Vehicle Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+    /* ================================================================
+       Demo-Enhancing Features — Inline Styles
+       ================================================================ */
+
+    /* --- Light Theme --- */
+    [data-theme="light"] {
+        --bg-primary: #f8fafc; --bg-surface: #ffffff; --bg-card: #f1f5f9;
+        --text-primary: #0f172a; --text-secondary: #475569;
+        --border-color: #e2e8f0;
+        --clr-bg: #f8fafc; --clr-surface: #ffffff; --clr-surface-2: #f1f5f9;
+        --clr-surface-3: #e2e8f0; --clr-text: #0f172a; --clr-text-muted: #475569;
+        --clr-border: #e2e8f0;
+    }
+    [data-theme="light"] .navbar { background: #ffffff; border-bottom-color: #e2e8f0; }
+    [data-theme="light"] .card, [data-theme="light"] .metric-card,
+    [data-theme="light"] .compliance-panel, [data-theme="light"] .ces-gauge-card {
+        background: #ffffff; border-color: #e2e8f0; color: #0f172a;
+    }
+    [data-theme="light"] .form-select, [data-theme="light"] .form-input {
+        background: #f1f5f9; color: #0f172a; border-color: #e2e8f0;
+    }
+    [data-theme="light"] .metric-label, [data-theme="light"] .metric-unit,
+    [data-theme="light"] .text-muted, [data-theme="light"] .spec-label,
+    [data-theme="light"] .cert-label, [data-theme="light"] .ces-label-text {
+        color: #475569 !important;
+    }
+    [data-theme="light"] .metric-value, [data-theme="light"] .spec-value,
+    [data-theme="light"] .cert-value, [data-theme="light"] .ces-value-text,
+    [data-theme="light"] .card-title { color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; }
+    [data-theme="light"] .footer { color: #475569; border-top-color: #e2e8f0; }
+    [data-theme="light"] .vehicle-specs-card { background: #ffffff; border-color: #e2e8f0; }
+    [data-theme="light"] .fleet-quick-card { background: #f1f5f9; border-color: #e2e8f0; }
+    [data-theme="light"] .fleet-quick-card:hover { background: #e2e8f0; }
+    [data-theme="light"] .table-container th { background: #f1f5f9; color: #0f172a; }
+    [data-theme="light"] .table-container td { color: #334155; border-color: #e2e8f0; }
+    [data-theme="light"] .btn-outline { color: #334155; border-color: #cbd5e1; }
+    [data-theme="light"] .metric-bar { background: #e2e8f0; }
+    [data-theme="light"] .threshold-info, [data-theme="light"] .ces-threshold-info { color: #64748b; }
+    [data-theme="light"] .wallet-status { color: #475569; }
+
+    .theme-toggle-btn, .tour-btn {
+        background: transparent; border: 1px solid var(--clr-border, #2a3550);
+        color: var(--clr-text, #e2e8f0); border-radius: 6px; padding: 4px 10px;
+        cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+    }
+    .theme-toggle-btn:hover, .tour-btn:hover { background: rgba(255,255,255,0.08); }
+
+    /* --- Tour Overlay --- */
+    .tour-overlay {
+        position: fixed; inset: 0; z-index: 10000;
+        background: rgba(0,0,0,0.6); transition: opacity 0.3s;
+    }
+    .tour-spotlight {
+        position: absolute; border-radius: 8px;
+        box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
+        transition: all 0.4s ease; z-index: 10001;
+        pointer-events: none;
+    }
+    .tour-tooltip {
+        position: absolute; z-index: 10002;
+        background: #1e293b; color: #f1f5f9; border: 1px solid #3b82f6;
+        border-radius: 10px; padding: 16px 20px; max-width: 320px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4); font-size: 0.9rem; line-height: 1.5;
+    }
+    .tour-tooltip-step { color: #3b82f6; font-weight: 600; font-size: 0.75rem; margin-bottom: 6px; }
+    .tour-tooltip-text { margin-bottom: 14px; }
+    .tour-tooltip-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .tour-tooltip-actions button {
+        padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer;
+        font-size: 0.8rem; font-weight: 600;
+    }
+    .tour-btn-next { background: #3b82f6; color: #fff; }
+    .tour-btn-next:hover { background: #2563eb; }
+    .tour-btn-skip { background: transparent; color: #94a3b8; border: 1px solid #475569; }
+    .tour-btn-skip:hover { background: rgba(255,255,255,0.05); }
+
+    /* --- Demo Mode --- */
+    .demo-mode-btn {
+        background: transparent; border: 1px solid #8b5cf6; color: #8b5cf6;
+        border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 0.8rem;
+        font-weight: 600; transition: all 0.25s;
+    }
+    .demo-mode-btn.active { background: #8b5cf6; color: #fff; }
+    .demo-mode-btn:hover { background: rgba(139,92,246,0.15); }
+    .demo-countdown {
+        font-size: 0.75rem; color: #a78bfa; font-weight: 500;
+        margin-left: 8px; display: none;
+    }
+    .demo-countdown.visible { display: inline; }
+
+    /* --- FAIL Flash --- */
+    @keyframes failFlash {
+        0%, 100% { box-shadow: none; }
+        50% { box-shadow: inset 0 0 60px rgba(239,68,68,0.35); }
+    }
+    .fail-flash { animation: failFlash 0.6s ease 2; }
+
+    /* --- Loading Skeletons --- */
+    .skeleton {
+        background: linear-gradient(90deg, #1a2236 25%, #232d42 50%, #1a2236 75%);
+        background-size: 200% 100%; animation: shimmer 1.5s infinite;
+        border-radius: 8px;
+    }
+    [data-theme="light"] .skeleton {
+        background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+        background-size: 200% 100%;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-gauge { width: 160px; height: 160px; border-radius: 50%; margin: 0 auto; }
+    .skeleton-metric { height: 80px; margin-bottom: 8px; }
+    .skeleton-row { height: 36px; margin-bottom: 6px; }
+    .skeleton-text { height: 16px; width: 60%; margin: 4px 0; }
+
+    /* --- Notification Bell --- */
+    .notif-bell-container { position: relative; display: inline-block; }
+    .notif-bell-btn {
+        background: transparent; border: 1px solid var(--clr-border, #2a3550);
+        color: var(--clr-text, #e2e8f0); border-radius: 6px; padding: 4px 10px;
+        cursor: pointer; font-size: 1.1rem; position: relative; transition: all 0.2s;
+    }
+    .notif-bell-btn:hover { background: rgba(255,255,255,0.08); }
+    .notif-badge {
+        position: absolute; top: -4px; right: -4px;
+        background: #ef4444; color: #fff; font-size: 0.65rem; font-weight: 700;
+        min-width: 16px; height: 16px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0 4px; line-height: 1;
+    }
+    .notif-badge.hidden { display: none; }
+    .notif-dropdown {
+        position: absolute; top: 100%; right: 0; margin-top: 8px;
+        width: 320px; max-height: 380px; overflow-y: auto;
+        background: var(--clr-surface, #141b2d); border: 1px solid var(--clr-border, #2a3550);
+        border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        z-index: 9000; display: none;
+    }
+    .notif-dropdown.open { display: block; }
+    .notif-dropdown-header {
+        padding: 10px 14px; font-weight: 600; font-size: 0.85rem;
+        border-bottom: 1px solid var(--clr-border, #2a3550);
+        color: var(--clr-text, #e2e8f0);
+    }
+    .notif-item {
+        padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+        display: flex; gap: 10px; align-items: flex-start; font-size: 0.82rem;
+        color: var(--clr-text-muted, #8892b0); transition: background 0.15s;
+    }
+    .notif-item:hover { background: rgba(255,255,255,0.03); }
+    .notif-item-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+    .notif-item-msg { flex: 1; line-height: 1.4; }
+    .notif-item-time { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
+    .notif-empty { padding: 24px; text-align: center; color: #64748b; font-size: 0.85rem; }
+    [data-theme="light"] .notif-dropdown { background: #ffffff; border-color: #e2e8f0; }
+    [data-theme="light"] .notif-item { color: #334155; border-bottom-color: #f1f5f9; }
+    [data-theme="light"] .notif-dropdown-header { border-bottom-color: #e2e8f0; color: #0f172a; }
+
+    /* --- Toast --- */
+    .toast-container {
+        position: fixed; bottom: 20px; right: 20px; z-index: 11000;
+        display: flex; flex-direction: column-reverse; gap: 8px;
+    }
+    .toast {
+        background: #1e293b; color: #f1f5f9; border: 1px solid #334155;
+        border-radius: 8px; padding: 10px 16px; font-size: 0.85rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3); animation: toastIn 0.3s ease;
+        max-width: 340px;
+    }
+    .toast.toast-info { border-left: 3px solid #3b82f6; }
+    .toast.toast-warning { border-left: 3px solid #f59e0b; }
+    .toast.toast-error { border-left: 3px solid #ef4444; }
+    [data-theme="light"] .toast { background: #ffffff; color: #0f172a; border-color: #e2e8f0; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
 <body>
     <div class="app-container">
 
         <!-- Navbar -->
         <nav class="navbar" id="navbar">
-            <a href="index.html" class="navbar-brand">
-                <div class="logo">&#9889;</div>
-                <div>
-                    <h1>Smart PUC</h1>
-                    <span>Multi-Pollutant Emission Monitor</span>
+            <div class="navbar-top-row">
+                <a href="index.html" class="navbar-brand">
+                    <div class="logo">&#9889;</div>
+                    <div>
+                        <h1 data-i18n="brand_title">Smart PUC</h1>
+                        <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                    </div>
+                </a>
+                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+            </div>
+            <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link active" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
+                <!-- Language Selector -->
+                <div class="lang-selector" id="langSelector">
+                    <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                    <div class="lang-dropdown" id="langDropdown">
+                        <button class="lang-option active" onclick="switchLanguage('en')">English</button>
+                        <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                        <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    </div>
                 </div>
-            </a>
-            <div class="navbar-actions">
-                <a href="index.html" class="nav-link active">Vehicle Dashboard</a>
-                <a href="authority.html" class="nav-link">Authority Panel</a>
-                <a href="verify.html" class="nav-link">Verify PUC</a>
-                <a href="analytics.html" class="nav-link">Analytics</a>
-                <a href="fleet.html" class="nav-link">Fleet</a>
-                <a href="rto.html" class="nav-link">RTO Portal</a>
-                <a href="marketplace.html" class="nav-link">Marketplace</a>
-                <a href="cpcb.html" class="nav-link">Public (CPCB)</a>
+                <!-- Tour Button -->
+                <button class="tour-btn" onclick="startTour()" title="Start guided tour">&#9432; Tour</button>
+                <!-- Notification Bell -->
+                <div class="notif-bell-container" id="notifBellContainer">
+                    <button class="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                    <div class="notif-dropdown" id="notifDropdown">
+                        <div class="notif-dropdown-header">Notifications</div>
+                        <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                    </div>
+                </div>
+                <!-- Theme Toggle -->
+                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle light/dark theme">&#127769;</button>
                 <div class="wallet-status" id="walletStatus">
                     <span class="wallet-dot" id="walletDot"></span>
                     <span id="walletAddress">Not Connected</span>
@@ -78,16 +280,29 @@
         <div class="card mb-lg">
             <div style="display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap;">
                 <div class="form-group" style="flex: 1; min-width: 200px;">
-                    <label class="form-label" for="vehicleIdInput">Vehicle Registration</label>
-                    <input type="text" class="form-input" id="vehicleIdInput" value="MH12AB1234"
+                    <label class="form-label" for="vehicleSelectorDropdown" data-i18n="lbl_vehicle_select">Select Vehicle</label>
+                    <select class="form-select" id="vehicleSelectorDropdown" onchange="onVehicleSelected(this.value)">
+                        <option value="">-- Select from fleet --</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label class="form-label" for="vehicleIdInput" data-i18n="lbl_vehicle_reg">Vehicle Registration</label>
+                    <input type="text" class="form-input" id="vehicleIdInput"
                            placeholder="e.g. MH12AB1234" style="text-transform: uppercase;">
                 </div>
+                <div class="form-group" style="min-width:auto;">
+                    <label class="form-label">&nbsp;</label>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <button class="demo-mode-btn" id="demoModeBtn" onclick="toggleDemoMode()">Demo Mode</button>
+                        <span class="demo-countdown" id="demoCountdown">Next: 20s</span>
+                    </div>
+                </div>
                 <div class="form-group" style="flex: 2; min-width: 250px;">
-                    <label class="form-label" for="routeSelect">Mumbai Route Selection</label>
+                    <label class="form-label" for="routeSelect" data-i18n="lbl_route">Mumbai Route Selection</label>
                     <select class="form-select" id="routeSelect"></select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">WLTC Phase</label>
+                    <label class="form-label" data-i18n="lbl_wltc">WLTC Phase</label>
                     <div class="wltc-phase-indicator" id="wltcPhaseIndicator">
                         <span class="phase-dot phase-low active" id="phaseLow" title="Low (Urban)">L</span>
                         <span class="phase-dot phase-medium" id="phaseMedium" title="Medium (Suburban)">M</span>
@@ -98,10 +313,10 @@
                 <div class="form-group">
                     <label class="form-label">&nbsp;</label>
                     <div style="display: flex; gap: var(--space-sm);">
-                        <button class="btn btn-accent" id="startRouteBtn" onclick="toggleRouteSimulation()">
+                        <button class="btn btn-accent" id="startRouteBtn" onclick="toggleRouteSimulation()" data-i18n="btn_start_route">
                             Start Route
                         </button>
-                        <button class="btn btn-outline btn-sm" onclick="loadHistory()">
+                        <button class="btn btn-outline btn-sm" onclick="loadHistory()" data-i18n="btn_history">
                             History
                         </button>
                     </div>
@@ -109,9 +324,63 @@
             </div>
         </div>
 
+        <!-- Vehicle Specs Card (hidden until vehicle selected) -->
+        <div class="vehicle-specs-card mb-lg" id="vehicleSpecsCard" style="display:none;">
+            <div class="vehicle-specs-header">
+                <div class="vehicle-specs-icon" id="vehicleSpecsIcon">&#128663;</div>
+                <div>
+                    <div class="vehicle-specs-title" id="vehicleSpecsTitle">--</div>
+                    <div class="vehicle-specs-subtitle" id="vehicleSpecsSubtitle">--</div>
+                </div>
+                <div style="margin-left:auto;" id="fuelBadgeContainer"></div>
+            </div>
+            <div class="vehicle-specs-grid">
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_manufacturer">Manufacturer</div>
+                    <div class="spec-value" id="specManufacturer">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_model">Model</div>
+                    <div class="spec-value" id="specModel">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_variant">Variant</div>
+                    <div class="spec-value" id="specVariant">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_engine">Engine</div>
+                    <div class="spec-value" id="specEngine">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_fuel">Fuel Type</div>
+                    <div class="spec-value" id="specFuel">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_bs">BS Standard</div>
+                    <div class="spec-value" id="specBS">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_transmission">Transmission</div>
+                    <div class="spec-value" id="specTransmission">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_weight">Weight</div>
+                    <div class="spec-value" id="specWeight">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_year">Year</div>
+                    <div class="spec-value" id="specYear">--</div>
+                </div>
+                <div class="vehicle-spec-item">
+                    <div class="spec-label" data-i18n="spec_mileage">Mileage</div>
+                    <div class="spec-value" id="specMileage">--</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Live Leaflet Map -->
         <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1px solid var(--clr-border);">
-            <div id="map" style="height: 400px; width: 100%; border-radius: var(--radius-lg); background-color: var(--clr-surface-2);"></div>
+            <div id="map" class="map-responsive"></div>
         </div>
 
         <!-- CES Gauge + Compliance -->
@@ -119,10 +388,12 @@
             <!-- CES Gauge -->
             <div class="card ces-gauge-card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">&#9878;</span> Composite Emission Score (CES)</div>
+                    <div class="card-title"><span class="icon">&#9878;</span> <span data-i18n="title_ces">Composite Emission Score (CES)</span></div>
+                    <div id="cesFuelBadge"></div>
                 </div>
-                <div class="ces-gauge-container">
-                    <div class="ces-gauge" id="cesGauge">
+                <div class="ces-gauge-container" id="cesGaugeSection">
+                    <div class="skeleton skeleton-gauge" id="skeletonGauge"></div>
+                    <div class="ces-gauge" id="cesGauge" style="display:none;">
                         <svg viewBox="0 0 200 120" class="ces-gauge-svg">
                             <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--clr-surface-3)" stroke-width="12" stroke-linecap="round"/>
                             <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#cesGradient)" stroke-width="12" stroke-linecap="round"
@@ -146,8 +417,8 @@
 
             <!-- Compliance Panel -->
             <div class="compliance-panel" id="compliancePanel">
-                <div class="compliance-label">Overall Compliance</div>
-                <div class="status-badge status-badge-large" id="complianceBadge">
+                <div class="compliance-label" data-i18n="lbl_compliance">Overall Compliance</div>
+                <div class="status-badge status-badge-large" id="complianceBadge" data-i18n="status_awaiting">
                     AWAITING DATA
                 </div>
                 <div class="threshold-info">
@@ -159,7 +430,7 @@
         <!-- Live Metrics — All 5 Pollutants -->
         <div class="metrics-grid" id="metricsGrid">
             <div class="metric-card">
-                <div class="metric-label">Engine RPM</div>
+                <div class="metric-label" data-i18n="lbl_rpm">Engine RPM</div>
                 <div class="metric-value" id="metricRpm">&mdash;</div>
                 <div class="metric-unit">revolutions/min</div>
                 <div class="metric-bar"><div class="metric-bar-fill" id="rpmBar" style="width: 0%"></div></div>
@@ -322,26 +593,34 @@
             </div>
         </div>
 
+        <!-- Fleet Quick-Switch -->
+        <div class="card mb-lg" id="fleetQuickSwitchCard" style="display:none;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128666;</span> <span data-i18n="title_quick_switch">Quick Vehicle Switch</span></div>
+            </div>
+            <div class="fleet-quick-switch" id="fleetQuickSwitch"></div>
+        </div>
+
         <!-- Emission History Table -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#128202;</span> Emission History</div>
+                <div class="card-title"><span class="icon">&#128202;</span> <span data-i18n="title_history">Emission History</span></div>
                 <span class="text-muted text-mono" id="historyCount">0 records</span>
             </div>
-            <div class="table-container">
+            <div class="table-container table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Vehicle ID</th>
+                            <th data-i18n="th_vehicle_id">Vehicle ID</th>
                             <th>CO&#8322;</th>
                             <th>CO</th>
                             <th>NOx</th>
                             <th>HC</th>
                             <th>PM2.5</th>
-                            <th>CES</th>
-                            <th>Fraud</th>
-                            <th>Status</th>
+                            <th data-i18n="th_ces">CES</th>
+                            <th data-i18n="th_fraud">Fraud</th>
+                            <th data-i18n="th_status">Status</th>
                         </tr>
                     </thead>
                     <tbody id="historyTableBody">
@@ -354,6 +633,9 @@
                 </table>
             </div>
         </div>
+
+        <!-- Toast Container -->
+        <div class="toast-container" id="toastContainer"></div>
 
         <!-- Footer -->
         <footer class="footer">
@@ -369,5 +651,840 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="wallet.js"></script>
     <script src="app.js"></script>
+    <script>
+    /* ================================================================
+       Smart PUC — Vehicle Selector, Specs Card, Fleet Quick-Switch,
+       Map Vehicle Icons, Fuel Type Display & i18n
+       ================================================================ */
+    (function() {
+        'use strict';
+        const _API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+
+        // Vehicle class icons mapping
+        const VEHICLE_ICONS = {
+            'TWO_WHEELER':    '\uD83C\uDFCD\uFE0F',
+            'HATCHBACK':      '\uD83D\uDE97',
+            'SEDAN':          '\uD83D\uDE99',
+            'SUV':            '\uD83D\uDE99',
+            'TRUCK':          '\uD83D\uDE9B',
+            'AUTO_RICKSHAW':  '\uD83D\uDEFA',
+            'BUS':            '\uD83D\uDE8C',
+        };
+        function getVehicleIcon(vc) { return VEHICLE_ICONS[(vc||'').toUpperCase()] || '\uD83D\uDE97'; }
+
+        const FUEL_LABELS = {
+            'petrol': 'Petrol', 'diesel': 'Diesel', 'cng': 'CNG',
+            'lpg': 'LPG', 'hybrid_petrol': 'Hybrid', 'electric': 'Electric'
+        };
+
+        let vehicleProfiles = [];
+        let selectedProfile = null;
+
+        // ── Load vehicle profiles from backend ──
+        async function loadVehicleProfiles() {
+            try {
+                const res = await fetch(_API + '/api/vehicles/profiles');
+                const data = await res.json();
+                if (data.success && data.vehicles) {
+                    vehicleProfiles = data.vehicles;
+                    populateVehicleSelector();
+                    buildFleetQuickSwitch();
+                    var currentVid = document.getElementById('vehicleIdInput').value.trim().toUpperCase();
+                    // Auto-select first vehicle if input is empty
+                    if (!currentVid && vehicleProfiles.length > 0) {
+                        currentVid = vehicleProfiles[0].registration_no;
+                        document.getElementById('vehicleIdInput').value = currentVid;
+                        var sel = document.getElementById('vehicleSelectorDropdown');
+                        if (sel) sel.value = currentVid;
+                    }
+                    var match = vehicleProfiles.find(function(v) { return v.registration_no === currentVid; });
+                    if (match) showVehicleSpecs(match);
+                }
+            } catch (e) { console.warn('Could not load vehicle profiles:', e.message); }
+        }
+
+        // ── Populate the dropdown ──
+        function populateVehicleSelector() {
+            const sel = document.getElementById('vehicleSelectorDropdown');
+            if (!sel) return;
+            // Keep the default option
+            sel.innerHTML = '<option value="">-- Select from fleet --</option>';
+            vehicleProfiles.forEach(function(v) {
+                const opt = document.createElement('option');
+                opt.value = v.registration_no;
+                opt.textContent = getVehicleIcon(v.vehicle_class) + ' ' + v.registration_no + ' - ' + v.display_name;
+                sel.appendChild(opt);
+            });
+        }
+
+        // ── On vehicle selected from dropdown ──
+        window.onVehicleSelected = function(regNo) {
+            if (!regNo) return;
+            const inp = document.getElementById('vehicleIdInput');
+            if (inp) inp.value = regNo;
+            const profile = vehicleProfiles.find(function(v) { return v.registration_no === regNo; });
+            if (profile) showVehicleSpecs(profile);
+            // Update quick-switch active state
+            document.querySelectorAll('.fleet-quick-card').forEach(function(c) {
+                c.classList.toggle('active', c.dataset.reg === regNo);
+            });
+            // Update map marker icon
+            updateMapMarkerIcon(profile ? profile.vehicle_class : null);
+        };
+
+        // ── Show vehicle specs card ──
+        function showVehicleSpecs(p) {
+            selectedProfile = p;
+            const card = document.getElementById('vehicleSpecsCard');
+            if (!card) return;
+            card.style.display = '';
+
+            document.getElementById('vehicleSpecsIcon').textContent = getVehicleIcon(p.vehicle_class);
+            document.getElementById('vehicleSpecsTitle').textContent = p.display_name || p.registration_no;
+            document.getElementById('vehicleSpecsSubtitle').textContent = p.registration_no + ' | ' + (p.vehicle_class || '').replace(/_/g, ' ');
+
+            document.getElementById('specManufacturer').textContent = p.manufacturer || '--';
+            document.getElementById('specModel').textContent = p.model || '--';
+            document.getElementById('specVariant').textContent = p.variant || '--';
+            document.getElementById('specEngine').textContent = (p.engine_displacement_cc || '--') + ' cc';
+            document.getElementById('specFuel').textContent = FUEL_LABELS[p.fuel_type] || p.fuel_type || '--';
+            document.getElementById('specBS').textContent = p.bs_standard || '--';
+            document.getElementById('specTransmission').textContent = (p.transmission || '--').replace(/_/g, ' ');
+            document.getElementById('specWeight').textContent = (p.curb_weight_kg || '--') + ' kg';
+            document.getElementById('specYear').textContent = p.manufacture_year || '--';
+            document.getElementById('specMileage').textContent = ((p.mileage_km || 0) / 1000).toFixed(0) + 'k km';
+
+            // Fuel badge in specs header
+            var ft = (p.fuel_type || 'petrol').toLowerCase();
+            var fbc = document.getElementById('fuelBadgeContainer');
+            if (fbc) fbc.innerHTML = '<span class="fuel-badge fuel-' + ft + '">' + (FUEL_LABELS[ft] || ft) + '</span>';
+
+            // Fuel badge near CES gauge
+            var cesFuel = document.getElementById('cesFuelBadge');
+            if (cesFuel) cesFuel.innerHTML = '<span class="fuel-badge fuel-' + ft + '">' + (FUEL_LABELS[ft] || ft) + '</span>';
+        }
+
+        // ── Update map marker icon based on vehicle class ──
+        function updateMapMarkerIcon(vehicleClass) {
+            if (typeof L === 'undefined' || !window.carMarker) return;
+            var icon = getVehicleIcon(vehicleClass);
+            var newIcon = L.divIcon({
+                className: 'car-marker',
+                html: '<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));">' + icon + '</div>',
+                iconSize: [30, 30], iconAnchor: [15, 15]
+            });
+            window.carMarker.setIcon(newIcon);
+        }
+
+        // ── Fleet Quick-Switch cards ──
+        function buildFleetQuickSwitch() {
+            var container = document.getElementById('fleetQuickSwitch');
+            var card = document.getElementById('fleetQuickSwitchCard');
+            if (!container || !vehicleProfiles.length) return;
+            card.style.display = '';
+            container.innerHTML = vehicleProfiles.map(function(v) {
+                return '<div class="fleet-quick-card" data-reg="' + v.registration_no + '" onclick="onVehicleSelected(\'' + v.registration_no + '\')">' +
+                    '<div class="fqc-icon">' + getVehicleIcon(v.vehicle_class) + '</div>' +
+                    '<div class="fqc-name">' + (v.display_name || v.registration_no) + '</div>' +
+                    '<div class="fqc-reg">' + v.registration_no + '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        // ── Hamburger menu toggle ──
+        document.addEventListener('DOMContentLoaded', function() {
+            var btn = document.getElementById('hamburgerBtn');
+            var nav = document.getElementById('navbarActions');
+            if (btn && nav) {
+                btn.addEventListener('click', function() {
+                    nav.classList.toggle('active');
+                });
+                // Close on link click (mobile)
+                nav.querySelectorAll('.nav-link').forEach(function(link) {
+                    link.addEventListener('click', function() { nav.classList.remove('active'); });
+                });
+            }
+            // Load vehicle profiles on startup
+            loadVehicleProfiles();
+        });
+
+        // ══════════════════════════════════════════════════════════════
+        // i18n — Multi-language support
+        // ══════════════════════════════════════════════════════════════
+        var I18N = {
+            en: {
+                brand_title: 'Smart PUC',
+                brand_subtitle: 'Multi-Pollutant Emission Monitor',
+                nav_dashboard: 'Vehicle Dashboard',
+                nav_vehicle: 'Vehicle',
+                nav_authority: 'Authority',
+                nav_verify: 'Verify',
+                nav_analytics: 'Analytics',
+                nav_fleet: 'Fleet',
+                nav_rto: 'RTO',
+                nav_marketplace: 'Marketplace',
+                nav_cpcb: 'CPCB',
+                nav_compare: 'Compare',
+                lbl_vehicle_select: 'Select Vehicle',
+                lbl_vehicle_reg: 'Vehicle Registration',
+                lbl_route: 'Mumbai Route Selection',
+                lbl_wltc: 'WLTC Phase',
+                btn_start_route: 'Start Route',
+                btn_history: 'History',
+                title_ces: 'Composite Emission Score (CES)',
+                lbl_compliance: 'Overall Compliance',
+                status_awaiting: 'AWAITING DATA',
+                status_pass: 'PASS',
+                status_fail: 'FAIL',
+                lbl_rpm: 'Engine RPM',
+                title_quick_switch: 'Quick Vehicle Switch',
+                title_history: 'Emission History',
+                th_vehicle_id: 'Vehicle ID',
+                th_ces: 'CES',
+                th_fraud: 'Fraud',
+                th_status: 'Status',
+                spec_manufacturer: 'Manufacturer',
+                spec_model: 'Model',
+                spec_variant: 'Variant',
+                spec_engine: 'Engine',
+                spec_fuel: 'Fuel Type',
+                spec_bs: 'BS Standard',
+                spec_transmission: 'Transmission',
+                spec_weight: 'Weight',
+                spec_year: 'Year',
+                spec_mileage: 'Mileage',
+                title_lstm: 'LSTM Emission Forecast',
+                title_latest_tx: 'Latest Transaction',
+                title_puc_cert: 'PUC Certificate (NFT)',
+                title_gct: 'Green Credit Tokens (GCT)',
+                lbl_total_records: 'Total Records',
+                lbl_violations: 'Violations',
+                lbl_fraud_alerts: 'Fraud Alerts',
+                lbl_avg_ces: 'Avg CES',
+            },
+            hi: {
+                brand_title: 'Smart PUC',
+                brand_subtitle: '\u092C\u0939\u0941-\u092A\u094D\u0930\u0926\u0942\u0937\u0915 \u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u092E\u0949\u0928\u093F\u091F\u0930',
+                nav_dashboard: '\u0935\u093E\u0939\u0928 \u0921\u0948\u0936\u092C\u094B\u0930\u094D\u0921',
+                nav_vehicle: '\u0935\u093E\u0939\u0928',
+                nav_authority: '\u092A\u094D\u0930\u093E\u0927\u093F\u0915\u0930\u0923',
+                nav_verify: '\u0938\u0924\u094D\u092F\u093E\u092A\u0928',
+                nav_analytics: '\u0935\u093F\u0936\u094D\u0932\u0947\u0937\u0923',
+                nav_fleet: '\u092C\u0947\u0921\u093C\u093E',
+                nav_rto: 'RTO',
+                nav_marketplace: '\u092C\u093E\u091C\u093E\u0930',
+                nav_cpcb: 'CPCB',
+                nav_compare: '\u0924\u0941\u0932\u0928\u093E',
+                lbl_vehicle_select: '\u0935\u093E\u0939\u0928 \u091A\u0941\u0928\u0947\u0902',
+                lbl_vehicle_reg: '\u0935\u093E\u0939\u0928 \u092A\u0902\u091C\u0940\u0915\u0930\u0923',
+                lbl_route: '\u092E\u0941\u0902\u092C\u0908 \u092E\u093E\u0930\u094D\u0917 \u091A\u092F\u0928',
+                lbl_wltc: 'WLTC \u091A\u0930\u0923',
+                btn_start_route: '\u092E\u093E\u0930\u094D\u0917 \u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902',
+                btn_history: '\u0907\u0924\u093F\u0939\u093E\u0938',
+                title_ces: '\u0938\u092E\u0935\u0930\u094D\u0924\u0940 \u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u0938\u094D\u0915\u094B\u0930 (CES)',
+                lbl_compliance: '\u0938\u092E\u0917\u094D\u0930 \u0905\u0928\u0941\u092A\u093E\u0932\u0928',
+                status_awaiting: '\u0921\u0947\u091F\u093E \u0915\u0940 \u092A\u094D\u0930\u0924\u0940\u0915\u094D\u0937\u093E',
+                status_pass: '\u0938\u092B\u0932',
+                status_fail: '\u0935\u093F\u092B\u0932',
+                lbl_rpm: '\u0907\u0902\u091C\u0928 RPM',
+                title_quick_switch: '\u0924\u094D\u0935\u0930\u093F\u0924 \u0935\u093E\u0939\u0928 \u092C\u0926\u0932\u0947\u0902',
+                title_history: '\u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u0907\u0924\u093F\u0939\u093E\u0938',
+                th_vehicle_id: '\u0935\u093E\u0939\u0928 ID',
+                th_ces: 'CES',
+                th_fraud: '\u0927\u094B\u0916\u093E\u0927\u0921\u093C\u0940',
+                th_status: '\u0938\u094D\u0925\u093F\u0924\u093F',
+                spec_manufacturer: '\u0928\u093F\u0930\u094D\u092E\u093E\u0924\u093E',
+                spec_model: '\u092E\u0949\u0921\u0932',
+                spec_variant: '\u0935\u0947\u0930\u093F\u090F\u0902\u091F',
+                spec_engine: '\u0907\u0902\u091C\u0928',
+                spec_fuel: '\u0908\u0902\u0927\u0928 \u092A\u094D\u0930\u0915\u093E\u0930',
+                spec_bs: 'BS \u092E\u093E\u0928\u0915',
+                spec_transmission: '\u091F\u094D\u0930\u093E\u0902\u0938\u092E\u093F\u0936\u0928',
+                spec_weight: '\u0935\u091C\u0928',
+                spec_year: '\u0935\u0930\u094D\u0937',
+                spec_mileage: '\u092E\u093E\u0907\u0932\u0947\u091C',
+                title_lstm: 'LSTM \u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u092A\u0942\u0930\u094D\u0935\u093E\u0928\u0941\u092E\u093E\u0928',
+                title_latest_tx: '\u0928\u0935\u0940\u0928\u0924\u092E \u0932\u0947\u0928\u0926\u0947\u0928',
+                title_puc_cert: 'PUC \u092A\u094D\u0930\u092E\u093E\u0923\u092A\u0924\u094D\u0930 (NFT)',
+                title_gct: '\u0917\u094D\u0930\u0940\u0928 \u0915\u094D\u0930\u0947\u0921\u093F\u091F \u091F\u094B\u0915\u0928 (GCT)',
+                lbl_total_records: '\u0915\u0941\u0932 \u0930\u093F\u0915\u0949\u0930\u094D\u0921',
+                lbl_violations: '\u0909\u0932\u094D\u0932\u0902\u0918\u0928',
+                lbl_fraud_alerts: '\u0927\u094B\u0916\u093E\u0927\u0921\u093C\u0940 \u0905\u0932\u0930\u094D\u091F',
+                lbl_avg_ces: '\u0914\u0938\u0924 CES',
+            },
+            mr: {
+                brand_title: 'Smart PUC',
+                brand_subtitle: '\u092C\u0939\u0941-\u092A\u094D\u0930\u0926\u0942\u0937\u0915 \u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u092E\u0949\u0928\u093F\u091F\u0930',
+                nav_dashboard: '\u0935\u093E\u0939\u0928 \u0921\u0945\u0936\u092C\u094B\u0930\u094D\u0921',
+                nav_vehicle: '\u0935\u093E\u0939\u0928',
+                nav_authority: '\u092A\u094D\u0930\u093E\u0927\u093F\u0915\u0930\u0923',
+                nav_verify: '\u092A\u0921\u0924\u093E\u0933\u0923\u0940',
+                nav_analytics: '\u0935\u093F\u0936\u094D\u0932\u0947\u0937\u0923',
+                nav_fleet: '\u0924\u093E\u092B\u093E',
+                nav_rto: 'RTO',
+                nav_marketplace: '\u092C\u093E\u091C\u093E\u0930',
+                nav_cpcb: 'CPCB',
+                nav_compare: '\u0924\u0941\u0932\u0928\u093E',
+                lbl_vehicle_select: '\u0935\u093E\u0939\u0928 \u0928\u093F\u0935\u0921\u093E',
+                lbl_vehicle_reg: '\u0935\u093E\u0939\u0928 \u0928\u094B\u0902\u0926\u0923\u0940',
+                lbl_route: '\u092E\u0941\u0902\u092C\u0908 \u092E\u093E\u0930\u094D\u0917 \u0928\u093F\u0935\u0921',
+                lbl_wltc: 'WLTC \u091F\u092A\u094D\u092A\u093E',
+                btn_start_route: '\u092E\u093E\u0930\u094D\u0917 \u0938\u0941\u0930\u0942 \u0915\u0930\u093E',
+                btn_history: '\u0907\u0924\u093F\u0939\u093E\u0938',
+                title_ces: '\u0938\u092E\u0935\u0930\u094D\u0924\u0940 \u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u0938\u094D\u0915\u094B\u0930 (CES)',
+                lbl_compliance: '\u090F\u0915\u0942\u0923 \u0905\u0928\u0941\u092A\u093E\u0932\u0928',
+                status_awaiting: '\u0921\u0947\u091F\u093E\u091A\u0940 \u092A\u094D\u0930\u0924\u0940\u0915\u094D\u0937\u093E',
+                status_pass: '\u0909\u0924\u094D\u0924\u0940\u0930\u094D\u0923',
+                status_fail: '\u0905\u0928\u0941\u0924\u094D\u0924\u0940\u0930\u094D\u0923',
+                lbl_rpm: '\u0907\u0902\u091C\u093F\u0928 RPM',
+                title_quick_switch: '\u091C\u0932\u0926 \u0935\u093E\u0939\u0928 \u092C\u0926\u0932\u093E',
+                title_history: '\u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u0907\u0924\u093F\u0939\u093E\u0938',
+                th_vehicle_id: '\u0935\u093E\u0939\u0928 ID',
+                th_ces: 'CES',
+                th_fraud: '\u092B\u0938\u0935\u0923\u0942\u0915',
+                th_status: '\u0938\u094D\u0925\u093F\u0924\u0940',
+                spec_manufacturer: '\u0909\u0924\u094D\u092A\u093E\u0926\u0915',
+                spec_model: '\u092E\u0949\u0921\u0947\u0932',
+                spec_variant: '\u092A\u094D\u0930\u0915\u093E\u0930',
+                spec_engine: '\u0907\u0902\u091C\u093F\u0928',
+                spec_fuel: '\u0907\u0902\u0927\u0928 \u092A\u094D\u0930\u0915\u093E\u0930',
+                spec_bs: 'BS \u092E\u093E\u0928\u0915',
+                spec_transmission: '\u091F\u094D\u0930\u093E\u0928\u094D\u0938\u092E\u093F\u0936\u0928',
+                spec_weight: '\u0935\u091C\u0928',
+                spec_year: '\u0935\u0930\u094D\u0937',
+                spec_mileage: '\u092E\u093E\u0907\u0932\u0947\u091C',
+                title_lstm: 'LSTM \u0909\u0924\u094D\u0938\u0930\u094D\u091C\u0928 \u0905\u0902\u0926\u093E\u091C',
+                title_latest_tx: '\u0905\u0932\u0940\u0915\u0921\u0947 \u0935\u094D\u092F\u0935\u0939\u093E\u0930',
+                title_puc_cert: 'PUC \u092A\u094D\u0930\u092E\u093E\u0923\u092A\u0924\u094D\u0930 (NFT)',
+                title_gct: '\u0917\u094D\u0930\u0940\u0928 \u0915\u094D\u0930\u0947\u0921\u093F\u091F \u091F\u094B\u0915\u0928 (GCT)',
+                lbl_total_records: '\u090F\u0915\u0942\u0923 \u0928\u094B\u0902\u0926\u0940',
+                lbl_violations: '\u0909\u0932\u094D\u0932\u0902\u0918\u0928\u0947',
+                lbl_fraud_alerts: '\u092B\u0938\u0935\u0923\u0942\u0915 \u0905\u0932\u0930\u094D\u091F',
+                lbl_avg_ces: '\u0938\u0930\u093E\u0938\u0930\u0940 CES',
+            }
+        };
+
+        var currentLang = localStorage.getItem('smartpuc_lang') || 'en';
+
+        window.switchLanguage = function(lang) {
+            currentLang = lang;
+            localStorage.setItem('smartpuc_lang', lang);
+            var strings = I18N[lang] || I18N.en;
+            document.querySelectorAll('[data-i18n]').forEach(function(el) {
+                var key = el.getAttribute('data-i18n');
+                if (strings[key] != null) {
+                    el.textContent = strings[key];
+                }
+            });
+            // Update lang button label
+            var langLabels = { en: 'EN', hi: '\u0939\u093F', mr: '\u092E\u0930' };
+            var btn = document.querySelector('.lang-selector-btn');
+            if (btn) btn.innerHTML = '&#127760; ' + (langLabels[lang] || 'EN');
+            // Update active state
+            document.querySelectorAll('.lang-option').forEach(function(opt) {
+                opt.classList.remove('active');
+            });
+            var opts = document.querySelectorAll('.lang-option');
+            var idx = { en: 0, hi: 1, mr: 2 }[lang] || 0;
+            if (opts[idx]) opts[idx].classList.add('active');
+            // Close dropdown
+            var dd = document.getElementById('langDropdown');
+            if (dd) dd.classList.remove('active');
+        };
+
+        // Restore saved language on load
+        if (currentLang !== 'en') {
+            window.switchLanguage(currentLang);
+        }
+
+        window.toggleLangDropdown = function() {
+            var dd = document.getElementById('langDropdown');
+            if (dd) dd.classList.toggle('active');
+        };
+
+        // Close lang dropdown on outside click
+        document.addEventListener('click', function(e) {
+            var sel = document.getElementById('langSelector');
+            var dd = document.getElementById('langDropdown');
+            if (sel && dd && !sel.contains(e.target)) {
+                dd.classList.remove('active');
+            }
+        });
+    })();
+
+    // ══════════════════════════════════════════════════════════════
+    // Demo-Enhancing Features
+    // ══════════════════════════════════════════════════════════════
+
+    /* --- 7. Dark/Light Theme Toggle --- */
+    (function() {
+        var saved = localStorage.getItem('smartpuc_theme') || 'dark';
+        if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        updateThemeIcon(saved);
+    })();
+    function updateThemeIcon(theme) {
+        var btn = document.getElementById('themeToggleBtn');
+        if (btn) btn.innerHTML = theme === 'light' ? '&#9728;' : '&#127769;';
+    }
+    function toggleTheme() {
+        var current = document.documentElement.getAttribute('data-theme');
+        var next = current === 'light' ? 'dark' : 'light';
+        if (next === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+        localStorage.setItem('smartpuc_theme', next);
+        updateThemeIcon(next);
+    }
+
+    /* --- 1. Demo Walkthrough Tour --- */
+    var _tourSteps = [
+        { element: '#vehicleSelectorDropdown', text: 'Select a vehicle from the fleet to begin monitoring its real-time emissions.', position: 'bottom' },
+        { element: '#cesGaugeSection', text: 'This gauge displays the Composite Emission Score (CES) — a weighted index of all pollutants. Below 1.0 = PASS.', position: 'right' },
+        { element: '#map', text: 'Watch the vehicle move along real Mumbai routes. The polyline color reflects emission severity.', position: 'bottom' },
+        { element: '#metricsGrid', text: 'Real-time pollutant readings: CO2, CO, NOx, HC, and PM2.5 with threshold bars.', position: 'top' },
+        { element: '#fraudAlertBanner', text: 'AI-powered fraud detection alerts appear here when anomalous OBD-II readings are detected.', position: 'bottom' },
+        { element: '#certificatePanel', text: 'Blockchain-verified PUC certificates are issued as NFTs when vehicles maintain compliance.', position: 'top' }
+    ];
+    var _tourStep = 0;
+    var _tourOverlay = null;
+    var _tourSpotlight = null;
+    var _tourTooltip = null;
+
+    function startTour() {
+        _tourStep = 0;
+        // Create overlay elements
+        _tourOverlay = document.createElement('div');
+        _tourOverlay.className = 'tour-overlay';
+        _tourOverlay.onclick = function(e) { if (e.target === _tourOverlay) endTour(); };
+        document.body.appendChild(_tourOverlay);
+
+        _tourSpotlight = document.createElement('div');
+        _tourSpotlight.className = 'tour-spotlight';
+        document.body.appendChild(_tourSpotlight);
+
+        _tourTooltip = document.createElement('div');
+        _tourTooltip.className = 'tour-tooltip';
+        document.body.appendChild(_tourTooltip);
+
+        showTourStep();
+    }
+
+    function showTourStep() {
+        if (_tourStep >= _tourSteps.length) { endTour(); return; }
+        var step = _tourSteps[_tourStep];
+        var el = document.querySelector(step.element);
+        if (!el) { _tourStep++; showTourStep(); return; }
+
+        // Scroll element into view
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        setTimeout(function() {
+            var rect = el.getBoundingClientRect();
+            var pad = 8;
+
+            // Position spotlight
+            _tourSpotlight.style.top = (rect.top - pad + window.scrollY) + 'px';
+            _tourSpotlight.style.left = (rect.left - pad) + 'px';
+            _tourSpotlight.style.width = (rect.width + pad * 2) + 'px';
+            _tourSpotlight.style.height = (rect.height + pad * 2) + 'px';
+
+            // Build tooltip content
+            var isLast = _tourStep === _tourSteps.length - 1;
+            _tourTooltip.innerHTML =
+                '<div class="tour-tooltip-step">Step ' + (_tourStep + 1) + ' of ' + _tourSteps.length + '</div>' +
+                '<div class="tour-tooltip-text">' + step.text + '</div>' +
+                '<div class="tour-tooltip-actions">' +
+                    '<button class="tour-btn-skip" onclick="endTour()">Skip</button>' +
+                    '<button class="tour-btn-next" onclick="nextTourStep()">' + (isLast ? 'Finish' : 'Next') + '</button>' +
+                '</div>';
+
+            // Position tooltip
+            var ttW = 320;
+            var ttH = _tourTooltip.offsetHeight || 140;
+            var ttTop, ttLeft;
+            if (step.position === 'bottom') {
+                ttTop = rect.bottom + pad + 12 + window.scrollY;
+                ttLeft = rect.left + rect.width / 2 - ttW / 2;
+            } else if (step.position === 'top') {
+                ttTop = rect.top - ttH - pad - 12 + window.scrollY;
+                ttLeft = rect.left + rect.width / 2 - ttW / 2;
+            } else {
+                ttTop = rect.top + rect.height / 2 - ttH / 2 + window.scrollY;
+                ttLeft = rect.right + pad + 12;
+            }
+            // Keep within viewport
+            ttLeft = Math.max(10, Math.min(ttLeft, window.innerWidth - ttW - 10));
+            _tourTooltip.style.top = ttTop + 'px';
+            _tourTooltip.style.left = ttLeft + 'px';
+        }, 400);
+    }
+
+    function nextTourStep() {
+        _tourStep++;
+        showTourStep();
+    }
+
+    function endTour() {
+        if (_tourOverlay) { _tourOverlay.remove(); _tourOverlay = null; }
+        if (_tourSpotlight) { _tourSpotlight.remove(); _tourSpotlight = null; }
+        if (_tourTooltip) { _tourTooltip.remove(); _tourTooltip = null; }
+    }
+
+    /* --- 2. Auto-Cycle Demo Mode --- */
+    var _demoMode = false;
+    var _demoInterval = null;
+    var _demoCountdownInterval = null;
+    var _demoVehicleIndex = 0;
+    var _demoCountdownSec = 20;
+
+    function toggleDemoMode() {
+        _demoMode = !_demoMode;
+        var btn = document.getElementById('demoModeBtn');
+        var cdEl = document.getElementById('demoCountdown');
+        if (_demoMode) {
+            btn.classList.add('active');
+            btn.textContent = 'Stop Demo';
+            _demoCountdownSec = 20;
+            cdEl.classList.add('visible');
+            cdEl.textContent = 'Next: 20s';
+            // Countdown ticker
+            _demoCountdownInterval = setInterval(function() {
+                _demoCountdownSec--;
+                if (_demoCountdownSec <= 0) _demoCountdownSec = 20;
+                cdEl.textContent = 'Next: ' + _demoCountdownSec + 's';
+            }, 1000);
+            // Vehicle cycle
+            _demoInterval = setInterval(function() {
+                var sel = document.getElementById('vehicleSelectorDropdown');
+                if (!sel || sel.options.length <= 1) return;
+                _demoVehicleIndex = (_demoVehicleIndex + 1) % (sel.options.length - 1);
+                var opt = sel.options[_demoVehicleIndex + 1]; // skip the placeholder
+                if (opt) {
+                    sel.value = opt.value;
+                    if (typeof onVehicleSelected === 'function') onVehicleSelected(opt.value);
+                    showToast('Switched to: ' + opt.textContent.trim(), 'info');
+                }
+                _demoCountdownSec = 20;
+            }, 20000);
+        } else {
+            btn.classList.remove('active');
+            btn.textContent = 'Demo Mode';
+            cdEl.classList.remove('visible');
+            clearInterval(_demoInterval);
+            clearInterval(_demoCountdownInterval);
+            _demoInterval = null;
+            _demoCountdownInterval = null;
+        }
+    }
+
+    /* --- Toast Notification Helper --- */
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toastContainer');
+        if (!container) return;
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() { toast.remove(); }, 5000);
+    }
+
+    /* --- 3. Sound/Visual Alert on FAIL --- */
+    (function() {
+        var origUpdate = window.updateComplianceBadge;
+        if (typeof origUpdate !== 'function') {
+            // Fallback: monkey-patch via polling not needed since app.js defines it globally
+        }
+        // Patch updateComplianceBadge to add fail effects
+        var _patchAttempted = false;
+        function patchFailAlert() {
+            if (_patchAttempted) return;
+            if (typeof window.updateComplianceBadge === 'function' && !window._failAlertPatched) {
+                var _orig = window.updateComplianceBadge;
+                window.updateComplianceBadge = function(status) {
+                    _orig(status);
+                    if (status === 'FAIL') {
+                        triggerFailAlert();
+                    }
+                };
+                window._failAlertPatched = true;
+                _patchAttempted = true;
+            }
+        }
+        // Try immediately and also after a short delay (in case app.js loads later)
+        patchFailAlert();
+        setTimeout(patchFailAlert, 500);
+        setTimeout(patchFailAlert, 2000);
+    })();
+
+    function triggerFailAlert() {
+        // Visual flash
+        var body = document.body;
+        body.classList.remove('fail-flash');
+        void body.offsetWidth; // reflow
+        body.classList.add('fail-flash');
+        setTimeout(function() { body.classList.remove('fail-flash'); }, 1500);
+
+        // Audio beep via Web Audio API
+        playAlertBeep();
+
+        // Toast
+        showToast('FAIL: Vehicle emission score exceeds compliance threshold!', 'error');
+    }
+
+    function playAlertBeep() {
+        try {
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 440;
+            gain.gain.value = 0.3;
+            osc.start();
+            setTimeout(function() { osc.stop(); ctx.close(); }, 200);
+        } catch (e) { /* Audio not supported or blocked */ }
+    }
+
+    /* --- 4. Loading Skeletons --- */
+    (function() {
+        // Show skeletons initially, hide when first data arrives
+        var skeletonGauge = document.getElementById('skeletonGauge');
+        var cesGauge = document.getElementById('cesGauge');
+
+        // Patch updateCESGauge to reveal real content
+        function patchSkeleton() {
+            if (typeof window.updateCESGauge === 'function' && !window._skeletonPatched) {
+                var _origCES = window.updateCESGauge;
+                window.updateCESGauge = function(ces) {
+                    // Remove skeleton on first data
+                    if (skeletonGauge) { skeletonGauge.style.display = 'none'; }
+                    if (cesGauge) { cesGauge.style.display = ''; }
+                    _origCES(ces);
+                };
+                window._skeletonPatched = true;
+            }
+        }
+        patchSkeleton();
+        setTimeout(patchSkeleton, 500);
+        setTimeout(patchSkeleton, 2000);
+
+        // Also auto-remove skeletons after 10 seconds as fallback
+        setTimeout(function() {
+            if (skeletonGauge) skeletonGauge.style.display = 'none';
+            if (cesGauge) cesGauge.style.display = '';
+        }, 10000);
+    })();
+
+    /* --- 5. Emission Heatmap on Map --- */
+    (function() {
+        // Store heatmap polyline segments
+        window._heatmapSegments = [];
+
+        function getHeatmapColor(ces) {
+            if (ces < 0.5) return '#10b981';
+            if (ces < 0.75) return '#f59e0b';
+            if (ces < 1.0) return '#f97316';
+            return '#ef4444';
+        }
+
+        // Patch moveCarAlongRoute + runSimulationStep to draw colored segments
+        function patchHeatmap() {
+            if (typeof window.runSimulationStep === 'function' && !window._heatmapPatched) {
+                var _origSim = window.runSimulationStep;
+                window.runSimulationStep = async function() {
+                    await _origSim();
+                    // After simulation step, draw heatmap segment
+                    try {
+                        if (typeof L !== 'undefined' && window.map && window.routeCoordinates && window.routeCoordinates.length > 1) {
+                            var idx = window.currentPointIndex || 0;
+                            if (idx > 0 && idx < window.routeCoordinates.length) {
+                                var cesText = document.getElementById('cesValueText');
+                                var cesVal = cesText ? parseFloat(cesText.textContent) : 0;
+                                if (!isNaN(cesVal)) {
+                                    var seg = L.polyline(
+                                        [window.routeCoordinates[idx - 1], window.routeCoordinates[idx]],
+                                        { color: getHeatmapColor(cesVal), weight: 6, opacity: 0.9 }
+                                    ).addTo(window.map);
+                                    window._heatmapSegments.push(seg);
+                                }
+                            }
+                        }
+                    } catch (e) { /* ignore heatmap errors */ }
+                };
+                window._heatmapPatched = true;
+            }
+        }
+        patchHeatmap();
+        setTimeout(patchHeatmap, 500);
+        setTimeout(patchHeatmap, 2000);
+
+        // Clear heatmap segments when route stops
+        var _origToggle;
+        function patchToggle() {
+            if (typeof window.toggleRouteSimulation === 'function' && !window._heatmapTogglePatched) {
+                _origToggle = window.toggleRouteSimulation;
+                window.toggleRouteSimulation = async function() {
+                    // If stopping, clear segments
+                    if (window.autoSimInterval) {
+                        window._heatmapSegments.forEach(function(s) {
+                            if (window.map) window.map.removeLayer(s);
+                        });
+                        window._heatmapSegments = [];
+                    }
+                    await _origToggle();
+                };
+                window._heatmapTogglePatched = true;
+            }
+        }
+        patchToggle();
+        setTimeout(patchToggle, 500);
+        setTimeout(patchToggle, 2000);
+    })();
+
+    /* --- 6. Notification Center Bell --- */
+    var _notifications = [];
+    var _notifUnread = 0;
+
+    function toggleNotifDropdown() {
+        var dd = document.getElementById('notifDropdown');
+        if (!dd) return;
+        dd.classList.toggle('open');
+        if (dd.classList.contains('open')) {
+            // Mark all as read
+            _notifUnread = 0;
+            updateNotifBadge();
+        }
+    }
+
+    function updateNotifBadge() {
+        var badge = document.getElementById('notifBadge');
+        if (!badge) return;
+        if (_notifUnread > 0) {
+            badge.textContent = _notifUnread > 99 ? '99+' : _notifUnread;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+
+    function renderNotifications() {
+        var list = document.getElementById('notifList');
+        if (!list) return;
+        if (_notifications.length === 0) {
+            list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+            return;
+        }
+        var typeIcons = { fraud: '&#9888;', fail: '&#10060;', pass: '&#9989;', info: '&#8505;', cert: '&#128196;', gct: '&#127793;' };
+        list.innerHTML = _notifications.slice(0, 20).map(function(n) {
+            var icon = typeIcons[n.type] || '&#8505;';
+            var time = n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : '';
+            return '<div class="notif-item">' +
+                '<span class="notif-item-icon">' + icon + '</span>' +
+                '<div class="notif-item-msg">' + (n.message || '') +
+                    (time ? '<div class="notif-item-time">' + time + '</div>' : '') +
+                '</div></div>';
+        }).join('');
+    }
+
+    function fetchNotifications() {
+        var api = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+        fetch(api + '/api/notifications').then(function(res) { return res.json(); }).then(function(data) {
+            if (data.notifications && Array.isArray(data.notifications)) {
+                var prevLen = _notifications.length;
+                _notifications = data.notifications;
+                var newCount = _notifications.length - prevLen;
+                if (newCount > 0) _notifUnread += newCount;
+                updateNotifBadge();
+                renderNotifications();
+            }
+        }).catch(function() { /* API not available */ });
+    }
+
+    // Add local notification (for FAIL events, demo mode switches, etc.)
+    function addLocalNotification(type, message) {
+        _notifications.unshift({ type: type, message: message, timestamp: new Date().toISOString() });
+        _notifUnread++;
+        updateNotifBadge();
+        renderNotifications();
+    }
+
+    // Patch FAIL to also add notification
+    (function() {
+        function patchForNotif() {
+            if (typeof window.updateComplianceBadge === 'function' && !window._notifPatched) {
+                var _orig2 = window.updateComplianceBadge;
+                window.updateComplianceBadge = function(status) {
+                    _orig2(status);
+                    if (status === 'FAIL') {
+                        addLocalNotification('fail', 'Vehicle FAILED emission compliance check');
+                    } else if (status === 'PASS') {
+                        // Only notify on first pass or transition
+                    }
+                };
+                window._notifPatched = true;
+            }
+        }
+        patchForNotif();
+        setTimeout(patchForNotif, 1000);
+        setTimeout(patchForNotif, 3000);
+    })();
+
+    // Close notif dropdown on outside click
+    document.addEventListener('click', function(e) {
+        var container = document.getElementById('notifBellContainer');
+        var dd = document.getElementById('notifDropdown');
+        if (container && dd && !container.contains(e.target)) {
+            dd.classList.remove('open');
+        }
+    });
+
+    // Fetch notifications periodically
+    fetchNotifications();
+    setInterval(fetchNotifications, 30000);
+
+    // ══════════════════════════════════════════════════════════════
+    // B2: WebSocket auto-reconnection for live emission updates
+    // ══════════════════════════════════════════════════════════════
+    (function() {
+        var ws = null;
+        var wsRetryCount = 0;
+        function connectWebSocket() {
+            ws = new WebSocket('ws://127.0.0.1:5000/ws/emissions');
+            ws.onopen = function() {
+                wsRetryCount = 0;
+                console.log('WS connected');
+            };
+            ws.onmessage = function(event) {
+                try {
+                    var data = JSON.parse(event.data);
+                    // Update live metrics if applicable
+                    if (data.ces_score != null) {
+                        var cesEl = document.getElementById('cesValueText');
+                        if (cesEl) cesEl.textContent = Number(data.ces_score).toFixed(4);
+                    }
+                    if (data.co2 != null) {
+                        var co2El = document.getElementById('metricCo2');
+                        if (co2El) co2El.textContent = Number(data.co2).toFixed(1);
+                    }
+                    if (data.nox != null) {
+                        var noxEl = document.getElementById('metricNox');
+                        if (noxEl) noxEl.textContent = Number(data.nox).toFixed(4);
+                    }
+                } catch (e) { console.warn('WS message parse error:', e); }
+            };
+            ws.onclose = function() {
+                if (wsRetryCount < 10) {
+                    wsRetryCount++;
+                    setTimeout(connectWebSocket, Math.min(1000 * wsRetryCount, 10000));
+                }
+            };
+            ws.onerror = function() { ws.close(); };
+        }
+        connectWebSocket();
+    })();
+    </script>
 </body>
 </html>

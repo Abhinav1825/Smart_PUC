@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <title>Smart PUC — Blockchain Explorer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .explorer-container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+
+        .section-title {
+            font-size: 1.1rem; font-weight: 700;
+            margin-bottom: var(--space-lg);
+            display: flex; align-items: center; gap: var(--space-sm);
+        }
+
+        .explorer-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-lg);
+            margin-bottom: var(--space-lg);
+        }
+
+        /* API Health Dashboard */
+        .health-panel {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+        }
+        .health-panel h3 {
+            font-size: 0.85rem; font-weight: 600;
+            color: var(--clr-text-muted); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-bottom: var(--space-lg);
+        }
+        .health-items { display: flex; flex-direction: column; gap: var(--space-md); }
+        .health-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: var(--space-md);
+            background: var(--clr-surface-2);
+            border-radius: var(--radius-md);
+            transition: var(--transition);
+        }
+        .health-item:hover { background: var(--clr-surface-3); }
+        .health-item-name { font-weight: 600; font-size: 0.9rem; }
+        .health-status {
+            display: inline-flex; align-items: center; gap: var(--space-xs);
+            padding: 0.25rem 0.75rem; border-radius: var(--radius-full);
+            font-size: 0.8rem; font-weight: 600;
+        }
+        .status-ok { background: var(--clr-pass-bg); color: var(--clr-pass); }
+        .status-warn { background: var(--clr-warn-bg); color: var(--clr-warn); }
+        .status-err { background: var(--clr-fail-bg); color: var(--clr-fail); }
+        .health-refresh {
+            font-size: 0.7rem; color: var(--clr-text-dim);
+            text-align: right; margin-top: var(--space-sm);
+        }
+
+        /* Contract Addresses */
+        .contracts-panel {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+        }
+        .contracts-panel h3 {
+            font-size: 0.85rem; font-weight: 600;
+            color: var(--clr-text-muted); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-bottom: var(--space-lg);
+        }
+        .contract-item {
+            padding: var(--space-md);
+            background: var(--clr-surface-2);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-sm);
+        }
+        .contract-name {
+            font-size: 0.75rem; font-weight: 600;
+            color: var(--clr-text-muted); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-bottom: var(--space-xs);
+        }
+        .contract-addr-row {
+            display: flex; align-items: center; gap: var(--space-sm);
+        }
+        .contract-addr {
+            font-family: var(--font-mono); font-size: 0.8rem;
+            color: var(--clr-accent); word-break: break-all;
+            flex: 1;
+        }
+        .copy-btn {
+            background: transparent; border: 1px solid var(--clr-border);
+            color: var(--clr-text-muted); padding: 0.3rem 0.6rem;
+            border-radius: var(--radius-sm); cursor: pointer;
+            font-size: 0.75rem; transition: var(--transition);
+            white-space: nowrap;
+        }
+        .copy-btn:hover { border-color: var(--clr-primary); color: var(--clr-text); }
+        .copy-btn.copied { border-color: var(--clr-pass); color: var(--clr-pass); }
+
+        /* Transactions Panel */
+        .tx-panel {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+        }
+        .tx-panel h3 {
+            font-size: 0.85rem; font-weight: 600;
+            color: var(--clr-text-muted); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-bottom: var(--space-lg);
+            display: flex; align-items: center; gap: var(--space-sm);
+        }
+        .tx-list { display: flex; flex-direction: column; gap: var(--space-sm); }
+        .tx-item {
+            background: var(--clr-surface-2);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--clr-border);
+            overflow: hidden;
+            transition: var(--transition);
+            cursor: pointer;
+        }
+        .tx-item:hover { border-color: rgba(99,102,241,0.3); }
+        .tx-item-header {
+            display: flex; align-items: center; gap: var(--space-md);
+            padding: var(--space-md) var(--space-lg);
+            flex-wrap: wrap;
+        }
+        .tx-type-badge {
+            display: inline-flex; align-items: center;
+            padding: 0.2rem 0.7rem; border-radius: var(--radius-full);
+            font-size: 0.72rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .badge-emission { background: rgba(34,211,238,0.12); color: #22d3ee; }
+        .badge-certificate { background: rgba(16,185,129,0.12); color: #10b981; }
+        .badge-token { background: rgba(245,158,11,0.12); color: #f59e0b; }
+        .badge-revoke { background: rgba(239,68,68,0.12); color: #ef4444; }
+        .badge-generic { background: rgba(99,102,241,0.12); color: #6366f1; }
+
+        .tx-hash {
+            font-family: var(--font-mono); font-size: 0.8rem;
+            color: var(--clr-accent); flex: 1;
+        }
+        .tx-time {
+            font-size: 0.75rem; color: var(--clr-text-dim);
+            margin-left: auto;
+        }
+        .tx-block {
+            font-family: var(--font-mono); font-size: 0.75rem;
+            color: var(--clr-text-muted);
+        }
+        .tx-details {
+            display: none; padding: 0 var(--space-lg) var(--space-lg);
+            border-top: 1px solid var(--clr-border);
+        }
+        .tx-details.open { display: block; }
+        .tx-detail-row {
+            display: flex; justify-content: space-between;
+            padding: var(--space-xs) 0;
+            font-size: 0.8rem;
+        }
+        .tx-detail-label { color: var(--clr-text-muted); }
+        .tx-detail-val { font-family: var(--font-mono); color: var(--clr-text); word-break: break-all; text-align: right; max-width: 60%; }
+
+        .tx-empty {
+            text-align: center; padding: var(--space-xl);
+            color: var(--clr-text-muted);
+        }
+
+        /* Vehicle selector for tx filter */
+        .tx-filter {
+            display: flex; gap: var(--space-md); align-items: center;
+            margin-bottom: var(--space-lg); flex-wrap: wrap;
+        }
+
+        @media (max-width: 768px) {
+            .explorer-grid { grid-template-columns: 1fr; }
+            .tx-item-header { flex-direction: column; align-items: flex-start; gap: var(--space-xs); }
+            .tx-time { margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="navbar-top-row">
+                <a href="index.html" class="navbar-brand">
+                    <div class="logo">&#9889;</div>
+                    <div><h1>Smart PUC</h1><span>Blockchain Explorer</span></div>
+                </a>
+                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+            </div>
+            <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link">Vehicle</a>
+                <a href="authority.html" class="nav-link">Authority</a>
+                <a href="verify.html" class="nav-link">Verify</a>
+                <a href="analytics.html" class="nav-link">Analytics</a>
+                <a href="fleet.html" class="nav-link">Fleet</a>
+                <a href="rto.html" class="nav-link">RTO</a>
+                <a href="marketplace.html" class="nav-link">Marketplace</a>
+                <a href="cpcb.html" class="nav-link">CPCB</a>
+                <a href="compare.html" class="nav-link">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link active">Explorer</a>
+                <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            </div>
+        </nav>
+
+        <!-- Health + Contracts Grid -->
+        <div class="explorer-grid">
+            <!-- API Health Dashboard -->
+            <div class="health-panel">
+                <h3>&#128994; System Health</h3>
+                <div class="health-items" id="healthItems">
+                    <div class="health-item">
+                        <span class="health-item-name">Backend API</span>
+                        <span class="health-status" id="healthBackend">Checking...</span>
+                    </div>
+                    <div class="health-item">
+                        <span class="health-item-name">Blockchain</span>
+                        <span class="health-status" id="healthBlockchain">Checking...</span>
+                    </div>
+                    <div class="health-item">
+                        <span class="health-item-name">Fraud Detector</span>
+                        <span class="health-status" id="healthFraud">Checking...</span>
+                    </div>
+                    <div class="health-item">
+                        <span class="health-item-name">LSTM Predictor</span>
+                        <span class="health-status" id="healthLSTM">Checking...</span>
+                    </div>
+                </div>
+                <div class="health-refresh" id="healthRefreshTimer">Auto-refresh in 10s</div>
+            </div>
+
+            <!-- Contract Addresses -->
+            <div class="contracts-panel">
+                <h3>&#128220; Deployed Contracts</h3>
+                <div id="contractsList">
+                    <div class="contract-item">
+                        <div class="contract-name">EmissionRegistry</div>
+                        <div class="contract-addr-row">
+                            <span class="contract-addr" id="addrEmission">Loading...</span>
+                            <button class="copy-btn" onclick="copyAddr('addrEmission', this)">Copy</button>
+                        </div>
+                    </div>
+                    <div class="contract-item">
+                        <div class="contract-name">PUCCertificate</div>
+                        <div class="contract-addr-row">
+                            <span class="contract-addr" id="addrPUC">Loading...</span>
+                            <button class="copy-btn" onclick="copyAddr('addrPUC', this)">Copy</button>
+                        </div>
+                    </div>
+                    <div class="contract-item">
+                        <div class="contract-name">GreenToken</div>
+                        <div class="contract-addr-row">
+                            <span class="contract-addr" id="addrGreen">Loading...</span>
+                            <button class="copy-btn" onclick="copyAddr('addrGreen', this)">Copy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="section-title">&#128279; Recent Blockchain Transactions</div>
+        <div class="tx-panel">
+            <div class="tx-filter">
+                <select class="form-select" id="txVehicleFilter" onchange="loadTransactions()" style="max-width:300px;">
+                    <option value="">All Vehicles</option>
+                </select>
+                <button class="btn btn-outline btn-sm" onclick="loadTransactions()">Refresh</button>
+            </div>
+            <div class="tx-list" id="txList">
+                <div class="tx-empty">Loading transactions...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+    <script src="wallet.js"></script>
+    <script>
+        const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+        let healthCountdown = 10;
+        let healthInterval = null;
+
+        async function connectWallet() {
+            if (typeof window.ethereum === 'undefined') { alert('MetaMask not detected.'); return; }
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (accounts.length > 0) {
+                    document.getElementById('walletAddress').textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
+                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('connectWalletBtn').textContent = 'Connected';
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        function truncHash(hash) {
+            if (!hash) return '--';
+            if (hash.length <= 16) return hash;
+            return hash.slice(0, 10) + '...' + hash.slice(-8);
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return '--';
+            const d = new Date(typeof ts === 'number' ? (ts > 1e12 ? ts : ts * 1000) : ts);
+            return d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+        }
+
+        function getTypeBadge(type) {
+            const t = (type || '').toLowerCase();
+            if (t.includes('emission') || t.includes('stored')) return { cls: 'badge-emission', label: 'EmissionStored' };
+            if (t.includes('certificate') || t.includes('issued') || t.includes('puc')) return { cls: 'badge-certificate', label: 'CertificateIssued' };
+            if (t.includes('token') || t.includes('redeem') || t.includes('green')) return { cls: 'badge-token', label: 'TokenRedeemed' };
+            if (t.includes('revoke')) return { cls: 'badge-revoke', label: 'Revoked' };
+            return { cls: 'badge-generic', label: type || 'Transaction' };
+        }
+
+        /* ---- Health Check ---- */
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/api/status`);
+                const data = await res.json();
+
+                setHealthStatus('healthBackend', true, 'Online');
+
+                const chainOk = data.blockchain_connected || data.chain_id;
+                setHealthStatus('healthBlockchain', chainOk, chainOk ? 'Connected' : 'Disconnected');
+
+                const fraudOk = data.fraud_detector !== false;
+                setHealthStatus('healthFraud', fraudOk, fraudOk ? 'Active' : 'Unavailable');
+
+                const lstmOk = data.lstm_predictor !== false;
+                setHealthStatus('healthLSTM', lstmOk, lstmOk ? 'Active' : 'Unavailable');
+
+                // Contract addresses
+                if (data.emissionRegistryAddress || data.registryAddress) {
+                    document.getElementById('addrEmission').textContent = data.emissionRegistryAddress || data.registryAddress || 'Not deployed';
+                }
+                if (data.pucCertAddress || data.certAddress) {
+                    document.getElementById('addrPUC').textContent = data.pucCertAddress || data.certAddress || 'Not deployed';
+                }
+                if (data.greenTokenAddress || data.tokenAddress) {
+                    document.getElementById('addrGreen').textContent = data.greenTokenAddress || data.tokenAddress || 'Not deployed';
+                }
+
+            } catch(e) {
+                setHealthStatus('healthBackend', false, 'Offline');
+                setHealthStatus('healthBlockchain', false, 'Unknown');
+                setHealthStatus('healthFraud', null, 'Unknown');
+                setHealthStatus('healthLSTM', null, 'Unknown');
+            }
+        }
+
+        function setHealthStatus(id, ok, text) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (ok === true) {
+                el.className = 'health-status status-ok';
+                el.textContent = '\u2705 ' + text;
+            } else if (ok === false) {
+                el.className = 'health-status status-err';
+                el.textContent = '\u274C ' + text;
+            } else {
+                el.className = 'health-status status-warn';
+                el.textContent = '\u26A0\uFE0F ' + text;
+            }
+        }
+
+        /* ---- Transactions ---- */
+        async function loadTransactions() {
+            const vehicleId = document.getElementById('txVehicleFilter').value;
+            const txList = document.getElementById('txList');
+
+            try {
+                let events = [];
+
+                // Try chain-events status endpoint
+                try {
+                    const statusRes = await fetch(`${API_BASE}/api/chain-events/status`);
+                    const statusData = await statusRes.json();
+                    if (statusData.events) events = events.concat(statusData.events);
+                    if (statusData.recent_events) events = events.concat(statusData.recent_events);
+                } catch(e) { /* endpoint may not exist */ }
+
+                // Try vehicle-specific events if filter is set
+                if (vehicleId) {
+                    try {
+                        const phaseRes = await fetch(`${API_BASE}/api/chain-events/phase/${encodeURIComponent(vehicleId)}`);
+                        const phaseData = await phaseRes.json();
+                        if (phaseData.events) events = events.concat(phaseData.events);
+                        if (phaseData.phases) {
+                            phaseData.phases.forEach(p => {
+                                events.push({
+                                    type: p.event_type || p.phase || 'Phase',
+                                    tx_hash: p.tx_hash || p.hash || '',
+                                    block_number: p.block_number || p.block || '',
+                                    timestamp: p.timestamp || p.time || '',
+                                    vehicle_id: vehicleId,
+                                    details: p
+                                });
+                            });
+                        }
+                    } catch(e) { /* endpoint may not exist */ }
+                }
+
+                // Deduplicate by tx_hash
+                const seen = new Set();
+                events = events.filter(e => {
+                    const key = e.tx_hash || JSON.stringify(e);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+
+                // Sort by timestamp descending
+                events.sort((a, b) => {
+                    const ta = new Date(a.timestamp || 0).getTime();
+                    const tb = new Date(b.timestamp || 0).getTime();
+                    return tb - ta;
+                });
+
+                if (events.length === 0) {
+                    // Generate mock events for demonstration
+                    txList.innerHTML = '<div class="tx-empty">No blockchain transactions found. Events will appear here as emissions are recorded and certificates are issued.</div>';
+                    return;
+                }
+
+                let html = '';
+                events.slice(0, 50).forEach((ev, i) => {
+                    const badge = getTypeBadge(ev.type || ev.event_type || '');
+                    const hash = ev.tx_hash || ev.hash || 'N/A';
+                    const block = ev.block_number || ev.block || '--';
+                    const time = formatTimestamp(ev.timestamp);
+
+                    html += `<div class="tx-item" onclick="toggleTxDetails(${i})">
+                        <div class="tx-item-header">
+                            <span class="tx-type-badge ${badge.cls}">${badge.label}</span>
+                            <span class="tx-hash">${truncHash(hash)}</span>
+                            <span class="tx-block">Block #${block}</span>
+                            <span class="tx-time">${time}</span>
+                        </div>
+                        <div class="tx-details" id="txDetail${i}">
+                            <div class="tx-detail-row">
+                                <span class="tx-detail-label">Full Hash</span>
+                                <span class="tx-detail-val">${hash}</span>
+                            </div>
+                            <div class="tx-detail-row">
+                                <span class="tx-detail-label">Block Number</span>
+                                <span class="tx-detail-val">${block}</span>
+                            </div>
+                            <div class="tx-detail-row">
+                                <span class="tx-detail-label">Timestamp</span>
+                                <span class="tx-detail-val">${time}</span>
+                            </div>
+                            ${ev.vehicle_id ? `<div class="tx-detail-row"><span class="tx-detail-label">Vehicle ID</span><span class="tx-detail-val">${ev.vehicle_id}</span></div>` : ''}
+                            ${ev.ces_score ? `<div class="tx-detail-row"><span class="tx-detail-label">CES Score</span><span class="tx-detail-val">${ev.ces_score}</span></div>` : ''}
+                        </div>
+                    </div>`;
+                });
+
+                txList.innerHTML = html;
+
+            } catch(e) {
+                console.error('Failed to load transactions:', e);
+                txList.innerHTML = '<div class="tx-empty" style="color:var(--clr-fail);">Failed to load transactions</div>';
+            }
+        }
+
+        function toggleTxDetails(index) {
+            const el = document.getElementById('txDetail' + index);
+            if (el) el.classList.toggle('open');
+        }
+
+        /* ---- Copy Address ---- */
+        function copyAddr(elemId, btn) {
+            const addr = document.getElementById(elemId).textContent;
+            if (!addr || addr === 'Loading...' || addr === 'Not deployed') return;
+            navigator.clipboard.writeText(addr).then(() => {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+            }).catch(() => {
+                // Fallback
+                const ta = document.createElement('textarea');
+                ta.value = addr; document.body.appendChild(ta);
+                ta.select(); document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+            });
+        }
+
+        /* ---- Load vehicle list for filter ---- */
+        async function loadVehicleFilter() {
+            try {
+                const res = await fetch(`${API_BASE}/api/vehicles/profiles`);
+                const data = await res.json();
+                if (data.success && data.vehicles) {
+                    const sel = document.getElementById('txVehicleFilter');
+                    data.vehicles.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v.registration_no;
+                        opt.textContent = v.registration_no;
+                        sel.appendChild(opt);
+                    });
+                }
+            } catch(e) { /* ignore */ }
+        }
+
+        /* ---- Health auto-refresh ---- */
+        function startHealthRefresh() {
+            healthCountdown = 10;
+            if (healthInterval) clearInterval(healthInterval);
+            healthInterval = setInterval(() => {
+                healthCountdown--;
+                document.getElementById('healthRefreshTimer').textContent = 'Auto-refresh in ' + healthCountdown + 's';
+                if (healthCountdown <= 0) {
+                    checkHealth();
+                    healthCountdown = 10;
+                }
+            }, 1000);
+        }
+
+        /* ---- Hamburger ---- */
+        (function(){
+            var btn = document.getElementById('hamburgerBtn');
+            var nav = document.getElementById('navbarActions');
+            if(btn&&nav){
+                btn.addEventListener('click', function(){ nav.classList.toggle('active'); });
+                nav.querySelectorAll('.nav-link').forEach(function(l){ l.addEventListener('click', function(){ nav.classList.remove('active'); }); });
+            }
+        })();
+
+        // Init
+        checkHealth();
+        loadTransactions();
+        loadVehicleFilter();
+        startHealthRefresh();
+    </script>
+</body>
+</html>

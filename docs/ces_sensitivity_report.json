@@ -1,0 +1,208 @@
+{
+  "description": "CES weight sensitivity analysis. Each weight perturbed by +/-0.05 with re-normalisation. Shows that CES-vs-CO2-only conclusions are robust to moderate weight changes.",
+  "baseline_weights": {
+    "co2": 0.35,
+    "co": 0.15,
+    "nox": 0.3,
+    "hc": 0.12,
+    "pm25": 0.08
+  },
+  "n_scenarios": 11,
+  "scenarios": [
+    {
+      "weights": {
+        "co2": 0.35,
+        "co": 0.15,
+        "nox": 0.3,
+        "hc": 0.12,
+        "pm25": 0.08
+      },
+      "n_vehicles": 2000,
+      "both_pass": 425,
+      "both_fail": 485,
+      "ces_fail_only": 67,
+      "co2_fail_only": 1023,
+      "agreement_rate": 0.455,
+      "cohens_kappa": 0.1121,
+      "label": "baseline"
+    },
+    {
+      "weights": {
+        "co2": 0.3158,
+        "co": 0.1579,
+        "nox": 0.3158,
+        "hc": 0.1263,
+        "pm25": 0.0842
+      },
+      "n_vehicles": 2000,
+      "both_pass": 421,
+      "both_fail": 439,
+      "ces_fail_only": 71,
+      "co2_fail_only": 1069,
+      "agreement_rate": 0.43,
+      "cohens_kappa": 0.0872,
+      "label": "co2-0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.381,
+        "co": 0.1429,
+        "nox": 0.2857,
+        "hc": 0.1143,
+        "pm25": 0.0762
+      },
+      "n_vehicles": 2000,
+      "both_pass": 425,
+      "both_fail": 527,
+      "ces_fail_only": 67,
+      "co2_fail_only": 981,
+      "agreement_rate": 0.476,
+      "cohens_kappa": 0.1312,
+      "label": "co2+0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3684,
+        "co": 0.1053,
+        "nox": 0.3158,
+        "hc": 0.1263,
+        "pm25": 0.0842
+      },
+      "n_vehicles": 2000,
+      "both_pass": 422,
+      "both_fail": 509,
+      "ces_fail_only": 70,
+      "co2_fail_only": 999,
+      "agreement_rate": 0.4655,
+      "cohens_kappa": 0.1193,
+      "label": "co-0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3333,
+        "co": 0.1905,
+        "nox": 0.2857,
+        "hc": 0.1143,
+        "pm25": 0.0762
+      },
+      "n_vehicles": 2000,
+      "both_pass": 425,
+      "both_fail": 452,
+      "ces_fail_only": 67,
+      "co2_fail_only": 1056,
+      "agreement_rate": 0.4385,
+      "cohens_kappa": 0.0975,
+      "label": "co+0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3684,
+        "co": 0.1579,
+        "nox": 0.2632,
+        "hc": 0.1263,
+        "pm25": 0.0842
+      },
+      "n_vehicles": 2000,
+      "both_pass": 427,
+      "both_fail": 498,
+      "ces_fail_only": 65,
+      "co2_fail_only": 1010,
+      "agreement_rate": 0.4625,
+      "cohens_kappa": 0.1203,
+      "label": "nox-0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3333,
+        "co": 0.1429,
+        "nox": 0.3333,
+        "hc": 0.1143,
+        "pm25": 0.0762
+      },
+      "n_vehicles": 2000,
+      "both_pass": 419,
+      "both_fail": 468,
+      "ces_fail_only": 73,
+      "co2_fail_only": 1040,
+      "agreement_rate": 0.4435,
+      "cohens_kappa": 0.0974,
+      "label": "nox+0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3684,
+        "co": 0.1579,
+        "nox": 0.3158,
+        "hc": 0.0737,
+        "pm25": 0.0842
+      },
+      "n_vehicles": 2000,
+      "both_pass": 422,
+      "both_fail": 510,
+      "ces_fail_only": 70,
+      "co2_fail_only": 998,
+      "agreement_rate": 0.466,
+      "cohens_kappa": 0.1198,
+      "label": "hc-0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3333,
+        "co": 0.1429,
+        "nox": 0.2857,
+        "hc": 0.1619,
+        "pm25": 0.0762
+      },
+      "n_vehicles": 2000,
+      "both_pass": 425,
+      "both_fail": 451,
+      "ces_fail_only": 67,
+      "co2_fail_only": 1057,
+      "agreement_rate": 0.438,
+      "cohens_kappa": 0.0971,
+      "label": "hc+0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3684,
+        "co": 0.1579,
+        "nox": 0.3158,
+        "hc": 0.1263,
+        "pm25": 0.0316
+      },
+      "n_vehicles": 2000,
+      "both_pass": 423,
+      "both_fail": 511,
+      "ces_fail_only": 69,
+      "co2_fail_only": 997,
+      "agreement_rate": 0.467,
+      "cohens_kappa": 0.1214,
+      "label": "pm25-0.05"
+    },
+    {
+      "weights": {
+        "co2": 0.3333,
+        "co": 0.1429,
+        "nox": 0.2857,
+        "hc": 0.1143,
+        "pm25": 0.1238
+      },
+      "n_vehicles": 2000,
+      "both_pass": 425,
+      "both_fail": 452,
+      "ces_fail_only": 67,
+      "co2_fail_only": 1056,
+      "agreement_rate": 0.4385,
+      "cohens_kappa": 0.0975,
+      "label": "pm25+0.05"
+    }
+  ],
+  "summary": {
+    "min_agreement": 0.43,
+    "max_agreement": 0.476,
+    "mean_agreement": 0.4528,
+    "min_kappa": 0.0872,
+    "max_kappa": 0.1312,
+    "max_reclassified_delta": 50
+  }
+}

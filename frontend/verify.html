@@ -119,18 +119,35 @@
 <body>
     <!-- Navbar -->
     <nav class="navbar">
-        <a href="index.html" class="navbar-brand">
-            <div class="logo">&#9889;</div>
-            <div><h1>Smart PUC</h1><span>Verification Portal</span></div>
-        </a>
-        <div class="navbar-actions">
-            <a href="index.html" class="nav-link">Vehicle</a>
-            <a href="authority.html" class="nav-link">Authority</a>
-            <a href="verify.html" class="nav-link active">Verify</a>
-            <a href="analytics.html" class="nav-link">Analytics</a>
-            <a href="fleet.html" class="nav-link">Fleet</a>
-            <a href="rto.html" class="nav-link">RTO</a>
-            <a href="marketplace.html" class="nav-link">Marketplace</a>
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div><h1>Smart PUC</h1><span>Verification Portal</span></div>
+            </a>
+            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
+            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+            <a href="verify.html" class="nav-link active" data-i18n="nav_verify">Verify</a>
+            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+            <a href="twin.html" class="nav-link">Twin</a>
+            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+            <a href="explorer.html" class="nav-link">Explorer</a>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                </div>
+            </div>
             <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
             <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
         </div>
@@ -191,6 +208,29 @@
                     </div>
                 </div>
 
+                <!-- Vehicle Specs (shown after verification) -->
+                <div class="verify-vehicle-specs" id="verifyVehicleSpecs" style="display:none;">
+                    <h4>Vehicle Specifications</h4>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <label>Vehicle Type</label>
+                            <div class="value" id="resVehicleType">--</div>
+                        </div>
+                        <div class="result-item">
+                            <label>Manufacturer / Model</label>
+                            <div class="value" id="resVehicleModel">--</div>
+                        </div>
+                        <div class="result-item">
+                            <label>Engine</label>
+                            <div class="value" id="resVehicleEngine">--</div>
+                        </div>
+                        <div class="result-item">
+                            <label>Fuel Type</label>
+                            <div class="value" id="resVehicleFuel">--</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Stats -->
                 <div class="stats-row" id="statsRow" style="display:none;">
                     <div class="stat-chip" id="statRecords">0 Records</div>
@@ -206,6 +246,7 @@
                     <div class="qr-actions">
                         <button class="btn-download-qr" onclick="downloadQRCode()">Download QR Code</button>
                         <button class="btn-print-cert" onclick="printCertificate()">Print Certificate</button>
+                        <button class="btn-download-qr" onclick="downloadPDFCert()" style="background:#6366f1;">Download PDF Certificate</button>
                     </div>
                 </div>
 
@@ -225,9 +266,46 @@
         </div>
     </div>
 
+    <!-- Hidden PDF Certificate Template -->
+    <div id="pdfCertTemplate" style="position:absolute;left:-9999px;top:0;width:794px;background:#fff;color:#000;font-family:'Inter',Arial,sans-serif;padding:40px;">
+        <div style="border:3px solid #1a237e;padding:30px;border-radius:8px;">
+            <div style="text-align:center;border-bottom:2px solid #1a237e;padding-bottom:20px;margin-bottom:20px;">
+                <div style="font-size:28px;font-weight:800;color:#1a237e;letter-spacing:2px;">SMART PUC</div>
+                <div style="font-size:12px;color:#555;letter-spacing:3px;text-transform:uppercase;margin-top:4px;">Blockchain-Verified Pollution Under Control Certificate</div>
+            </div>
+            <div style="text-align:center;margin-bottom:20px;">
+                <div style="display:inline-block;padding:8px 24px;border-radius:20px;font-weight:700;font-size:16px;" id="pdfStatusBadge">VALID</div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;width:40%;color:#333;">Certificate No. (Token ID)</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfTokenId">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Vehicle Registration</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfVehicleId">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Owner Address</td><td style="padding:10px 12px;border:1px solid #ddd;font-size:11px;word-break:break-all;" id="pdfOwner">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Vehicle Type</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfVehicleType">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Fuel Type</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfFuelType">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Composite Emission Score (CES)</td><td style="padding:10px 12px;border:1px solid #ddd;font-weight:700;" id="pdfCES">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Compliance Status</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfCompliance">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Issue Date</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfIssueDate">--</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:600;color:#333;">Expiry Date</td><td style="padding:10px 12px;border:1px solid #ddd;" id="pdfExpiryDate">--</td></tr>
+            </table>
+            <div style="display:flex;align-items:center;gap:20px;margin-bottom:20px;">
+                <div id="pdfQRContainer" style="min-width:120px;"></div>
+                <div style="flex:1;padding:12px;background:#f0f4ff;border-radius:8px;border:1px solid #c5cae9;">
+                    <div style="font-size:11px;font-weight:600;color:#1a237e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Blockchain Proof</div>
+                    <div style="font-size:10px;color:#555;word-break:break-all;" id="pdfChainProof">This certificate is immutably stored on the Ethereum blockchain and can be verified at any time without relying on a centralized authority.</div>
+                </div>
+            </div>
+            <div style="text-align:center;font-size:10px;color:#999;border-top:1px solid #ddd;padding-top:12px;">
+                Generated by Smart PUC Verification Portal | Blockchain-secured | Tamper-proof
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="wallet.js"></script>
+    <script src="i18n.js"></script>
     <script>
         const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
         let lastVehicleId = '';
@@ -277,8 +355,47 @@
             }
         }
 
-        /* ---- QR Code Generation ---- */
-        function generateQRCode(vehicleId) {
+        const VEHICLE_ICONS = {
+            'TWO_WHEELER': '\uD83C\uDFCD\uFE0F', 'HATCHBACK': '\uD83D\uDE97',
+            'SEDAN': '\uD83D\uDE99', 'SUV': '\uD83D\uDE99', 'TRUCK': '\uD83D\uDE9B',
+            'AUTO_RICKSHAW': '\uD83D\uDEFA', 'BUS': '\uD83D\uDE8C',
+        };
+        let lastVehicleProfile = null;
+        let lastVerificationData = null;
+
+        /* ---- Load vehicle profile from backend ---- */
+        async function loadVehicleProfile(vehicleId) {
+            try {
+                const res = await fetch(`${API_BASE}/api/vehicles/profiles`);
+                const data = await res.json();
+                if (data.success && data.vehicles) {
+                    const match = data.vehicles.find(v => v.registration_no === vehicleId);
+                    if (match) {
+                        lastVehicleProfile = match;
+                        return match;
+                    }
+                }
+            } catch (e) { console.warn('Profile load failed:', e.message); }
+            lastVehicleProfile = null;
+            return null;
+        }
+
+        /* ---- Show vehicle specs in result ---- */
+        function showVehicleSpecs(profile) {
+            const specsDiv = document.getElementById('verifyVehicleSpecs');
+            if (!specsDiv) return;
+            if (!profile) { specsDiv.style.display = 'none'; return; }
+            specsDiv.style.display = '';
+            const icon = VEHICLE_ICONS[(profile.vehicle_class || '').toUpperCase()] || '\uD83D\uDE97';
+            document.getElementById('resVehicleType').textContent = icon + ' ' + (profile.vehicle_class || '').replace(/_/g, ' ');
+            document.getElementById('resVehicleModel').textContent = (profile.manufacturer || '--') + ' ' + (profile.model || '') + ' ' + (profile.variant || '');
+            document.getElementById('resVehicleEngine').textContent = (profile.engine_displacement_cc || '--') + ' cc, ' + (profile.bs_standard || '');
+            const fuelLabels = { petrol: 'Petrol', diesel: 'Diesel', cng: 'CNG', lpg: 'LPG', hybrid_petrol: 'Hybrid', electric: 'Electric' };
+            document.getElementById('resVehicleFuel').textContent = fuelLabels[profile.fuel_type] || profile.fuel_type || '--';
+        }
+
+        /* ---- QR Code Generation (enhanced) ---- */
+        function generateQRCode(vehicleId, verificationData) {
             const qrSection = document.getElementById('qrSection');
             const qrContainer = document.getElementById('qrContainer');
 
@@ -288,15 +405,44 @@
                 qrInstance = null;
             }
 
-            const verifyUrl = window.location.origin + '/verify.html?vid=' + encodeURIComponent(vehicleId);
+            // Build enhanced QR data object
+            var qrData = {
+                url: window.location.origin + '/verify.html?vid=' + encodeURIComponent(vehicleId),
+                vid: vehicleId,
+                status: verificationData ? (verificationData.valid ? 'VALID' : 'INVALID') : 'UNKNOWN',
+                ces: verificationData ? (verificationData.average_ces || 0).toFixed(4) : '0',
+                token_id: verificationData ? verificationData.token_id : 0,
+                issue: verificationData ? verificationData.issue_date : 0,
+                expiry: verificationData ? verificationData.expiry_date : 0,
+            };
+
+            // Add vehicle specs if available
+            if (lastVehicleProfile) {
+                qrData.vtype = lastVehicleProfile.vehicle_class;
+                qrData.fuel = lastVehicleProfile.fuel_type;
+                qrData.mfr = lastVehicleProfile.manufacturer;
+                qrData.model = lastVehicleProfile.model;
+                qrData.engine_cc = lastVehicleProfile.engine_displacement_cc;
+            }
+
+            // Add blockchain proof hash (station address as proxy)
+            if (verificationData && verificationData.vehicle_owner) {
+                qrData.chain_proof = verificationData.vehicle_owner;
+            }
+
+            // CES trend arrow
+            if (verificationData && verificationData.average_ces) {
+                var ces = verificationData.average_ces;
+                qrData.trend = ces < 0.5 ? 'stable' : ces < 0.8 ? 'up' : 'down';
+            }
 
             qrInstance = new QRCode(qrContainer, {
-                text: verifyUrl,
+                text: JSON.stringify(qrData),
                 width: 180,
                 height: 180,
                 colorDark: '#000000',
                 colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
+                correctLevel: QRCode.CorrectLevel.M
             });
 
             qrSection.style.display = 'block';
@@ -328,6 +474,74 @@
             window.print();
         }
 
+        /* ---- Download PDF Certificate ---- */
+        async function downloadPDFCert() {
+            if (!lastVerificationValid || !lastVerificationData) {
+                alert('No valid certificate to download.');
+                return;
+            }
+            const v = lastVerificationData;
+            const profile = lastVehicleProfile;
+
+            // Populate PDF template
+            const badge = document.getElementById('pdfStatusBadge');
+            badge.textContent = 'VALID';
+            badge.style.background = '#e8f5e9';
+            badge.style.color = '#2e7d32';
+            badge.style.border = '2px solid #2e7d32';
+
+            document.getElementById('pdfTokenId').textContent = v.token_id > 0 ? '#' + v.token_id : '--';
+            document.getElementById('pdfVehicleId').textContent = lastVehicleId;
+            document.getElementById('pdfOwner').textContent = v.vehicle_owner || '--';
+            document.getElementById('pdfVehicleType').textContent = profile ? (profile.vehicle_class || '').replace(/_/g, ' ') : '--';
+            document.getElementById('pdfFuelType').textContent = profile ? (profile.fuel_type || '--') : '--';
+            document.getElementById('pdfCES').textContent = v.average_ces ? v.average_ces.toFixed(4) : '--';
+            document.getElementById('pdfCompliance').textContent = v.valid ? 'COMPLIANT' : 'NON-COMPLIANT';
+            document.getElementById('pdfIssueDate').textContent = formatDate(v.issue_date);
+            document.getElementById('pdfExpiryDate').textContent = formatDate(v.expiry_date);
+            if (v.vehicle_owner) {
+                document.getElementById('pdfChainProof').textContent = 'Owner: ' + v.vehicle_owner + ' | Token: ' + (v.token_id || '--') + ' | This certificate is immutably stored on the Ethereum blockchain.';
+            }
+
+            // Generate QR in pdf template
+            const pdfQR = document.getElementById('pdfQRContainer');
+            pdfQR.innerHTML = '';
+            new QRCode(pdfQR, {
+                text: JSON.stringify({ vid: lastVehicleId, token: v.token_id, valid: v.valid }),
+                width: 100, height: 100,
+                colorDark: '#000000', colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+
+            // Wait for QR to render
+            await new Promise(r => setTimeout(r, 500));
+
+            // Move template into view temporarily for rendering
+            const template = document.getElementById('pdfCertTemplate');
+            template.style.position = 'fixed';
+            template.style.left = '0';
+            template.style.top = '0';
+            template.style.zIndex = '-1';
+
+            try {
+                const canvas = await html2canvas(template, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save('PUC_Certificate_' + lastVehicleId + '.pdf');
+            } catch(err) {
+                console.error('PDF generation failed:', err);
+                alert('PDF generation failed. Please try printing instead.');
+            }
+
+            // Reset template position
+            template.style.position = 'absolute';
+            template.style.left = '-9999px';
+        }
+
         /* ---- Main Verification ---- */
         async function verifyVehicle() {
             const input = document.getElementById('verifyInput');
@@ -348,6 +562,9 @@
             btn.disabled = true;
 
             try {
+                // Load vehicle profile in parallel
+                const profilePromise = loadVehicleProfile(vehicleId);
+
                 const res = await fetch(`${API_BASE}/api/verify/${encodeURIComponent(vehicleId)}`);
                 const data = await res.json();
 
@@ -355,6 +572,10 @@
 
                 const v = data.verification;
                 const s = data.stats;
+                lastVerificationData = v;
+
+                // Wait for profile
+                const profile = await profilePromise;
 
                 // Update badge
                 if (v.valid) {
@@ -382,6 +603,9 @@
                 document.getElementById('resOwner').textContent = truncAddr(v.vehicle_owner);
                 document.getElementById('resRevoked').textContent = v.revoked ? 'Yes' : 'No';
 
+                // Show vehicle specs
+                showVehicleSpecs(profile);
+
                 // Stats
                 if (s && s.total_records > 0) {
                     document.getElementById('statsRow').style.display = 'flex';
@@ -390,9 +614,9 @@
                     document.getElementById('statAvgCES').textContent = `CES: ${s.avg_ces.toFixed(4)}`;
                 }
 
-                // Generate QR code if certificate is valid
+                // Generate enhanced QR code if certificate is valid
                 if (lastVerificationValid) {
-                    generateQRCode(vehicleId);
+                    generateQRCode(vehicleId, v);
                 }
 
             } catch (err) {
@@ -400,6 +624,7 @@
                 badge.textContent = 'ERROR';
                 document.getElementById('resVehicleId').textContent = escapeHtml(vehicleId);
                 document.getElementById('resCertStatus').textContent = err.message;
+                document.getElementById('verifyVehicleSpecs').style.display = 'none';
             }
 
             btn.disabled = false;
@@ -468,6 +693,18 @@
                 resultDiv.innerHTML = `<p style="color:#F44336;">Chain verification failed: ${escapeHtml(err.message)}</p>`;
             }
         }
+
+        /* ---- Hamburger menu toggle ---- */
+        (function() {
+            var btn = document.getElementById('hamburgerBtn');
+            var nav = document.getElementById('navbarActions');
+            if (btn && nav) {
+                btn.addEventListener('click', function() { nav.classList.toggle('active'); });
+                nav.querySelectorAll('.nav-link').forEach(function(link) {
+                    link.addEventListener('click', function() { nav.classList.remove('active'); });
+                });
+            }
+        })();
 
         /* ---- Auto-verify from URL params ---- */
         (function autoVerifyFromUrl() {

@@ -935,6 +935,271 @@ td .mono {
     font-family: var(--font-mono);
 }
 
+/* ── Navbar Top Row (brand + hamburger) ───────────────────────────── */
+.navbar-top-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* ── Hamburger Menu ───────────────────────────────────────────────── */
+.hamburger {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--clr-text);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: var(--space-sm);
+    line-height: 1;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+.hamburger:hover {
+    background: var(--clr-surface-2);
+}
+
+@media (max-width: 768px) {
+    .hamburger { display: block; }
+    .navbar {
+        flex-wrap: wrap;
+        position: relative;
+    }
+    .navbar-actions {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        padding-top: var(--space-sm);
+        border-top: 1px solid var(--clr-border);
+        margin-top: var(--space-sm);
+    }
+    .navbar-actions.active {
+        display: flex;
+    }
+    .navbar-actions .nav-link {
+        width: 100%;
+        padding: var(--space-sm) var(--space-md);
+        text-align: left;
+    }
+    .navbar-actions .wallet-status,
+    .navbar-actions .btn {
+        align-self: flex-start;
+    }
+    .navbar-top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+    }
+}
+
+/* ── Responsive Table Wrapper ─────────────────────────────────────── */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: var(--space-md);
+}
+
+/* ── Responsive Map ───────────────────────────────────────────────── */
+.map-responsive {
+    height: clamp(250px, 50vh, 500px);
+    width: 100%;
+    border-radius: var(--radius-lg);
+    background-color: var(--clr-surface-2);
+}
+
+/* ── Vehicle Specs Card ───────────────────────────────────────────── */
+.vehicle-specs-card {
+    background: var(--clr-surface);
+    border: 1px solid var(--clr-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    margin-top: var(--space-md);
+    transition: var(--transition);
+}
+.vehicle-specs-card:hover {
+    border-color: rgba(99, 102, 241, 0.2);
+}
+.vehicle-specs-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+.vehicle-specs-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+.vehicle-specs-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--clr-text);
+}
+.vehicle-specs-subtitle {
+    font-size: 0.8rem;
+    color: var(--clr-text-muted);
+}
+.vehicle-specs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-sm);
+}
+.vehicle-spec-item {
+    padding: var(--space-sm);
+    background: var(--clr-surface-2);
+    border-radius: var(--radius-sm);
+}
+.vehicle-spec-item .spec-label {
+    font-size: 0.7rem;
+    color: var(--clr-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.vehicle-spec-item .spec-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--clr-text);
+}
+
+/* ── Fuel Type Badge ──────────────────────────────────────────────── */
+.fuel-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 0.3rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.fuel-petrol { background: rgba(239, 68, 68, 0.12); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.fuel-diesel { background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+.fuel-cng { background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+.fuel-lpg { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3); }
+.fuel-hybrid_petrol { background: rgba(34, 211, 238, 0.12); color: #22d3ee; border: 1px solid rgba(34, 211, 238, 0.3); }
+.fuel-electric { background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.3); }
+
+/* ── Fleet Quick-Switch Cards ─────────────────────────────────────── */
+.fleet-quick-switch {
+    display: flex;
+    gap: var(--space-sm);
+    overflow-x: auto;
+    padding: var(--space-sm) 0;
+    -webkit-overflow-scrolling: touch;
+}
+.fleet-quick-card {
+    flex: 0 0 auto;
+    min-width: 130px;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--clr-surface);
+    border: 1px solid var(--clr-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    text-align: center;
+    transition: var(--transition);
+    user-select: none;
+}
+.fleet-quick-card:hover,
+.fleet-quick-card.active {
+    border-color: var(--clr-primary);
+    background: var(--clr-surface-2);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+.fleet-quick-card .fqc-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+}
+.fleet-quick-card .fqc-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--clr-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fleet-quick-card .fqc-reg {
+    font-size: 0.65rem;
+    color: var(--clr-text-dim);
+    font-family: var(--font-mono);
+}
+
+/* ── Language Selector ────────────────────────────────────────────── */
+.lang-selector {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.lang-selector-btn {
+    background: var(--clr-surface-2);
+    border: 1px solid var(--clr-border);
+    border-radius: var(--radius-sm);
+    color: var(--clr-text-muted);
+    padding: var(--space-xs) var(--space-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    transition: var(--transition);
+}
+.lang-selector-btn:hover {
+    color: var(--clr-text);
+    border-color: var(--clr-primary);
+}
+.lang-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: var(--space-xs);
+    background: var(--clr-surface);
+    border: 1px solid var(--clr-border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    min-width: 120px;
+    overflow: hidden;
+}
+.lang-dropdown.active {
+    display: block;
+}
+.lang-option {
+    display: block;
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    border: none;
+    background: none;
+    color: var(--clr-text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-align: left;
+    transition: var(--transition);
+}
+.lang-option:hover,
+.lang-option.active {
+    background: var(--clr-surface-2);
+    color: var(--clr-text);
+}
+
+/* ── Verify Vehicle Specs ─────────────────────────────────────────── */
+.verify-vehicle-specs {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(99, 102, 241, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(99, 102, 241, 0.15);
+}
+.verify-vehicle-specs h4 {
+    color: var(--clr-primary, #6366f1);
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
 /* ── Leaflet Map Dark Mode ─────────────────────────────────────────── */
 .leaflet-layer,
 .leaflet-control-zoom-in,

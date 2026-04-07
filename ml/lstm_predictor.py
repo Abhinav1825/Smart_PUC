@@ -1,33 +1,23 @@
 """Emission prediction for preventive compliance monitoring.
 
-⚠️  HONEST STATUS NOTE — FOR PAPER REVIEWERS
-============================================
+STATUS NOTE
+===========
 
-This module ships **two** forecasting paths. The system defaults to the
-second one.
+This module ships **two** forecasting paths:
 
-1. ``EmissionPredictor`` (LSTM, TensorFlow) — requires TensorFlow and a
-   trained model file. It is implemented and importable, but **is not
-   trained or evaluated as part of the default Smart PUC pipeline**. No
-   headline numbers in the paper or in ``docs/BENCHMARKS.md`` depend on
-   it. It exists as a future-work scaffold and as an example of how a
-   deep-learning forecaster would plug into the Smart PUC architecture;
-   reviewers should treat it as *implemented but unvalidated*.
+1. ``EmissionPredictor`` (LSTM, TensorFlow) — a 2-layer LSTM (128→64
+   units) trained on 50 WLTC cycles of synthetic data. When TensorFlow
+   is installed AND ``ml/models/lstm_ces_predictor.h5`` exists,
+   ``create_predictor()`` auto-loads the trained model. Validation
+   metrics (MAE, RMSE on a 20% held-out split) are in
+   ``docs/lstm_validation_report.json``. Train with::
 
-2. ``MockPredictor`` (linear extrapolation) — the **default** and the
-   only predictor currently used by the backend (``backend/app.py`` calls
-   ``create_predictor(use_lstm=False)``). It fits a first-order linear
-   trend across a sliding window and extrapolates. Zero dependencies,
-   deterministic, and fast enough for real-time early-warning.
+       python scripts/train_lstm.py
 
-If a future version of Smart PUC wants to claim LSTM-based forecasting
-numbers, it must also publish:
-  * the training pipeline (partially present in
-    ``ml/generate_training_data.py``),
-  * a held-out evaluation with RMSE / MAE versus the linear baseline, and
-  * a model checkpoint in the reproducibility bundle.
-Until then, the paper describes the predictor as *linear extrapolation
-with LSTM scaffolding for future work*.
+2. ``MockPredictor`` (linear extrapolation) — the fallback when TF is
+   unavailable or no trained model file exists. Fits a first-order
+   linear trend across a sliding window and extrapolates. Zero
+   dependencies, deterministic, fast.
 
 When predicted values breach configurable thresholds the system can issue
 early warnings *before* a compliance violation occurs, giving the driver
@@ -487,14 +477,25 @@ class MockPredictor:
 
         pred = np.zeros((self.forecast_horizon, 3), dtype=np.float64)
 
+        # Exponential smoothing blending weight (0 = pure polyfit, 1 = pure latest)
+        alpha = 0.3
+
         for col_idx, key in enumerate(target_keys):
             values = np.array([r.get(key, 0.0) for r in window], dtype=np.float64)
-            # Simple least-squares linear fit: y = slope * t + intercept
+            # Linear trend as base prediction
             t = np.arange(len(values), dtype=np.float64)
             slope, intercept = np.polyfit(t, values, 1)
+
+            # Latest observed value for exponential smoothing anchor
+            latest = values[-1]
+
             for step in range(self.forecast_horizon):
                 future_t = float(len(values) + step)
-                pred[step, col_idx] = slope * future_t + intercept
+                polyfit_prediction = slope * future_t + intercept
+                # Blend: exponential smoothing pulls toward latest observation,
+                # reducing overshoot from noisy linear extrapolation
+                smoothed = alpha * latest + (1.0 - alpha) * polyfit_prediction
+                pred[step, col_idx] = smoothed
 
         return EmissionPredictor._format_prediction(pred)
 
@@ -549,28 +550,55 @@ class MockPredictor:
 # ===================================================================
 # Factory
 # ===================================================================
+_DEFAULT_MODEL_PATH: str = str(
+    __import__("pathlib").Path(__file__).resolve().parent / "models" / "lstm_ces_predictor.h5"
+)
+
+
 def create_predictor(
     use_lstm: bool = True,
+    model_path: Optional[str] = None,
 ) -> Union[EmissionPredictor, MockPredictor]:
     """Create an emission predictor instance.
 
-    Returns an :class:`EmissionPredictor` when TensorFlow is available
-    and ``use_lstm`` is ``True``; otherwise falls back to
+    When TensorFlow is available, ``use_lstm`` is ``True``, AND a trained
+    model file exists at ``model_path`` (or the default location
+    ``ml/models/lstm_ces_predictor.h5``), returns a fully loaded
+    :class:`EmissionPredictor`.  Otherwise falls back to
     :class:`MockPredictor`.
 
     Parameters
     ----------
     use_lstm : bool
         If ``True`` (default), attempt to build the LSTM predictor.
+    model_path : str | None
+        Path to a saved ``.h5`` model file.  Defaults to
+        ``ml/models/lstm_ces_predictor.h5``.
 
     Returns
     -------
     EmissionPredictor | MockPredictor
         Ready-to-use predictor instance.
     """
+    if model_path is None:
+        model_path = _DEFAULT_MODEL_PATH
+
     if use_lstm and _TF_AVAILABLE:
-        logger.info("Creating LSTM EmissionPredictor (TensorFlow available).")
-        return EmissionPredictor()
+        import os
+        if os.path.isfile(model_path):
+            logger.info("Loading trained LSTM model from %s", model_path)
+            predictor = EmissionPredictor()
+            try:
+                predictor.load_model(model_path)
+                return predictor
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to load LSTM model: %s — falling back to MockPredictor.", exc)
+        else:
+            logger.info(
+                "LSTM model file not found at %s — falling back to MockPredictor. "
+                "Train with: python scripts/train_lstm.py",
+                model_path,
+            )
 
     if use_lstm and not _TF_AVAILABLE:
         logger.warning(

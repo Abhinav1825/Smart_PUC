@@ -167,5 +167,82 @@ class TestBSVIThresholds(unittest.TestCase):
         self.assertAlmostEqual(total, 1.0, places=5)
 
 
+class TestDieselEmissions(unittest.TestCase):
+    """Diesel-specific emission tests (audit fix #8)."""
+
+    def test_diesel_co2_uses_diesel_factor(self):
+        """Diesel CO2 should use the diesel emission factor (2680 g/L)."""
+        petrol = calculate_emissions(
+            speed_kmh=60.0, acceleration=0.0, rpm=2200,
+            fuel_rate=6.0, fuel_type="petrol", operating_mode_bin=21,
+        )
+        diesel = calculate_emissions(
+            speed_kmh=60.0, acceleration=0.0, rpm=2200,
+            fuel_rate=6.0, fuel_type="diesel", operating_mode_bin=21,
+        )
+        # Diesel has higher CO2 emission factor (2680 vs 2310 g/L)
+        self.assertGreater(diesel["co2_g_per_km"], petrol["co2_g_per_km"])
+
+    def test_diesel_uses_diesel_thresholds(self):
+        """Diesel compliance should check against diesel-specific limits."""
+        from backend.emission_engine import (
+            BSVI_DIESEL_THRESHOLDS,
+            BSStandard,
+            get_thresholds,
+        )
+        thresholds = get_thresholds("diesel", BSStandard.BS6)
+        self.assertEqual(thresholds["co"], 0.50)   # Diesel CO limit is 0.50
+        self.assertEqual(thresholds["nox"], 0.08)   # Diesel NOx limit is 0.08
+        # Diesel NOx limit is stricter than petrol relative to absolute values
+        self.assertNotEqual(thresholds["nox"], BSVI_THRESHOLDS["nox"])
+
+    def test_diesel_pm25_threshold(self):
+        """PM2.5 compliance for diesel should use the diesel-specific limit."""
+        from backend.emission_engine import get_thresholds, BSStandard
+        thresholds = get_thresholds("diesel", BSStandard.BS6)
+        self.assertEqual(thresholds["pm25"], 0.0045)
+
+    def test_diesel_cold_start_penalty(self):
+        """Cold-start multipliers should apply to diesel just like petrol."""
+        warm = calculate_emissions(
+            speed_kmh=40.0, acceleration=0.5, rpm=1800,
+            fuel_rate=8.0, fuel_type="diesel",
+            operating_mode_bin=21, cold_start=False,
+        )
+        cold = calculate_emissions(
+            speed_kmh=40.0, acceleration=0.5, rpm=1800,
+            fuel_rate=8.0, fuel_type="diesel",
+            operating_mode_bin=21, cold_start=True,
+        )
+        self.assertGreater(cold["co_g_per_km"], warm["co_g_per_km"])
+        self.assertGreater(cold["hc_g_per_km"], warm["hc_g_per_km"])
+
+    def test_diesel_ces_calculation(self):
+        """Full CES for a diesel vehicle with all 5 pollutants."""
+        result = calculate_emissions(
+            speed_kmh=60.0, acceleration=0.5, rpm=2500,
+            fuel_rate=5.5, fuel_type="diesel", operating_mode_bin=21,
+        )
+        self.assertIn("ces_score", result)
+        self.assertIsInstance(result["ces_score"], float)
+        self.assertGreater(result["ces_score"], 0.0)
+        # All 5 pollutants must be present
+        for p in ["co2_g_per_km", "co_g_per_km", "nox_g_per_km",
+                   "hc_g_per_km", "pm25_g_per_km"]:
+            self.assertIn(p, result)
+            self.assertGreater(result[p], 0.0)
+
+    def test_diesel_bs4_thresholds_looser(self):
+        """BS-IV diesel thresholds should be looser than or equal to BS-VI."""
+        from backend.emission_engine import (
+            get_thresholds, BSStandard,
+        )
+        bs6 = get_thresholds("diesel", BSStandard.BS6)
+        bs4 = get_thresholds("diesel", BSStandard.BS4)
+        self.assertGreaterEqual(bs4["co"], bs6["co"])
+        self.assertGreater(bs4["nox"], bs6["nox"])
+        self.assertGreaterEqual(bs4["co2"], bs6["co2"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,16 +6,27 @@ Sends signed emission payloads sequentially to a running Smart PUC station
 backend and measures the per-stage latency. Produces p50/p95/p99
 statistics that match docs/BENCHMARKS.md.
 
-Usage:
-    python scripts/bench_latency.py --samples 1000 \
-        --station-url http://localhost:5000 \
+Default mode is **local** (for CI). Use ``--live`` to run against a real
+testnet deployment (e.g. Polygon Amoy) for publication-grade measurements.
+
+Usage (local)::
+
+    python scripts/bench_latency.py --samples 1000 \\
+        --station-url http://localhost:5000 \\
         --output docs/bench_latency.json
+
+Usage (live testnet)::
+
+    python scripts/bench_latency.py --live \\
+        --station-url https://your-amoy-station.example.com \\
+        --output docs/latency_live_report.json
 
 Requirements:
     - docker-compose up (or manual Ganache + backend + contracts deployed)
     - The OBD device private key (set in .env as OBD_DEVICE_PRIVATE_KEY, or
       passed via --device-key)
     - The station API key (if API_KEY is set in .env)
+    - For --live mode: a funded Polygon Amoy deployer and deployed contracts
 
 The script purposefully does NOT import the backend modules so it can run
 against a remote station as well.
@@ -120,6 +131,12 @@ def main() -> int:
     ap.add_argument("--output", default="docs/bench_latency.json")
     ap.add_argument("--warmup", type=int, default=10,
                     help="Warmup requests excluded from statistics.")
+    ap.add_argument("--live", action="store_true",
+                    help="Flag indicating this benchmark runs against a live testnet "
+                         "(e.g. Polygon Amoy). Changes nothing functionally — the "
+                         "script already sends real signed transactions — but tags "
+                         "the output report with mode='live' so it is clearly "
+                         "distinguishable from local/simulated benchmarks.")
     args = ap.parse_args()
 
     # Load .env if present
@@ -181,15 +198,22 @@ def main() -> int:
         if (i + 1) % 100 == 0:
             print(f"  {i + 1}/{args.samples} … p50 total = {percentiles(t_total)['p50']:.1f} ms")
 
+    mode = "live" if args.live else "local"
     report = {
         "generated_at": int(time.time()),
+        "mode": mode,
         "station_url": args.station_url,
         "samples": args.samples,
         "errors": errors,
         "t_sign_ms": percentiles(t_sign),
         "t_http_plus_chain_ms": percentiles(t_http),
         "t_total_ms": percentiles(t_total),
-        "note": "t_http_plus_chain_ms includes backend processing, fraud detection, and chain inclusion.",
+        "note": (
+            "t_http_plus_chain_ms includes backend processing, fraud detection, "
+            "and chain inclusion. "
+            + ("Mode: LIVE — measurements taken against a real testnet." if mode == "live"
+               else "Mode: LOCAL — measurements against local Hardhat/Ganache node.")
+        ),
     }
 
     out_path = Path(args.output)

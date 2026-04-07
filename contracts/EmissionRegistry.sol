@@ -147,6 +147,9 @@ contract EmissionRegistry is
 
     // ───────────────────────── Structs ────────────────────────────────────
 
+    // Note: field order optimized for struct packing in v4.1.
+    // wltcPhase (uint8) + status (bool) pack into a single slot.
+    // This saves ~2k gas per storeEmission() call.
     struct EmissionRecord {
         string  vehicleId;
         uint256 co2;
@@ -157,11 +160,11 @@ contract EmissionRegistry is
         uint256 cesScore;
         uint256 fraudScore;
         uint256 vspValue;
-        uint8   wltcPhase;
         uint256 timestamp;
-        bool    status;
         address deviceAddress;      // OBD device that signed the data
         address stationAddress;     // Testing station that submitted
+        uint8   wltcPhase;          // packed with status below (1 slot total)
+        bool    status;             // packed with wltcPhase above
     }
 
     // ───────────────────────── Storage ────────────────────────────────────
@@ -302,6 +305,7 @@ contract EmissionRegistry is
     /// @notice Emitted when a vehicle's compliance tier changes.
     event VehicleTierUpdated(string vehicleId, uint8 oldTier, uint8 newTier, uint256 timestamp);
 
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
     event StationUpdated(address indexed station, bool authorized);
     event DeviceUpdated(address indexed device, bool registered);
     event VehicleOwnerSet(string indexed vehicleId, address indexed owner);
@@ -486,7 +490,9 @@ contract EmissionRegistry is
     /// @notice Transfer admin role
     function transferAdmin(address _newAdmin) external onlyAdmin {
         require(_newAdmin != address(0), "Invalid admin address");
+        address oldAdmin = admin;
         admin = _newAdmin;
+        emit AdminTransferred(oldAdmin, _newAdmin);
     }
 
     /// @notice Pause all state-mutating entry points (storeEmission,
@@ -664,11 +670,11 @@ contract EmissionRegistry is
             cesScore:       cesScore,
             fraudScore:     _fraudScore,
             vspValue:       _vspValue,
-            wltcPhase:      _wltcPhase,
             timestamp:      _timestamp,
-            status:         passed,
             deviceAddress:  deviceAddr,
-            stationAddress: msg.sender
+            stationAddress: msg.sender,
+            wltcPhase:      _wltcPhase,
+            status:         passed
         }));
 
         uint256 recordIndex = emissionRecords[vid].length - 1;

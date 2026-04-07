@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <title>Smart PUC — Fleet Leaderboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .lb-container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+
+        .section-title {
+            font-size: 1.1rem; font-weight: 700;
+            margin-bottom: var(--space-lg);
+            display: flex; align-items: center; gap: var(--space-sm);
+        }
+        .refresh-indicator {
+            font-size: 0.75rem; color: var(--clr-text-dim);
+            margin-left: auto; font-weight: 400;
+        }
+
+        /* Leaderboard Table */
+        .lb-table-wrap {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            margin-bottom: var(--space-xl);
+        }
+        .lb-table { width: 100%; border-collapse: collapse; }
+        .lb-table th {
+            padding: var(--space-md) var(--space-lg);
+            text-align: left; font-weight: 600;
+            color: var(--clr-text-muted); text-transform: uppercase;
+            font-size: 0.75rem; letter-spacing: 0.06em;
+            background: var(--clr-surface-2);
+            border-bottom: 1px solid var(--clr-border);
+        }
+        .lb-table td {
+            padding: var(--space-md) var(--space-lg);
+            border-bottom: 1px solid var(--clr-border);
+            vertical-align: middle;
+            transition: all 0.4s ease;
+        }
+        .lb-table tr:last-child td { border-bottom: none; }
+        .lb-table tr:hover td { background: var(--clr-surface-2); }
+
+        /* Animated row transitions */
+        .lb-table tr {
+            transition: transform 0.5s ease, opacity 0.3s ease;
+        }
+        .lb-table tr.moving-up {
+            animation: slideUp 0.5s ease;
+        }
+        .lb-table tr.moving-down {
+            animation: slideDown 0.5s ease;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0.5; }
+            to   { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0.5; }
+            to   { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Rank badges */
+        .rank-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px; border-radius: 50%;
+            font-weight: 800; font-size: 0.85rem;
+            font-family: var(--font-mono);
+        }
+        .rank-1 { background: linear-gradient(135deg, #ffd700, #ffb300); color: #000; box-shadow: 0 0 12px rgba(255,215,0,0.4); }
+        .rank-2 { background: linear-gradient(135deg, #c0c0c0, #9e9e9e); color: #000; box-shadow: 0 0 10px rgba(192,192,192,0.3); }
+        .rank-3 { background: linear-gradient(135deg, #cd7f32, #a0522d); color: #fff; box-shadow: 0 0 10px rgba(205,127,50,0.3); }
+        .rank-other { background: var(--clr-surface-3); color: var(--clr-text-muted); }
+
+        /* Green glow for best vehicle */
+        .greenest-row td {
+            background: rgba(16, 185, 129, 0.05) !important;
+        }
+        .greenest-row {
+            box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.3);
+            animation: greenGlow 2s ease-in-out infinite;
+        }
+        @keyframes greenGlow {
+            0%, 100% { box-shadow: inset 0 0 0 1px rgba(16,185,129,0.2), 0 0 8px rgba(16,185,129,0.1); }
+            50%      { box-shadow: inset 0 0 0 1px rgba(16,185,129,0.5), 0 0 20px rgba(16,185,129,0.2); }
+        }
+
+        /* Vehicle info in table */
+        .vehicle-info { display: flex; align-items: center; gap: var(--space-sm); }
+        .vehicle-icon { font-size: 1.2rem; }
+        .vehicle-name { font-weight: 600; font-size: 0.9rem; }
+        .vehicle-id { font-size: 0.75rem; color: var(--clr-text-muted); font-family: var(--font-mono); }
+
+        /* CES bar */
+        .ces-bar-container { display: flex; align-items: center; gap: var(--space-sm); min-width: 140px; }
+        .ces-bar-track {
+            flex: 1; height: 6px; background: var(--clr-surface-3);
+            border-radius: var(--radius-full); overflow: hidden;
+        }
+        .ces-bar-fill {
+            height: 100%; border-radius: var(--radius-full);
+            transition: width 0.6s ease;
+        }
+        .ces-val { font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem; min-width: 50px; }
+
+        /* Trend arrows */
+        .trend-up { color: var(--clr-pass); }
+        .trend-down { color: var(--clr-fail); }
+        .trend-stable { color: var(--clr-text-dim); }
+        .trend-icon { font-size: 1.1rem; font-weight: 700; }
+
+        /* Compliance rate */
+        .compliance-pct {
+            font-family: var(--font-mono); font-weight: 600;
+        }
+
+        /* Cost Calculator */
+        .cost-section {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            margin-bottom: var(--space-xl);
+        }
+        .cost-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-xl);
+        }
+        .cost-controls { display: flex; flex-direction: column; gap: var(--space-lg); }
+        .cost-result {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center;
+            padding: var(--space-xl);
+            background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(34,211,238,0.05));
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--clr-border);
+        }
+        .cost-big {
+            font-size: 2.5rem; font-weight: 800;
+            font-family: var(--font-mono);
+            background: linear-gradient(135deg, var(--clr-text), var(--clr-accent));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: var(--space-sm);
+        }
+        .cost-label-main {
+            font-size: 0.85rem; color: var(--clr-text-muted);
+            margin-bottom: var(--space-md);
+        }
+        .cost-comparison {
+            padding: 0.5rem 1rem; border-radius: var(--radius-full);
+            font-size: 0.85rem; font-weight: 600;
+        }
+        .cost-cheaper { background: var(--clr-pass-bg); color: var(--clr-pass); }
+        .cost-expensive { background: var(--clr-fail-bg); color: var(--clr-fail); }
+
+        .slider-group { display: flex; flex-direction: column; gap: var(--space-xs); }
+        .slider-group label {
+            font-size: 0.8rem; font-weight: 600;
+            color: var(--clr-text-muted); text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .slider-row { display: flex; align-items: center; gap: var(--space-md); }
+        .slider-row input[type="range"] {
+            flex: 1; accent-color: var(--clr-primary);
+            height: 4px; -webkit-appearance: none; appearance: none;
+            background: var(--clr-surface-3); border-radius: var(--radius-full);
+            outline: none;
+        }
+        .slider-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px;
+            border-radius: 50%; background: var(--clr-primary);
+            cursor: pointer; box-shadow: 0 0 8px var(--clr-primary-glow);
+        }
+        .slider-val {
+            min-width: 70px; text-align: right;
+            font-family: var(--font-mono); font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .cost-grid { grid-template-columns: 1fr; }
+            .lb-table { font-size: 0.8rem; }
+            .lb-table th, .lb-table td { padding: var(--space-sm); }
+        }
+
+        @media (max-width: 600px) {
+            .hide-mobile { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="navbar-top-row">
+                <a href="index.html" class="navbar-brand">
+                    <div class="logo">&#9889;</div>
+                    <div><h1>Smart PUC</h1><span>Fleet Leaderboard</span></div>
+                </a>
+                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+            </div>
+            <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link">Vehicle</a>
+                <a href="authority.html" class="nav-link">Authority</a>
+                <a href="verify.html" class="nav-link">Verify</a>
+                <a href="analytics.html" class="nav-link">Analytics</a>
+                <a href="fleet.html" class="nav-link">Fleet</a>
+                <a href="rto.html" class="nav-link">RTO</a>
+                <a href="marketplace.html" class="nav-link">Marketplace</a>
+                <a href="cpcb.html" class="nav-link">CPCB</a>
+                <a href="compare.html" class="nav-link">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link active">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
+                <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            </div>
+        </nav>
+
+        <!-- Leaderboard -->
+        <div class="section-title">
+            &#127942; Fleet Leaderboard
+            <span class="refresh-indicator" id="refreshTimer">Auto-refresh in 15s</span>
+        </div>
+
+        <div class="lb-table-wrap">
+            <table class="lb-table" id="leaderboardTable">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Vehicle</th>
+                        <th class="hide-mobile">Class</th>
+                        <th>Avg CES</th>
+                        <th class="hide-mobile">Compliance</th>
+                        <th class="hide-mobile">Records</th>
+                        <th>Trend</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboardBody">
+                    <tr><td colspan="7" style="text-align:center;color:var(--clr-text-muted);padding:var(--space-2xl);">Loading fleet data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Cost Calculator -->
+        <div class="section-title">&#128176; Pollution Cost Calculator</div>
+        <div class="cost-section">
+            <div class="cost-grid">
+                <div class="cost-controls">
+                    <div class="slider-group">
+                        <label for="costVehicle">Select Vehicle</label>
+                        <select class="form-select" id="costVehicle" onchange="updateCostCalc()">
+                            <option value="">-- Select a vehicle --</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label for="penaltyRate">Penalty Rate (per CES unit)</label>
+                        <div class="slider-row">
+                            <input type="range" id="penaltyRate" min="100" max="1000" value="500" step="50" oninput="updateCostCalc()">
+                            <span class="slider-val" id="penaltyRateVal">&#8377;500</span>
+                        </div>
+                    </div>
+                    <div class="slider-group">
+                        <label for="readingsPerYear">Readings Per Year</label>
+                        <div class="slider-row">
+                            <input type="range" id="readingsPerYear" min="365" max="10000" value="1000" step="100" oninput="updateCostCalc()">
+                            <span class="slider-val" id="readingsVal">1,000</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="cost-result" id="costResult">
+                    <div class="cost-big" id="costAmount">&#8377;0</div>
+                    <div class="cost-label-main">Estimated Annual Pollution Penalty</div>
+                    <div class="cost-comparison" id="costComparison" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+    <script src="wallet.js"></script>
+    <script>
+        const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+        let fleetData = [];
+        let vehicleProfiles = {};
+        let previousRanks = {};
+        let refreshCountdown = 15;
+        let countdownInterval = null;
+
+        const VEHICLE_ICONS = {
+            'TWO_WHEELER': '\uD83C\uDFCD\uFE0F', 'HATCHBACK': '\uD83D\uDE97',
+            'SEDAN': '\uD83D\uDE99', 'SUV': '\uD83D\uDE99', 'TRUCK': '\uD83D\uDE9B',
+            'AUTO_RICKSHAW': '\uD83D\uDEFA', 'BUS': '\uD83D\uDE8C',
+        };
+
+        async function connectWallet() {
+            if (typeof window.ethereum === 'undefined') { alert('MetaMask not detected.'); return; }
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (accounts.length > 0) {
+                    document.getElementById('walletAddress').textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
+                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('connectWalletBtn').textContent = 'Connected';
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadFleetData() {
+            try {
+                const [fleetRes, profilesRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/analytics/fleet`),
+                    fetch(`${API_BASE}/api/vehicles/profiles`)
+                ]);
+                const fleetJson = await fleetRes.json();
+                const profilesJson = await profilesRes.json();
+
+                if (profilesJson.success && profilesJson.vehicles) {
+                    profilesJson.vehicles.forEach(v => {
+                        vehicleProfiles[v.registration_no] = v;
+                    });
+                }
+
+                if (fleetJson.success) {
+                    // Combine all vehicle data from worst_performers (which has stats)
+                    const wp = fleetJson.worst_performers || [];
+                    fleetData = wp.map(v => ({
+                        vehicle_id: v.vehicle_id,
+                        avg_ces: v.avg_ces || 0,
+                        total_records: v.total_records || 0,
+                        violations: v.violations || 0,
+                        compliance_rate: v.total_records > 0 ? ((1 - (v.violations / v.total_records)) * 100) : 100,
+                    }));
+
+                    // Sort by avg_ces ascending (best = lowest CES)
+                    fleetData.sort((a, b) => a.avg_ces - b.avg_ces);
+                    renderLeaderboard();
+                    populateCostSelector();
+                }
+            } catch(e) {
+                console.error('Failed to load fleet data:', e);
+                document.getElementById('leaderboardBody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--clr-fail);padding:var(--space-2xl);">Failed to load fleet data</td></tr>';
+            }
+        }
+
+        function getCESColor(ces) {
+            if (ces < 0.5) return 'var(--clr-pass)';
+            if (ces < 0.75) return 'var(--clr-accent)';
+            if (ces < 1.0) return 'var(--clr-warn)';
+            return 'var(--clr-fail)';
+        }
+
+        function getCESBarGradient(ces) {
+            if (ces < 0.5) return 'linear-gradient(90deg, #10b981, #34d399)';
+            if (ces < 0.75) return 'linear-gradient(90deg, #22d3ee, #67e8f9)';
+            if (ces < 1.0) return 'linear-gradient(90deg, #f59e0b, #fbbf24)';
+            return 'linear-gradient(90deg, #ef4444, #f87171)';
+        }
+
+        function renderLeaderboard() {
+            const tbody = document.getElementById('leaderboardBody');
+            if (fleetData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--clr-text-muted);padding:var(--space-2xl);">No fleet data available</td></tr>';
+                return;
+            }
+
+            const newRanks = {};
+            fleetData.forEach((v, i) => { newRanks[v.vehicle_id] = i + 1; });
+
+            let html = '';
+            fleetData.forEach((v, i) => {
+                const rank = i + 1;
+                const profile = vehicleProfiles[v.vehicle_id] || {};
+                const icon = VEHICLE_ICONS[(profile.vehicle_class || '').toUpperCase()] || '\uD83D\uDE97';
+                const displayName = profile.manufacturer ? `${profile.manufacturer} ${profile.model || ''}` : v.vehicle_id;
+                const vehicleClass = (profile.vehicle_class || 'Unknown').replace(/_/g, ' ');
+
+                // Rank badge
+                let rankClass = 'rank-other';
+                if (rank === 1) rankClass = 'rank-1';
+                else if (rank === 2) rankClass = 'rank-2';
+                else if (rank === 3) rankClass = 'rank-3';
+
+                // Trend
+                const prevRank = previousRanks[v.vehicle_id];
+                let trend = '', trendClass = 'trend-stable';
+                if (prevRank !== undefined) {
+                    if (prevRank > rank) { trend = '\u2191'; trendClass = 'trend-up'; }
+                    else if (prevRank < rank) { trend = '\u2193'; trendClass = 'trend-down'; }
+                    else { trend = '\u2192'; trendClass = 'trend-stable'; }
+                } else {
+                    trend = '\u2192'; trendClass = 'trend-stable';
+                }
+
+                // Animation class
+                let animClass = '';
+                if (prevRank !== undefined) {
+                    if (prevRank > rank) animClass = 'moving-up';
+                    else if (prevRank < rank) animClass = 'moving-down';
+                }
+
+                const isGreenest = rank === 1;
+                const cesPct = Math.min((v.avg_ces / 2) * 100, 100);
+
+                html += `<tr class="${animClass} ${isGreenest ? 'greenest-row' : ''}">
+                    <td><span class="rank-badge ${rankClass}">${rank}</span></td>
+                    <td>
+                        <div class="vehicle-info">
+                            <div>
+                                <div class="vehicle-name">${displayName}</div>
+                                <div class="vehicle-id">${v.vehicle_id}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="hide-mobile"><span class="vehicle-icon">${icon}</span> ${vehicleClass}</td>
+                    <td>
+                        <div class="ces-bar-container">
+                            <span class="ces-val" style="color:${getCESColor(v.avg_ces)}">${v.avg_ces.toFixed(4)}</span>
+                            <div class="ces-bar-track">
+                                <div class="ces-bar-fill" style="width:${cesPct}%;background:${getCESBarGradient(v.avg_ces)};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="hide-mobile"><span class="compliance-pct" style="color:${v.compliance_rate >= 90 ? 'var(--clr-pass)' : v.compliance_rate >= 70 ? 'var(--clr-warn)' : 'var(--clr-fail)'}">${v.compliance_rate.toFixed(1)}%</span></td>
+                    <td class="hide-mobile" style="font-family:var(--font-mono);">${v.total_records}</td>
+                    <td><span class="trend-icon ${trendClass}">${trend}</span></td>
+                </tr>`;
+            });
+
+            tbody.innerHTML = html;
+            previousRanks = newRanks;
+        }
+
+        /* ---- Cost Calculator ---- */
+        function populateCostSelector() {
+            const sel = document.getElementById('costVehicle');
+            // Keep existing first option
+            while (sel.options.length > 1) sel.remove(1);
+            fleetData.forEach(v => {
+                const profile = vehicleProfiles[v.vehicle_id] || {};
+                const name = profile.manufacturer ? `${v.vehicle_id} - ${profile.manufacturer} ${profile.model || ''}` : v.vehicle_id;
+                const opt = document.createElement('option');
+                opt.value = v.vehicle_id;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        }
+
+        function updateCostCalc() {
+            const vehicleId = document.getElementById('costVehicle').value;
+            const penaltyRate = parseInt(document.getElementById('penaltyRate').value);
+            const readings = parseInt(document.getElementById('readingsPerYear').value);
+
+            document.getElementById('penaltyRateVal').textContent = '\u20B9' + penaltyRate.toLocaleString('en-IN');
+            document.getElementById('readingsVal').textContent = readings.toLocaleString('en-IN');
+
+            if (!vehicleId) {
+                document.getElementById('costAmount').textContent = '\u20B90';
+                document.getElementById('costComparison').style.display = 'none';
+                return;
+            }
+
+            const vehicle = fleetData.find(v => v.vehicle_id === vehicleId);
+            if (!vehicle) return;
+
+            const cost = vehicle.avg_ces * readings * (penaltyRate / 1000);
+            document.getElementById('costAmount').textContent = '\u20B9' + Math.round(cost).toLocaleString('en-IN');
+
+            // Fleet average
+            const fleetAvgCES = fleetData.reduce((s, v) => s + v.avg_ces, 0) / fleetData.length;
+            const fleetAvgCost = fleetAvgCES * readings * (penaltyRate / 1000);
+
+            const comp = document.getElementById('costComparison');
+            if (cost < fleetAvgCost) {
+                const pct = ((1 - cost / fleetAvgCost) * 100).toFixed(0);
+                comp.textContent = `${pct}% cheaper than fleet average`;
+                comp.className = 'cost-comparison cost-cheaper';
+            } else {
+                const pct = ((cost / fleetAvgCost - 1) * 100).toFixed(0);
+                comp.textContent = `${pct}% more expensive than fleet average`;
+                comp.className = 'cost-comparison cost-expensive';
+            }
+            comp.style.display = '';
+        }
+
+        /* ---- Auto Refresh ---- */
+        function startAutoRefresh() {
+            refreshCountdown = 15;
+            if (countdownInterval) clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                refreshCountdown--;
+                document.getElementById('refreshTimer').textContent = `Auto-refresh in ${refreshCountdown}s`;
+                if (refreshCountdown <= 0) {
+                    loadFleetData();
+                    refreshCountdown = 15;
+                }
+            }, 1000);
+        }
+
+        /* ---- Hamburger ---- */
+        (function(){
+            var btn = document.getElementById('hamburgerBtn');
+            var nav = document.getElementById('navbarActions');
+            if(btn&&nav){
+                btn.addEventListener('click', function(){ nav.classList.toggle('active'); });
+                nav.querySelectorAll('.nav-link').forEach(function(l){ l.addEventListener('click', function(){ nav.classList.remove('active'); }); });
+            }
+        })();
+
+        // Init
+        loadFleetData();
+        startAutoRefresh();
+    </script>
+</body>
+</html>

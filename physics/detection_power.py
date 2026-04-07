@@ -160,6 +160,33 @@ def monthly_detection_power(
     }
 
 
+def generate_sensitivity_table(
+    p_values: list = [0.01, 0.015, 0.02, 0.03, 0.05],
+    p_puc_values: list = [0.80, 0.85, 0.90],
+) -> list:
+    """Generate a sensitivity table showing how N_threshold varies with p and P_puc.
+
+    This addresses the reviewer concern that the N=94 result depends on
+    the p=0.02 assumption. The table shows the full parameter space.
+
+    Returns:
+        List of dicts: [{"p_per_reading": 0.01, "p_puc": 0.85,
+                         "n_threshold": 189, "minutes": 3.15}, ...]
+    """
+    table = []
+    for p in p_values:
+        for p_puc in p_puc_values:
+            n = readings_threshold(p_puc, p)
+            table.append({
+                "p_per_reading": p,
+                "p_puc": p_puc,
+                "n_threshold": n,
+                "seconds": n,
+                "minutes": round(n / 60.0, 2),
+            })
+    return table
+
+
 if __name__ == "__main__":
     print("=" * 70)
     print("Theorem 1: Cumulative Detection Power for Continuous OBD Monitoring")
@@ -188,6 +215,16 @@ if __name__ == "__main__":
         print(f"{row['minutes']:>8.0f}  {row['readings']:>8d}  {row['p_obd']:>8.4f}  "
               f"{row['p_puc']:>8.2f}  {'YES' if row['obd_better'] else 'no':>8}  "
               f"{row['advantage_pct']:>+9.1f}%")
+    print()
+
+    print("-" * 70)
+    print("Sensitivity Table: N_threshold vs (p, P_puc)")
+    print("-" * 70)
+    print(f"{'p':>8}  {'P_puc':>8}  {'N_thresh':>8}  {'Seconds':>8}  {'Minutes':>8}")
+    print("-" * 70)
+    for row in generate_sensitivity_table():
+        print(f"{row['p_per_reading']:>8.3f}  {row['p_puc']:>8.2f}  "
+              f"{row['n_threshold']:>8d}  {row['seconds']:>8d}  {row['minutes']:>8.2f}")
     print()
 
     monthly = monthly_detection_power()

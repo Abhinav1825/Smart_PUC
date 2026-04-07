@@ -54,5 +54,12 @@
     "ces_weights_origin": "Author-proposed health-weighted composite scheme. Not a regulatory standard. ARAI/MoRTH do not specify a multi-pollutant composite score for BS-VI.",
     "ces_weights_sum_must_equal": 1.0,
     "solidity_scaling_note": "Pollutants and thresholds are scaled x1000 on-chain. CES scores and weights are scaled x10000 on-chain. The JSON carries both float and integer representations so the generator can cross-check."
+  },
+  "rationale": {
+    "co2": "Largest contributor to climate impact; dominant by mass in tailpipe emissions.",
+    "nox": "NOx contributes more to tropospheric ozone formation and has the strictest BSVI limit (0.06 g/km vs 1.0 g/km for CO). Weighting reflects health-impact severity per WHO Air Quality Guidelines 2021.",
+    "co": "Significant health hazard (carboxyhemoglobin formation) but higher absolute threshold allows more tolerance.",
+    "hc": "Precursor to ground-level ozone; moderate direct health impact.",
+    "pm25": "Highly toxic per unit mass (penetrates deep into lungs) but emitted in very small quantities by modern petrol engines with particulate filters."
   }
 }

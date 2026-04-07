@@ -21,6 +21,7 @@ Run in Docker: see Dockerfile.backend.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json as _json
 import os
@@ -46,7 +47,7 @@ import jwt
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -68,6 +69,10 @@ from blockchain_connector import BlockchainConnector  # noqa: E402
 from persistence import PersistenceStore  # noqa: E402
 from phase_listener import PhaseListener  # noqa: E402
 import privacy as _privacy  # noqa: E402
+from vehicle_profiles import (  # noqa: E402
+    get_profile, get_all_profiles, list_vehicle_ids,
+    VehicleProfile, DEMO_FLEET, register_vehicle,
+)
 
 try:
     from ml.station_fraud_detector import StationFraudDetector  # noqa: E402
@@ -83,16 +88,8 @@ except Exception:  # noqa: BLE001
     PrePUCPredictor = None  # type: ignore[assignment,misc]
     _pre_puc_available = False
 
-# Singleton: trained-once, re-used across requests. Training uses a fixed
-# random_state so the model is deterministic across backend restarts.
+# Deferred to lifespan startup (audit L11)
 _pre_puc_predictor: Any = None
-if _pre_puc_available and PrePUCPredictor is not None:
-    try:
-        _pre_puc_predictor = PrePUCPredictor(random_state=42)
-        _pre_puc_predictor.train_synthetic(n_samples=2000)
-    except Exception as _ex:  # noqa: BLE001
-        print(f"  PrePUCPredictor init failed: {_ex}")
-        _pre_puc_predictor = None
 
 from dependencies import (  # noqa: E402
     AUTH_PASSWORD,
@@ -107,6 +104,7 @@ from dependencies import (  # noqa: E402
     require_api_key,
     require_api_key_or_jwt,
     require_auth,
+    require_rto_role,
     verify_credentials,
 )
 from schemas import (  # noqa: E402
@@ -244,36 +242,16 @@ except ImportError:
     obd_lib = None
     obd_hardware_available = False
 
-# Optional ML fraud detector
+# Deferred to lifespan startup (audit L11)
 try:
     from ml.fraud_detector import FraudDetector
-    fraud_detector = FraudDetector()
+    _fraud_detector_class = FraudDetector
     fraud_available = True
-    _baseline_data: list = []
-    _training_data_path = os.path.join(os.path.dirname(__file__), "..", "ml", "training_data.npy")
-    if os.path.exists(_training_data_path):
-        _raw = _np.load(_training_data_path)
-        for row in _raw[:600]:
-            _baseline_data.append({
-                "speed": float(row[0]), "rpm": float(row[1]),
-                "fuel_rate": float(row[2]), "acceleration": float(row[3]),
-                "co2": float(row[4]), "vsp": float(row[6]),
-            })
-    else:
-        _tmp_sim = WLTCSimulator(vehicle_id="IF_TRAINING", dt=1.0)
-        for _ in range(600):
-            _r = _tmp_sim.generate_reading()
-            _baseline_data.append({
-                "speed": _r["speed"], "rpm": float(_r["rpm"]),
-                "fuel_rate": _r["fuel_rate"], "acceleration": _r.get("acceleration", 0.0),
-                "co2": 130.0, "vsp": 5.0,
-            })
-        del _tmp_sim
-    fraud_detector.fit(_baseline_data)
-    del _baseline_data
 except ImportError:
-    fraud_detector = None
+    _fraud_detector_class = None  # type: ignore[assignment,misc]
     fraud_available = False
+
+fraud_detector: Any = None
 
 # Optional LSTM / linear emission predictor
 try:
@@ -322,12 +300,120 @@ def err(message: str, status_code: int = 500) -> JSONResponse:
     return JSONResponse({"success": False, "error": message}, status_code=status_code)
 
 
+# ────────────────────────── WebSocket connection manager ───────────────
+
+class ConnectionManager:
+    """Manages active WebSocket connections for real-time emission updates."""
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+ws_manager = ConnectionManager()
+
+
+# ────────────────────────── DPDP Privacy consent store ─────────────────
+# In-memory consent ledger for DPDP Act compliance. In production this
+# would be backed by a durable store; for the research prototype an
+# in-memory dict keyed by (vehicle_id, consent_type) is sufficient.
+
+import threading as _consent_threading  # noqa: E402
+
+_consent_store: dict[str, dict[str, Any]] = {}
+_consent_lock = _consent_threading.Lock()
+_erasure_requests: list[dict] = []
+
+DATA_RETENTION_POLICY = {
+    "policy_version": "1.0",
+    "framework": "DPDP Act 2023 (India)",
+    "retention_periods": {
+        "emission_telemetry": {"duration_days": 1095, "basis": "Regulatory compliance (Motor Vehicles Act)"},
+        "puc_certificates": {"duration_days": 1825, "basis": "Legal obligation (Section 56, MV Act)"},
+        "fraud_detection_logs": {"duration_days": 365, "basis": "Legitimate interest (Section 7(6), DPDP Act)"},
+        "vehicle_owner_pii": {"duration_days": 365, "basis": "Consent-based (Section 6, DPDP Act)"},
+        "blockchain_records": {"duration_days": -1, "basis": "Immutable ledger — anonymised/pseudonymised"},
+    },
+    "data_principal_rights": {
+        "right_to_access": "GET /api/privacy/consent/{vehicle_id}",
+        "right_to_correction": "Contact data fiduciary",
+        "right_to_erasure": "POST /api/privacy/erasure-request (Section 12, DPDP Act)",
+        "right_to_grievance_redressal": "Contact Data Protection Officer",
+    },
+    "pseudonymisation": "Salted SHA-256 pseudonyms when PRIVACY_MODE=1 (Section 8(4))",
+    "cross_border_transfer": "Not applicable — data stored on local Hardhat / Polygon chain",
+}
+
+
+# ────────────────────────── Per-VIN baseline default ───────────────────
+# Enable per-vehicle fraud baselines by default so the fraud detector
+# can learn vehicle-specific emission signatures.
+if "PER_VIN_BASELINE_ENABLED" not in os.environ:
+    os.environ["PER_VIN_BASELINE_ENABLED"] = "1"
+
+
 # ────────────────────────── Lifespan & FastAPI app ─────────────────────
 
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
     """FastAPI lifespan handler — replaces the deprecated @app.on_event."""
     # ── startup ──
+    # ── Deferred ML training (audit L11) ──
+    global fraud_detector, _pre_puc_predictor
+
+    if fraud_available and _fraud_detector_class is not None and fraud_detector is None:
+        t0 = time.time()
+        try:
+            fraud_detector = _fraud_detector_class()
+            _baseline_data: list = []
+            _training_data_path = os.path.join(os.path.dirname(__file__), "..", "ml", "training_data.npy")
+            if os.path.exists(_training_data_path):
+                _raw = _np.load(_training_data_path)
+                for row in _raw[:600]:
+                    _baseline_data.append({
+                        "speed": float(row[0]), "rpm": float(row[1]),
+                        "fuel_rate": float(row[2]), "acceleration": float(row[3]),
+                        "co2": float(row[4]), "vsp": float(row[6]),
+                    })
+            else:
+                _tmp_sim = WLTCSimulator(vehicle_id="IF_TRAINING", dt=1.0)
+                for _ in range(600):
+                    _r = _tmp_sim.generate_reading()
+                    _baseline_data.append({
+                        "speed": _r["speed"], "rpm": float(_r["rpm"]),
+                        "fuel_rate": _r["fuel_rate"], "acceleration": _r.get("acceleration", 0.0),
+                        "co2": 130.0, "vsp": 5.0,
+                    })
+                del _tmp_sim
+            fraud_detector.fit(_baseline_data)
+            del _baseline_data
+            print(f"[startup] Fraud detector ready in {time.time()-t0:.1f}s")
+        except Exception as _ex:
+            print(f"[startup] Fraud detector init failed: {_ex}")
+            fraud_detector = None
+
+    if _pre_puc_available and PrePUCPredictor is not None and _pre_puc_predictor is None:
+        t0 = time.time()
+        try:
+            _pre_puc_predictor = PrePUCPredictor(random_state=42)
+            _pre_puc_predictor.train_synthetic(n_samples=2000)
+            print(f"[startup] Pre-PUC predictor ready in {time.time()-t0:.1f}s")
+        except Exception as _ex:
+            print(f"[startup] PrePUCPredictor init failed: {_ex}")
+            _pre_puc_predictor = None
+
     print("=" * 65)
     print("Smart PUC — Testing Station Backend (Node 2 of 3)")
     print("=" * 65)
@@ -354,10 +440,40 @@ async def _lifespan(application: FastAPI):
     print(f"  Calibration      : {'Enabled' if (_calibration_model and getattr(_calibration_model, 'is_trained', False)) else 'Disabled'}")
     print(f"  Micro-Assessment : {'Available' if _micro_engine else 'Not loaded'}")
     print(f"  Privacy Mode     : {'On' if PRIVACY_MODE_ENABLED else 'Off'}")
+    print(f"  DPDP Compliance  : Enabled (consent + erasure endpoints)")
+    print(f"  Vehicle Profiles : {len(DEMO_FLEET)} demo vehicles loaded")
+    print(f"  Per-VIN Baseline : {'Enabled' if os.environ.get('PER_VIN_BASELINE_ENABLED') == '1' else 'Disabled'}")
+    print(f"  WebSocket        : ws://localhost:5000/ws/emissions")
     print(f"  OpenAPI / Swagger: http://localhost:5000/docs")
     print("=" * 65)
+
+    # ── Background: auto-poll chain events every 30 s (audit fix #7) ────
+    _phase_poll_task: Optional[asyncio.Task] = None
+
+    async def _phase_poll_loop() -> None:
+        """Periodically sync on-chain events into the local projection DB."""
+        while True:
+            try:
+                await asyncio.sleep(30)
+                if phase_listener is not None:
+                    phase_listener.sync_from_chain()
+            except asyncio.CancelledError:
+                break
+            except Exception:  # noqa: BLE001 — polling must not crash the app
+                pass
+
+    if phase_listener is not None:
+        _phase_poll_task = asyncio.create_task(_phase_poll_loop())
+        print("[startup] Phase event listener auto-poll started (30 s interval)")
+
     yield
     # ── shutdown ──
+    if _phase_poll_task is not None:
+        _phase_poll_task.cancel()
+        try:
+            await _phase_poll_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -570,14 +686,25 @@ def auth_login(req: LoginRequest):
 @app.get("/api/simulate")
 def simulate(vehicle_id: str = Query(DEFAULT_VEHICLE_ID)):
     try:
+        profile = get_profile(vehicle_id)
         simulator.vehicle_id = vehicle_id
         reading = simulator.generate_reading()
         emission = compute_full_emission(
             speed=reading["speed"], rpm=reading["rpm"],
             fuel_rate=reading["fuel_rate"],
+            fuel_type=profile.fuel_type_for_engine,
             acceleration=reading.get("acceleration", 0.0),
         )
-        return ok(data={**reading, **emission})
+        return ok(data={
+            **reading, **emission,
+            "vehicle_profile": {
+                "vehicle_class": profile.vehicle_class,
+                "fuel_type": profile.fuel_type,
+                "bs_standard": profile.bs_standard,
+                "engine_cc": profile.engine_displacement_cc,
+                "display_name": profile.display_name,
+            },
+        })
     except Exception as exc:
         traceback.print_exc()
         return err(str(exc))
@@ -605,6 +732,9 @@ def record(body: EmissionRecordRequest, request: Request):
         # raw id.
         vehicle_id = maybe_pseudonymize(raw_vehicle_id)
 
+        # Step 0a: Vehicle profile lookup
+        profile = get_profile(raw_vehicle_id)
+
         # Step 0: VAHAN lookup (non-blocking)
         vehicle_info = None
         if vaahan_available and vaahan:
@@ -626,10 +756,15 @@ def record(body: EmissionRecordRequest, request: Request):
             speed = max(0.0, min(float(data["speed"]), 250.0))
             rpm = max(0, min(int(data.get("rpm") or 2000), 8000))
             fuel_type = data.get("fuel_type") or "petrol"
-            if fuel_type not in ("petrol", "diesel"):
+            _supported_fuels = ("petrol", "diesel", "cng", "lpg", "hybrid_petrol", "electric")
+            if fuel_type not in _supported_fuels:
                 fuel_type = "petrol"
             acceleration = max(-10.0, min(float(data.get("acceleration") or 0.0), 10.0))
         else:
+            # Update simulator to use the correct vehicle profile
+            simulator.vehicle_id = raw_vehicle_id
+            if get_profile is not None:
+                simulator.profile = profile
             reading = simulator.generate_reading()
             fuel_rate = reading["fuel_rate"]
             speed = reading["speed"]
@@ -645,10 +780,11 @@ def record(body: EmissionRecordRequest, request: Request):
 
         timestamp = int(data.get("timestamp") or time.time())
 
-        # Step 2: Emission calculation
+        # Step 2: Emission calculation (use profile's fuel type if available)
+        effective_fuel_type = profile.fuel_type_for_engine if profile else fuel_type
         emission = compute_full_emission(
             speed=speed, rpm=rpm, fuel_rate=fuel_rate,
-            fuel_type=fuel_type, acceleration=acceleration,
+            fuel_type=effective_fuel_type, acceleration=acceleration,
         )
         readings_count += 1
 
@@ -716,28 +852,52 @@ def record(body: EmissionRecordRequest, request: Request):
             except Exception:
                 predictions = None
 
-        # Step 5: Blockchain write
+        # Step 5: Blockchain write (audit L10: graceful degradation via chain_outbox)
         tx_result: dict = {"tx_hash": None, "status": "offline", "block_number": None, "gas_used": 0}
+        _chain_payload = {
+            "co2": emission.get("co2_g_per_km", 0),
+            "co": emission.get("co_g_per_km", 0),
+            "nox": emission.get("nox_g_per_km", 0),
+            "hc": emission.get("hc_g_per_km", 0),
+            "pm25": emission.get("pm25_g_per_km", 0),
+            "fraud_score": fraud_result.get("fraud_score", 0),
+            "vsp": emission.get("vsp", 0),
+            "wltc_phase": wltc_phase,
+            "timestamp": timestamp,
+            "device_signature": device_signature,
+            "nonce": device_nonce,
+            "idempotency_key": idempotency_key or None,
+        }
         if blockchain_connected and blockchain:
             try:
                 tx_result = blockchain.store_emission(
-                    vehicle_id=vehicle_id,
-                    co2=emission.get("co2_g_per_km", 0),
-                    co=emission.get("co_g_per_km", 0),
-                    nox=emission.get("nox_g_per_km", 0),
-                    hc=emission.get("hc_g_per_km", 0),
-                    pm25=emission.get("pm25_g_per_km", 0),
-                    fraud_score=fraud_result.get("fraud_score", 0),
-                    vsp=emission.get("vsp", 0),
-                    wltc_phase=wltc_phase,
-                    timestamp=timestamp,
-                    device_signature=device_signature,
-                    nonce=device_nonce,
-                    idempotency_key=idempotency_key or None,
+                    vehicle_id=vehicle_id, **_chain_payload,
                 )
             except Exception as exc:
                 print(f"Blockchain write failed: {exc}")
-                tx_result = {"tx_hash": None, "status": "failed", "block_number": None, "gas_used": 0}
+                # Queue for later retry instead of returning 503 (audit L10)
+                try:
+                    store.enqueue_chain_write(vehicle_id, _chain_payload)
+                except Exception:
+                    pass
+                _add_notification(
+                    "chain_offline",
+                    "Emission record queued for later blockchain submission",
+                    vehicle_id=vehicle_id, severity="info",
+                )
+                tx_result = {"tx_hash": None, "status": "queued_offline", "block_number": None, "gas_used": 0}
+        else:
+            # Blockchain not connected — queue for later (audit L10)
+            try:
+                store.enqueue_chain_write(vehicle_id, _chain_payload)
+            except Exception:
+                pass
+            _add_notification(
+                "chain_offline",
+                "Emission record queued for later blockchain submission",
+                vehicle_id=vehicle_id, severity="info",
+            )
+            tx_result = {"tx_hash": None, "status": "queued_offline", "block_number": None, "gas_used": 0}
 
         # Mirror the (possibly pseudonymised) reading into the SQLite
         # telemetry cold-store. This is the write path that audit G4
@@ -789,7 +949,7 @@ def record(body: EmissionRecordRequest, request: Request):
             "speed": speed,
             "rpm": rpm,
             "fuel_rate": fuel_rate,
-            "fuel_type": fuel_type,
+            "fuel_type": effective_fuel_type,
             "acceleration": round(acceleration, 3),
             "co2_g_per_km": emission.get("co2_g_per_km", 0),
             "co_g_per_km": emission.get("co_g_per_km", 0),
@@ -819,6 +979,15 @@ def record(body: EmissionRecordRequest, request: Request):
                 "model": vehicle_info.get("model") if vehicle_info else None,
             } if vehicle_info else None,
             "vehicle_stats": vehicle_stats,
+            "vehicle_profile": {
+                "vehicle_class": profile.vehicle_class,
+                "fuel_type": profile.fuel_type,
+                "bs_standard": profile.bs_standard,
+                "engine_cc": profile.engine_displacement_cc,
+                "display_name": profile.display_name,
+                "manufacturer": profile.manufacturer,
+                "model": profile.model,
+            } if profile else None,
             "timestamp": timestamp,
         }
         # Attach pre-PUC failure forecast if predictor is available and
@@ -844,6 +1013,21 @@ def record(body: EmissionRecordRequest, request: Request):
         cached_body = {"success": True, "data": response_data}
         if idempotency_key:
             _idempotency_store(idempotency_key, cached_body)
+
+        # Broadcast to WebSocket subscribers for real-time updates
+        try:
+            asyncio.get_event_loop().create_task(ws_manager.broadcast({
+                "type": "emission_record",
+                "vehicle_id": vehicle_id,
+                "ces_score": emission.get("ces_score", 0),
+                "status": emission.get("status", "UNKNOWN"),
+                "co2_g_per_km": emission.get("co2_g_per_km", 0),
+                "fraud_score": fraud_result.get("fraud_score", 0),
+                "timestamp": timestamp,
+            }))
+        except Exception:
+            pass  # WebSocket broadcast is best-effort
+
         return JSONResponse(_clean_numpy(cached_body))
     except Exception as exc:
         traceback.print_exc()
@@ -855,7 +1039,9 @@ def record(body: EmissionRecordRequest, request: Request):
 @app.get("/api/history/{vehicle_id}")
 def history(vehicle_id: str, page: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)):
     if not blockchain_connected:
-        return err("Blockchain not connected", 503)
+        # Graceful degradation (audit L10)
+        return JSONResponse({"success": True, "mode": "offline", "data": None,
+                             "warning": "Blockchain unavailable - cached data may be stale"})
     try:
         records = blockchain.get_history_paginated(vehicle_id, page * limit, limit)
         total = blockchain.get_record_count(vehicle_id)
@@ -867,7 +1053,9 @@ def history(vehicle_id: str, page: int = Query(0, ge=0), limit: int = Query(50, 
 @app.get("/api/violations")
 def violations():
     if not blockchain_connected:
-        return err("Blockchain not connected", 503)
+        # Graceful degradation (audit L10)
+        return JSONResponse({"success": True, "mode": "offline", "data": None,
+                             "warning": "Blockchain unavailable - cached data may be stale"})
     try:
         all_violations: list = []
         for vid in blockchain.get_registered_vehicles():
@@ -881,7 +1069,9 @@ def violations():
 @app.get("/api/vehicle-stats/{vehicle_id}")
 def vehicle_stats_ep(vehicle_id: str):
     if not blockchain_connected:
-        return err("Blockchain not connected", 503)
+        # Graceful degradation (audit L10)
+        return JSONResponse({"success": True, "mode": "offline", "data": None,
+                             "warning": "Blockchain unavailable - cached data may be stale"})
     try:
         stats = blockchain.get_vehicle_stats(vehicle_id)
         stats["certificate_eligible"] = blockchain.is_certificate_eligible(vehicle_id)
@@ -944,7 +1134,9 @@ def revoke_certificate(body: RevokeCertificateRequest, _auth=Depends(require_aut
 @app.get("/api/verify/{vehicle_id}")
 def verify(vehicle_id: str):
     if not (blockchain_connected and blockchain):
-        return err("Blockchain not connected", 503)
+        # Graceful degradation (audit L10)
+        return JSONResponse({"success": True, "mode": "offline", "data": None,
+                             "warning": "Blockchain unavailable - cached data may be stale"})
     try:
         verification = blockchain.get_verification_data(vehicle_id)
         stats = blockchain.get_vehicle_stats(vehicle_id)
@@ -965,7 +1157,9 @@ def verify(vehicle_id: str):
 @app.get("/api/green-tokens/{address}")
 def green_tokens(address: str):
     if not (blockchain_connected and blockchain):
-        return err("Blockchain not connected", 503)
+        # Graceful degradation (audit L10)
+        return JSONResponse({"success": True, "mode": "offline", "data": None,
+                             "warning": "Blockchain unavailable - cached data may be stale"})
     try:
         return ok(tokens=blockchain.get_green_token_balance(address))
     except Exception as exc:
@@ -1272,7 +1466,7 @@ def fleet_alerts(_auth=Depends(require_auth)):
 # ─────────────── RTO integration ─────────────────────────────────────────
 
 @app.get("/api/rto/check/{vehicle_id}")
-def rto_check(vehicle_id: str, _auth=Depends(require_auth)):
+def rto_check(vehicle_id: str, _auth=Depends(require_rto_role)):
     try:
         result: dict = {
             "vehicle_id": vehicle_id,
@@ -1329,7 +1523,7 @@ def rto_check(vehicle_id: str, _auth=Depends(require_auth)):
 
 
 @app.get("/api/rto/flagged")
-def rto_flagged(_auth=Depends(require_auth)):
+def rto_flagged(_auth=Depends(require_rto_role)):
     if not blockchain_connected:
         return err("Blockchain not connected", 503)
     try:
@@ -1377,7 +1571,7 @@ _rto_actions_lock = threading.Lock()
 
 
 @app.post("/api/rto/enforce")
-def rto_enforce(body: RTOEnforceRequest, _auth=Depends(require_auth)):
+def rto_enforce(body: RTOEnforceRequest, _auth=Depends(require_rto_role)):
     """Log an RTO enforcement action against a vehicle.
 
     Three action types are supported by the authority/RTO dashboard:
@@ -1417,7 +1611,7 @@ def rto_enforce(body: RTOEnforceRequest, _auth=Depends(require_auth)):
 def rto_actions_list(
     vehicle_id: str = Query("", alias="vehicle_id"),
     limit: int = Query(50, ge=1, le=500),
-    _auth=Depends(require_auth),
+    _auth=Depends(require_rto_role),
 ):
     """Return the RTO enforcement action log, newest first."""
     with _rto_actions_lock:
@@ -1533,6 +1727,33 @@ def obd_read():
 @app.get("/api/vehicle/verify/{registration}")
 def verify_vehicle(registration: str):
     try:
+        profile = get_profile(registration)
+
+        # If we have a registered profile, return realistic VAHAN-style data
+        if profile.registration_no != "UNKNOWN" and profile.manufacturer:
+            vahan_data = {
+                "eligible": True,
+                "reason": "Vehicle found in registry",
+                "vehicle_info": {
+                    "registration_no": profile.registration_no,
+                    "manufacturer": profile.manufacturer,
+                    "model": profile.model,
+                    "variant": profile.variant,
+                    "fuel_type": profile.fuel_type,
+                    "bs_norm": profile.bs_standard,
+                    "vehicle_class": profile.vehicle_class,
+                    "engine_cc": profile.engine_displacement_cc,
+                    "owner_name": profile.owner_name,
+                    "registration_date": profile.registration_date,
+                    "insurance_valid_until": profile.insurance_valid_until,
+                    "fitness_valid_until": profile.fitness_valid_until,
+                    "manufacture_year": profile.manufacture_year,
+                    "mileage_km": profile.mileage_km,
+                },
+            }
+            return ok(result=vahan_data)
+
+        # Fall back to VAHAN bridge for unknown vehicles
         if vaahan_available and vaahan:
             return ok(result=vaahan.validate_for_emission_test(registration))
         return err("VAHAN bridge not available", 503)
@@ -1710,7 +1931,7 @@ def get_vehicle_tier(vehicle_id: str):
             try:
                 report = _micro_engine.generate_weekly_report(vehicle_id)
                 tier_info["tier_name"] = report.get("tier", "Unclassified")
-                _name_to_int = {"Unclassified": 0, "Gold": 1, "Silver": 2, "Bronze": 3}
+                _name_to_int = {"Unclassified": 0, "Bronze": 1, "Silver": 2, "Gold": 3}
                 tier_info["tier"] = _name_to_int.get(tier_info["tier_name"], 0)
             except Exception:
                 pass
@@ -1848,6 +2069,396 @@ def status_ep():
         )
     except Exception as exc:
         return err(str(exc))
+
+
+# ─────────────── Vehicle profiles ──────────────────────────────────────
+
+@app.get("/api/vehicles/profiles")
+async def get_vehicle_profiles():
+    """Return all registered vehicle profiles."""
+    profiles = get_all_profiles()
+    return {"success": True, "vehicles": [p.to_dict() for p in profiles.values()]}
+
+
+@app.get("/api/vehicles/profile/{vehicle_id}")
+async def get_vehicle_profile(vehicle_id: str):
+    """Return a single vehicle profile by registration number."""
+    profile = get_profile(vehicle_id)
+    return {"success": True, "profile": profile.to_dict()}
+
+
+@app.get("/api/vehicles/fleet-demo")
+async def fleet_demo():
+    """Return demo fleet summary for the frontend vehicle selector."""
+    profiles = get_all_profiles()
+    fleet_summary = []
+    for vid, p in profiles.items():
+        fleet_summary.append({
+            "vehicle_id": vid,
+            "display_name": p.display_name,
+            "vehicle_class": p.vehicle_class,
+            "fuel_type": p.fuel_type,
+            "bs_standard": p.bs_standard,
+            "manufacturer": p.manufacturer,
+            "model": p.model,
+            "engine_cc": p.engine_displacement_cc,
+        })
+    return {
+        "success": True,
+        "count": len(fleet_summary),
+        "demo_fleet_ids": DEMO_FLEET,
+        "vehicles": fleet_summary,
+    }
+
+
+# ─────────────── DPDP Privacy Compliance ──────────────────────────────
+
+@app.post("/api/privacy/consent")
+async def log_privacy_consent(body: dict):
+    """Log consent for data collection (DPDP Act Section 6).
+
+    Body: {"vehicle_id": str, "consent_type": str, "granted": bool}
+    """
+    vehicle_id = body.get("vehicle_id", "")
+    consent_type = body.get("consent_type", "")
+    granted = body.get("granted", False)
+
+    if not vehicle_id or not consent_type:
+        return err("vehicle_id and consent_type are required", 400)
+
+    consent_key = f"{vehicle_id}:{consent_type}"
+    with _consent_lock:
+        _consent_store[consent_key] = {
+            "vehicle_id": vehicle_id,
+            "consent_type": consent_type,
+            "granted": bool(granted),
+            "timestamp": int(time.time()),
+            "ip_hash": "redacted",  # DPDP: do not store raw IP
+        }
+
+    return ok(
+        vehicle_id=vehicle_id,
+        consent_type=consent_type,
+        granted=granted,
+        message="Consent recorded per DPDP Act Section 6",
+    )
+
+
+@app.get("/api/privacy/consent/{vehicle_id}")
+async def get_privacy_consent(vehicle_id: str):
+    """Check consent status for a vehicle (Data Principal right of access)."""
+    with _consent_lock:
+        consents = {
+            k: v for k, v in _consent_store.items()
+            if v.get("vehicle_id") == vehicle_id
+        }
+    consent_list = list(consents.values())
+    return ok(
+        vehicle_id=vehicle_id,
+        consents=consent_list,
+        count=len(consent_list),
+    )
+
+
+@app.post("/api/privacy/erasure-request")
+async def privacy_erasure_request(body: dict):
+    """Request data erasure per DPDP Act Section 12 (Right to Erasure).
+
+    Body: {"vehicle_id": str, "reason": str}
+    Note: Blockchain records are immutable but can be pseudonymised.
+    Off-chain telemetry can be purged from the SQLite store.
+    """
+    vehicle_id = body.get("vehicle_id", "")
+    reason = body.get("reason", "Data principal request")
+
+    if not vehicle_id:
+        return err("vehicle_id is required", 400)
+
+    request_entry = {
+        "vehicle_id": vehicle_id,
+        "reason": reason,
+        "status": "pending_review",
+        "requested_at": int(time.time()),
+        "note": (
+            "On-chain records are pseudonymised (immutable ledger). "
+            "Off-chain telemetry will be purged within 30 days per "
+            "DPDP Act Section 12(3) timeline."
+        ),
+    }
+    _erasure_requests.append(request_entry)
+
+    _add_notification(
+        "privacy_erasure_request",
+        f"Data erasure requested for {vehicle_id}: {reason}",
+        vehicle_id=vehicle_id,
+        severity="high",
+    )
+
+    return ok(
+        erasure_request=request_entry,
+        message="Erasure request logged per DPDP Act Section 12",
+    )
+
+
+@app.get("/api/privacy/retention-policy")
+async def get_retention_policy():
+    """Return the data retention policy document (DPDP Act Section 8)."""
+    return ok(policy=DATA_RETENTION_POLICY)
+
+
+# ─────────────── Export routes (CSV / HTML report / LaTeX) ─────────────
+
+from report_generator import ReportGenerator  # noqa: E402
+
+
+@app.get("/api/export/vehicle-csv/{vehicle_id}")
+async def export_vehicle_csv(vehicle_id: str):
+    """Export vehicle emission history as CSV."""
+    from fastapi.responses import Response
+
+    profile = get_profile(vehicle_id)
+    records: list = []
+    try:
+        records = chain.get_history(vehicle_id)
+    except Exception:  # noqa: BLE001
+        pass
+    gen = ReportGenerator()
+    csv_data = gen.generate_vehicle_csv(vehicle_id, records)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={vehicle_id}_emissions.csv",
+        },
+    )
+
+
+@app.get("/api/export/vehicle-report/{vehicle_id}")
+async def export_vehicle_report(vehicle_id: str):
+    """Export printable HTML report for a vehicle."""
+    from fastapi.responses import HTMLResponse
+
+    profile = get_profile(vehicle_id)
+    records: list = []
+    stats: dict = {}
+    try:
+        records = chain.get_history(vehicle_id)
+        stats = chain.get_vehicle_stats(vehicle_id)
+    except Exception:  # noqa: BLE001
+        pass
+    gen = ReportGenerator()
+    profile_dict = profile.to_dict() if hasattr(profile, "to_dict") else (
+        profile.__dict__ if hasattr(profile, "__dict__") else {}
+    )
+    html = gen.generate_vehicle_report_html(vehicle_id, profile_dict, records, stats)
+    return HTMLResponse(content=html)
+
+
+@app.get("/api/export/fleet-csv")
+async def export_fleet_csv():
+    """Export fleet analytics as CSV."""
+    from fastapi.responses import Response
+
+    fleet_data: list = []
+    try:
+        vehicles = chain.get_registered_vehicles()
+        for vid in vehicles:
+            st = chain.get_vehicle_stats(vid)
+            fleet_data.append({"vehicle_id": vid, **st})
+    except Exception:  # noqa: BLE001
+        pass
+    gen = ReportGenerator()
+    csv_data = gen.generate_fleet_csv(fleet_data)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=fleet_analytics.csv"},
+    )
+
+
+@app.get("/api/export/latex-table/{vehicle_id}")
+async def export_latex_table(vehicle_id: str):
+    """Export emission history as LaTeX table."""
+    records: list = []
+    try:
+        records = chain.get_history(vehicle_id)
+    except Exception:  # noqa: BLE001
+        pass
+    gen = ReportGenerator()
+    latex = gen.generate_latex_table(
+        records[:20],
+        caption=f"Emission history for {vehicle_id}",
+        label=f"tab:{vehicle_id.lower()}_emissions",
+    )
+    return {"success": True, "latex": latex}
+
+
+# ──────────────── Demo cached simulation data ────────────────────────────
+
+@app.get("/api/demo/cached-data")
+async def get_demo_cached_data():
+    """Return pre-recorded simulation data for demo."""
+    import json
+    cache_path = os.path.join(_REPO_ROOT, "data", "demo_simulation_cache.json")
+    if os.path.isfile(cache_path):
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"error": "No cached data available"}
+
+
+@app.get("/api/demo/cached-data/{vehicle_id}")
+async def get_demo_vehicle_cached_data(vehicle_id: str):
+    """Return pre-recorded data for a specific vehicle."""
+    import json
+    cache_path = os.path.join(_REPO_ROOT, "data", "demo_simulation_cache.json")
+    if os.path.isfile(cache_path):
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        vid = vehicle_id.upper()
+        if vid in data.get("vehicles", {}):
+            return {"success": True, "vehicle_id": vid, **data["vehicles"][vid]}
+    return {"success": False, "error": "Vehicle not found in cache"}
+
+
+# ──────────────── Cost Calculator ────────────────────────────────────────
+
+@app.get("/api/cost-estimate/{vehicle_id}")
+async def get_cost_estimate(
+    vehicle_id: str,
+    penalty_rate: float = Query(default=500.0, description="INR per CES unit per reading"),
+    readings_per_year: int = Query(default=1000, description="Expected readings per year"),
+):
+    """Estimate annual pollution cost for a vehicle."""
+    profile = get_profile(vehicle_id)
+    stats: dict = {}
+    try:
+        if blockchain is not None:
+            stats = blockchain.get_vehicle_stats(vehicle_id)
+    except Exception:
+        pass
+    avg_ces = stats.get("avg_ces", 0.75)
+    # Cost = avg_ces * penalty_rate * readings_per_year / 10000 (CES is scaled)
+    if isinstance(avg_ces, (int, float)) and avg_ces > 100:
+        avg_ces = avg_ces / 10000.0  # descale from blockchain
+    annual_cost = avg_ces * penalty_rate * readings_per_year
+    return {
+        "success": True,
+        "vehicle_id": vehicle_id,
+        "avg_ces": round(avg_ces, 4),
+        "penalty_rate": penalty_rate,
+        "readings_per_year": readings_per_year,
+        "estimated_annual_cost": round(annual_cost, 2),
+        "currency": "INR",
+        "profile": profile.to_dict() if profile else None,
+    }
+
+
+# ──────────────── Fleet Leaderboard ──────────────────────────────────────
+
+@app.get("/api/leaderboard")
+async def get_fleet_leaderboard():
+    """Return fleet leaderboard sorted by CES (best first)."""
+    profiles = get_all_profiles()
+    leaderboard = []
+    for vid, profile in profiles.items():
+        stats: dict = {}
+        try:
+            if blockchain is not None:
+                stats = blockchain.get_vehicle_stats(vid)
+        except Exception:
+            pass
+        avg_ces = stats.get("avg_ces", 0)
+        if isinstance(avg_ces, (int, float)) and avg_ces > 100:
+            avg_ces = avg_ces / 10000.0
+        total = stats.get("total_records", 0)
+        violations = stats.get("violations", 0)
+        compliance_rate = ((total - violations) / total * 100) if total > 0 else 0
+        leaderboard.append({
+            "vehicle_id": vid,
+            "display_name": profile.display_name,
+            "vehicle_class": profile.vehicle_class,
+            "fuel_type": profile.fuel_type,
+            "avg_ces": round(avg_ces, 4),
+            "total_records": total,
+            "violations": violations,
+            "compliance_rate": round(compliance_rate, 1),
+        })
+    leaderboard.sort(key=lambda x: x["avg_ces"] if x["avg_ces"] > 0 else 999)
+    for i, entry in enumerate(leaderboard):
+        entry["rank"] = i + 1
+    return {"success": True, "leaderboard": leaderboard}
+
+
+# ──────────────── Health Dashboard ───────────────────────────────────────
+
+@app.get("/api/health-dashboard")
+async def get_health_dashboard():
+    """Return system health overview for monitoring dashboard."""
+    profiles = get_all_profiles()
+    total_vehicles = len(profiles)
+
+    # Aggregate fleet stats
+    total_records = 0
+    total_violations = 0
+    ces_values = []
+    for vid in profiles:
+        try:
+            if blockchain is not None:
+                stats = blockchain.get_vehicle_stats(vid)
+                total_records += stats.get("total_records", 0)
+                total_violations += stats.get("violations", 0)
+                avg = stats.get("avg_ces", 0)
+                if isinstance(avg, (int, float)) and avg > 100:
+                    avg = avg / 10000.0
+                if avg > 0:
+                    ces_values.append(avg)
+        except Exception:
+            pass
+
+    fleet_avg_ces = round(sum(ces_values) / len(ces_values), 4) if ces_values else 0
+    compliance_rate = (
+        round((total_records - total_violations) / total_records * 100, 1)
+        if total_records > 0
+        else 0
+    )
+
+    return {
+        "success": True,
+        "system": {
+            "blockchain_connected": blockchain_connected,
+            "fraud_detector": fraud_available and fraud_detector is not None,
+            "predictor": predictor_available,
+            "persistence": store.enabled if store else False,
+            "websocket_clients": len(ws_manager.active_connections),
+            "privacy_mode": PRIVACY_MODE_ENABLED,
+        },
+        "fleet": {
+            "total_vehicles": total_vehicles,
+            "total_records": total_records,
+            "total_violations": total_violations,
+            "fleet_avg_ces": fleet_avg_ces,
+            "compliance_rate": compliance_rate,
+        },
+    }
+
+
+# ─────────────── WebSocket: real-time emission updates ─────────────────
+
+@app.websocket("/ws/emissions")
+async def websocket_emissions(websocket: WebSocket):
+    """WebSocket endpoint for real-time emission data streaming.
+
+    Clients connect and optionally send a vehicle_id to subscribe to
+    updates for a specific vehicle. All emission records are broadcast
+    to all connected clients.
+    """
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Client can send vehicle_id to subscribe (future: per-vehicle filtering)
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
 
 
 # ────────────────────────── Startup banner ───────────────────────────────

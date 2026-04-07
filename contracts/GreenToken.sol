@@ -85,6 +85,7 @@ contract GreenToken is
 
     // ───────────────────────── Events ─────────────────────────────────
 
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
     event MinterUpdated(address indexed minter, bool authorized);
     event RewardMinted(address indexed recipient, uint256 amount, uint256 totalEarned);
     event Redeemed(address indexed user, uint8 rewardType, uint256 amount, uint256 redemptionId);
@@ -139,7 +140,9 @@ contract GreenToken is
     function transferAdmin(address _newAdmin) external {
         require(msg.sender == admin, "Only admin");
         require(_newAdmin != address(0), "Invalid address");
+        address oldAdmin = admin;
         admin = _newAdmin;
+        emit AdminTransferred(oldAdmin, _newAdmin);
     }
 
     /// @notice Pause mint and redeem (emergency circuit breaker).

@@ -777,9 +777,9 @@ class BlockchainConnector:
 
         Returns:
             dict: {tier: int, tier_name: str} where tier is the enum
-                  value (0=Unclassified, 1=Gold, 2=Silver, 3=Bronze).
+                  value (0=Unclassified, 1=Bronze, 2=Silver, 3=Gold).
         """
-        _TIER_NAMES = {0: "Unclassified", 1: "Gold", 2: "Silver", 3: "Bronze"}
+        _TIER_NAMES = {0: "Unclassified", 1: "Bronze", 2: "Silver", 3: "Gold"}
         try:
             tier_int = self.registry.functions.getVehicleTier(vehicle_id).call()
             return {

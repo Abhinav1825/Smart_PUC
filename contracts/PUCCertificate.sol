@@ -181,6 +181,7 @@ contract PUCCertificate is
         string  baseURI
     );
 
+    event AuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
     event TierValidityUpdated(uint8 tier, uint256 validitySeconds);
     event TieredCertificateIssued(string vehicleId, uint8 tier, uint256 validityDays, uint256 tokenId);
 
@@ -266,7 +267,9 @@ contract PUCCertificate is
     /// @notice Transfer authority role
     function transferAuthority(address _newAuthority) external onlyAuthority {
         require(_newAuthority != address(0), "Invalid authority address");
+        address oldAuthority = authority;
         authority = _newAuthority;
+        emit AuthorityTransferred(oldAuthority, _newAuthority);
     }
 
     /// @notice Pause certificate issuance (emergency circuit breaker).
@@ -514,6 +517,25 @@ contract PUCCertificate is
         cert.revokeReason = _reason;
 
         emit CertificateRevoked(_tokenId, cert.vehicleId, _reason, msg.sender);
+    }
+
+    // ───────────────────────── Soul-Bound (Non-Transferable) ───────────
+
+    /**
+     * @dev Override to prevent certificate transfers (soul-bound token).
+     * PUC certificates are non-transferable per regulatory intent —
+     * they are bound to the vehicle owner's wallet address.
+     */
+    function _beforeTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize)
+        internal
+        override
+    {
+        // Allow minting (from == address(0)) and burning (to == address(0))
+        // Block transfers between non-zero addresses
+        if (from != address(0) && to != address(0)) {
+            revert("PUC certificates are non-transferable (soul-bound)");
+        }
+        super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
     }
 
     // ───────────────────────── Token URI Functions ─────────────────────

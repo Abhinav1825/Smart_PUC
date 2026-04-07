@@ -36,7 +36,10 @@ os.environ.setdefault("RATE_LIMIT_MAX", "10000")
 from backend import main as backend_main  # noqa: E402
 
 app = backend_main.app
-client = TestClient(app)
+# Use context manager so that FastAPI's lifespan (which initializes the
+# fraud detector and pre-PUC predictor) fires before any tests run.
+client = TestClient(app, raise_server_exceptions=True)
+client.__enter__()  # trigger lifespan startup (audit L11 compat)
 API_KEY = os.environ["API_KEY"]
 
 HEADERS = {"X-API-Key": API_KEY}

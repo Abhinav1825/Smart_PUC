@@ -57,6 +57,11 @@ jobs:
         run: slither contracts/ --exclude-dependencies --print human-summary || true
 
   # ── Python tests ────────────────────────────────────────────────────
+  # NOTE: tests/test_blockchain_roundtrip.py is automatically skipped
+  # when no Hardhat node is running. To run these tests locally:
+  #   npx hardhat node &
+  #   python -m pytest tests/test_blockchain_roundtrip.py -v
+  # CI blockchain testing is handled by the solidity-tests job above.
   python-tests:
     runs-on: ubuntu-latest
     steps:

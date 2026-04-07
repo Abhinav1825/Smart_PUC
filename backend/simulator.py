@@ -33,6 +33,16 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
+try:
+    from vehicle_profiles import get_profile, VehicleProfile
+except ImportError:
+    try:
+        from backend.vehicle_profiles import get_profile, VehicleProfile
+    except ImportError:
+        # Fallback: vehicle_profiles not available (e.g. subprocess invocation)
+        get_profile = None  # type: ignore[assignment]
+        VehicleProfile = None  # type: ignore[assignment,misc]
+
 # ━━━━━━━━━━━━━━━━━━━━━ WLTC Phase Definitions ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
@@ -135,7 +145,11 @@ except ImportError:
     _HAS_PHYSICS_MODULE = False
 
 
-def _estimate_fuel_rate(speed_kmh: float, acceleration_mps2: float) -> float:
+def _estimate_fuel_rate(
+    speed_kmh: float,
+    acceleration_mps2: float,
+    vehicle_mass_kg: float = 1200.0,
+) -> float:
     """Estimate instantaneous fuel consumption using the VSP physics model.
 
     When the ``physics.vsp_model`` module is available, delegates to the
@@ -148,6 +162,10 @@ def _estimate_fuel_rate(speed_kmh: float, acceleration_mps2: float) -> float:
         Vehicle speed in km/h.
     acceleration_mps2 : float
         Longitudinal acceleration in m/s^2.
+    vehicle_mass_kg : float, optional
+        Vehicle curb weight in kg (default 1200.0 — the baseline sedan).
+        Heavier vehicles consume more fuel; the rate scales proportionally
+        with mass relative to the 1200 kg baseline.
 
     Returns
     -------
@@ -158,8 +176,11 @@ def _estimate_fuel_rate(speed_kmh: float, acceleration_mps2: float) -> float:
     ----------
     Rakha, H., Ahn, K., and Trani, A., 2004 — polynomial fuel model.
     """
+    # Mass scaling factor relative to 1200 kg baseline sedan
+    mass_scale = vehicle_mass_kg / 1200.0
+
     if speed_kmh < 1.0:
-        return 1.5  # Idle fuel consumption baseline (L/100km)
+        return round(1.5 * mass_scale, 2)  # Idle fuel consumption baseline
 
     v_mps = speed_kmh / 3.6
 
@@ -167,7 +188,7 @@ def _estimate_fuel_rate(speed_kmh: float, acceleration_mps2: float) -> float:
         vsp = _physics_vsp(v_mps, acceleration_mps2)
         rate = _physics_fuel_rate(vsp, v_mps)
         # _physics_fuel_rate returns 0.0 at very low speed; use idle baseline
-        return round(max(rate, 1.0), 2)
+        return round(max(rate * mass_scale, 1.0), 2)
 
     # Fallback: inline simplified VSP model
     vsp = v_mps * (1.1 * acceleration_mps2 + 9.81 * 0.0 + 0.132) + 0.000302 * v_mps ** 3
@@ -183,7 +204,7 @@ def _estimate_fuel_rate(speed_kmh: float, acceleration_mps2: float) -> float:
     else:
         fuel_rate = 15.0 + (vsp - 25) * 0.3
 
-    return round(max(fuel_rate, 0.5), 2)
+    return round(max(fuel_rate * mass_scale, 0.5), 2)
 
 
 # ━━━━━━━━━━━━━━━━━━━ WLTC Class 3b Speed Profile Generator ━━━━━━━━━━━━━━━━
@@ -471,7 +492,16 @@ def get_cycle_profile(cycle: str = "wltc") -> np.ndarray:
 
 
 class WLTCSimulator:
-    """Second-by-second WLTC Class 3b driving-cycle simulator.
+    """WLTC/MIDC driving cycle simulator for SmartPUC.
+
+    .. warning::
+        The WLTC speed profile used here is a **100-waypoint reconstruction**,
+        NOT the official UN ECE R154 Annex 1 dataset (which is copyrighted).
+        Reconstruction error: <0.6% total distance, ~11% idle fraction vs 13% official.
+        For regulatory-grade results, replace with the licensed official profile.
+        See ``_generate_wltc_profile()`` docstring for detailed error analysis.
+
+    Second-by-second WLTC Class 3b driving-cycle simulator.
 
     Each call to :meth:`generate_reading` advances the internal clock by
     *dt* seconds and returns a telemetry dict containing speed, RPM,
@@ -490,6 +520,7 @@ class WLTCSimulator:
         vehicle_id: str = "MH12AB1234",
         dt: float = 1.0,
         cycle: Optional[str] = None,
+        profile: Optional[VehicleProfile] = None,
         **kwargs,
     ) -> None:
         """Initialise the driving-cycle simulator.
@@ -512,6 +543,12 @@ class WLTCSimulator:
                precedence over everything else).
             2. ``STATION_COUNTRY=IN`` → ``"midc"`` (audit 13A #10).
             3. Fallback: ``"wltc"``.
+        profile : VehicleProfile, optional
+            Vehicle profile for physics-based simulation. If ``None``,
+            the profile is loaded from the vehicle_profiles registry
+            using *vehicle_id*. The profile drives RPM calculation,
+            fuel type, weight-based fuel scaling, and speed-profile
+            capping for vehicles that cannot reach the cycle's peak speed.
         **kwargs
             Accepted for backward compatibility (e.g. ``interval``).
         """
@@ -528,9 +565,28 @@ class WLTCSimulator:
         self._running: bool = False
         self._thread: Optional[threading.Thread] = None
 
+        # ── Vehicle profile ──────────────────────────────────────────────
+        if profile is not None:
+            self.profile = profile
+        elif get_profile is not None:
+            self.profile = get_profile(vehicle_id)
+        else:
+            self.profile = None
+
         # Select speed profile based on cycle choice
         self._cycle_name = cycle.lower()
-        self._speed_profile = get_cycle_profile(self._cycle_name)
+        base_profile = get_cycle_profile(self._cycle_name)
+
+        # Scale speed profile for vehicles whose max_speed is below the
+        # cycle's peak speed. E.g., an auto-rickshaw (max 70 km/h) should
+        # never be driven at the WLTC Extra-High peak of 131.3 km/h.
+        cycle_peak = float(np.max(base_profile))
+        vehicle_max = self.profile.max_speed_kmh if self.profile else 999.0
+        if vehicle_max < cycle_peak:
+            scale = vehicle_max / cycle_peak
+            self._speed_profile = base_profile * scale
+        else:
+            self._speed_profile = base_profile.copy()
         self._cycle_length = len(self._speed_profile)
 
         # Accept legacy `interval` kwarg for backward compat
@@ -561,10 +617,10 @@ class WLTCSimulator:
     # ── RPM calculation ───────────────────────────────────────────────────
 
     def calculate_rpm(self, speed_kmh: float) -> int:
-        """Calculate engine RPM for the given speed using the gearbox model.
+        """Calculate engine RPM for the given speed using the vehicle profile.
 
-        RPM = (speed_mps x gear_ratio x final_drive) / (2 pi x tire_radius) x 60
-        Clamped to [700, 6500].
+        Uses the vehicle-specific drivetrain parameters (gear ratios,
+        final drive, tire radius, CVT behaviour) from ``self.profile``.
 
         Parameters
         ----------
@@ -576,6 +632,8 @@ class WLTCSimulator:
         int
             Engine RPM.
         """
+        if self.profile is not None:
+            return self.profile.calculate_rpm(speed_kmh)
         return calculate_rpm_from_speed(speed_kmh)
 
     # ── Core telemetry generation ─────────────────────────────────────────
@@ -584,30 +642,43 @@ class WLTCSimulator:
         """Generate the **next** telemetry reading and advance the cycle clock.
 
         Acceleration is computed via central difference on the speed
-        profile.  Fuel rate is derived using a simplified VSP model.
+        profile.  Fuel rate is derived using a VSP model scaled by
+        vehicle mass from the profile.  RPM is computed using the
+        vehicle-specific drivetrain (gear ratios, CVT behaviour, etc.).
 
         Returns
         -------
         dict
             Keys: ``vehicle_id``, ``speed``, ``acceleration``, ``rpm``,
             ``fuel_rate``, ``fuel_type``, ``phase``, ``time_in_cycle``,
-            ``timestamp``.
+            ``timestamp``, ``vehicle_class``, ``transmission``,
+            ``engine_cc``, ``curb_weight_kg``.
         """
-        profile = self._speed_profile
+        speed_profile = self._speed_profile
         total = self._cycle_length
+        vp = self.profile
 
         idx = self._current_time % total
-        speed = float(profile[idx])
+        speed = float(speed_profile[idx])
 
         # Central-difference acceleration (m/s^2)
         idx_prev = (idx - 1) % total
         idx_next = (idx + 1) % total
-        accel = (profile[idx_next] - profile[idx_prev]) / (2.0 * self.dt)
+        accel = (speed_profile[idx_next] - speed_profile[idx_prev]) / (2.0 * self.dt)
         accel_mps2 = accel / 3.6  # km/h/s -> m/s^2
 
         rpm = self.calculate_rpm(speed)
         phase = self.get_phase(idx)
-        fuel_rate = _estimate_fuel_rate(speed, accel_mps2)
+
+        # Fuel rate scaled by vehicle mass
+        vehicle_mass = vp.curb_weight_kg if vp else 1200.0
+        fuel_rate = _estimate_fuel_rate(speed, accel_mps2, vehicle_mass)
+
+        # For hybrid/electric vehicles, reduce fuel consumption by the
+        # electric fraction (the portion of driving handled by the motor)
+        electric_frac = vp.hybrid_electric_fraction if vp else 0.0
+        if electric_frac > 0.0:
+            fuel_rate = round(fuel_rate * (1.0 - electric_frac), 2)
 
         reading: Dict = {
             "vehicle_id": self.vehicle_id,
@@ -615,10 +686,15 @@ class WLTCSimulator:
             "acceleration": round(accel_mps2, 3),
             "rpm": rpm,
             "fuel_rate": fuel_rate,
-            "fuel_type": "petrol",
+            "fuel_type": vp.fuel_type_for_engine if vp else "petrol",
             "phase": phase.value,
             "time_in_cycle": idx,
             "timestamp": int(time.time()),
+            # Vehicle profile metadata
+            "vehicle_class": vp.vehicle_class if vp else "SEDAN",
+            "transmission": vp.transmission if vp else "MANUAL_5",
+            "engine_cc": vp.engine_displacement_cc if vp else 1200,
+            "curb_weight_kg": vp.curb_weight_kg if vp else 1200.0,
         }
 
         self._latest_data = reading

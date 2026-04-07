@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <title>Smart PUC — Digital Twin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .twin-container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+
+        /* Vehicle Visualization */
+        .viz-area {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            margin-bottom: var(--space-lg);
+            position: relative;
+            overflow: hidden;
+            min-height: 320px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .viz-area::before {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 60px;
+            background: linear-gradient(to top, rgba(99,102,241,0.05), transparent);
+        }
+        .viz-svg-wrap {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+        }
+        .viz-svg-wrap svg { width: 100%; height: auto; }
+
+        /* Emission clouds */
+        .emission-cloud {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: floatUp 2.5s ease-out forwards;
+        }
+        @keyframes floatUp {
+            0%   { opacity: 0.7; transform: translate(0, 0) scale(1); }
+            100% { opacity: 0; transform: translate(-30px, -120px) scale(2.5); }
+        }
+
+        /* Ground line */
+        .ground-line {
+            position: absolute;
+            bottom: 40px; left: 5%; right: 5%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--clr-surface-3), var(--clr-primary), var(--clr-surface-3), transparent);
+        }
+
+        /* Live Metrics Panel */
+        .metrics-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
+        }
+        .gauge-card {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+        .gauge-card:hover {
+            border-color: rgba(99,102,241,0.2);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .gauge-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--clr-primary), var(--clr-accent));
+            opacity: 0;
+            transition: var(--transition);
+        }
+        .gauge-card:hover::before { opacity: 1; }
+
+        .gauge-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--clr-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: var(--space-sm);
+        }
+        .gauge-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            line-height: 1.1;
+        }
+        .gauge-unit {
+            font-size: 0.75rem;
+            color: var(--clr-text-dim);
+            margin-top: var(--space-xs);
+        }
+        .gauge-bar {
+            margin-top: var(--space-md);
+            height: 4px;
+            background: var(--clr-surface-3);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+        }
+        .gauge-bar-fill {
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width 0.6s ease;
+        }
+
+        /* Health Summary */
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
+        }
+        .health-card {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            transition: var(--transition);
+        }
+        .health-card:hover {
+            border-color: rgba(99,102,241,0.2);
+        }
+        .health-card h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--clr-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: var(--space-md);
+        }
+        .health-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+        }
+        .health-sub {
+            font-size: 0.8rem;
+            color: var(--clr-text-dim);
+            margin-top: var(--space-xs);
+        }
+
+        /* Maintenance comparison */
+        .maint-comparison {
+            display: none;
+            margin-top: var(--space-lg);
+        }
+        .maint-comparison.visible { display: block; }
+        .maint-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: var(--space-md);
+            align-items: stretch;
+        }
+        .maint-col {
+            background: var(--clr-surface);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+        }
+        .maint-col h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: var(--space-md);
+        }
+        .maint-col.before h3 { color: var(--clr-warn); }
+        .maint-col.after h3 { color: var(--clr-pass); }
+        .maint-arrow-col {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--clr-accent);
+        }
+        .maint-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-sm) 0;
+            border-bottom: 1px solid var(--clr-border);
+        }
+        .maint-row:last-child { border-bottom: none; }
+        .maint-label {
+            font-size: 0.8rem;
+            color: var(--clr-text-muted);
+        }
+        .maint-val {
+            font-family: var(--font-mono);
+            font-weight: 600;
+        }
+        .delta-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: var(--font-mono);
+            margin-left: var(--space-sm);
+        }
+        .delta-good { background: var(--clr-pass-bg); color: var(--clr-pass); }
+        .delta-bad { background: var(--clr-fail-bg); color: var(--clr-fail); }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: var(--space-lg);
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--space-2xl);
+            color: var(--clr-text-muted);
+        }
+        .empty-state .icon { font-size: 3rem; margin-bottom: var(--space-md); }
+
+        @media (max-width: 768px) {
+            .maint-grid {
+                grid-template-columns: 1fr;
+            }
+            .maint-arrow-col {
+                transform: rotate(90deg);
+                padding: var(--space-sm) 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="navbar-top-row">
+                <a href="index.html" class="navbar-brand">
+                    <div class="logo">&#9889;</div>
+                    <div><h1>Smart PUC</h1><span>Digital Twin Dashboard</span></div>
+                </a>
+                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+            </div>
+            <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link">Vehicle</a>
+                <a href="authority.html" class="nav-link">Authority</a>
+                <a href="verify.html" class="nav-link">Verify</a>
+                <a href="analytics.html" class="nav-link">Analytics</a>
+                <a href="fleet.html" class="nav-link">Fleet</a>
+                <a href="rto.html" class="nav-link">RTO</a>
+                <a href="marketplace.html" class="nav-link">Marketplace</a>
+                <a href="cpcb.html" class="nav-link">CPCB</a>
+                <a href="compare.html" class="nav-link">Compare</a>
+                <a href="twin.html" class="nav-link active">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
+                <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            </div>
+        </nav>
+
+        <!-- Vehicle Selector -->
+        <div class="card mb-lg" style="margin-bottom: var(--space-lg);">
+            <div style="display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap;">
+                <div class="form-group" style="flex: 1; min-width: 250px;">
+                    <label class="form-label" for="vehicleSelector">Select Vehicle</label>
+                    <select class="form-select" id="vehicleSelector" onchange="onVehicleSelected(this.value)">
+                        <option value="">-- Select a vehicle --</option>
+                    </select>
+                </div>
+                <button class="btn btn-accent" id="maintBtn" onclick="toggleMaintenance()" disabled>Simulate Maintenance</button>
+            </div>
+        </div>
+
+        <!-- Empty state -->
+        <div id="emptyState" class="empty-state">
+            <div class="icon">&#128663;</div>
+            <h2>Select a Vehicle</h2>
+            <p>Choose a vehicle from the dropdown above to view its digital twin visualization.</p>
+        </div>
+
+        <!-- Twin Content (hidden until vehicle selected) -->
+        <div id="twinContent" style="display: none;">
+
+            <!-- Vehicle Visualization -->
+            <div class="section-title">&#128752; Vehicle Visualization</div>
+            <div class="viz-area" id="vizArea">
+                <div class="ground-line"></div>
+                <div class="viz-svg-wrap" id="vizSvgWrap"></div>
+                <div id="cloudContainer"></div>
+            </div>
+
+            <!-- Live Metrics -->
+            <div class="section-title">&#128200; Live Emission Metrics</div>
+            <div class="metrics-panel" id="metricsPanel">
+                <div class="gauge-card" id="gaugeCO2">
+                    <div class="gauge-label">CO2</div>
+                    <div class="gauge-value" id="valCO2">--</div>
+                    <div class="gauge-unit">g/km</div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barCO2" style="width:0%;background:var(--clr-accent);"></div></div>
+                </div>
+                <div class="gauge-card" id="gaugeCO">
+                    <div class="gauge-label">CO</div>
+                    <div class="gauge-value" id="valCO">--</div>
+                    <div class="gauge-unit">g/km</div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barCO" style="width:0%;background:#f59e0b;"></div></div>
+                </div>
+                <div class="gauge-card" id="gaugeNOx">
+                    <div class="gauge-label">NOx</div>
+                    <div class="gauge-value" id="valNOx">--</div>
+                    <div class="gauge-unit">g/km</div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barNOx" style="width:0%;background:#ef4444;"></div></div>
+                </div>
+                <div class="gauge-card" id="gaugeHC">
+                    <div class="gauge-label">HC</div>
+                    <div class="gauge-value" id="valHC">--</div>
+                    <div class="gauge-unit">g/km</div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barHC" style="width:0%;background:#a855f7;"></div></div>
+                </div>
+                <div class="gauge-card" id="gaugePM">
+                    <div class="gauge-label">PM2.5</div>
+                    <div class="gauge-value" id="valPM">--</div>
+                    <div class="gauge-unit">mg/km</div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barPM" style="width:0%;background:#ec4899;"></div></div>
+                </div>
+            </div>
+
+            <!-- Vehicle Health Summary -->
+            <div class="section-title">&#128737; Vehicle Health Summary</div>
+            <div class="health-grid">
+                <div class="health-card">
+                    <h3>Degradation Risk</h3>
+                    <div class="health-value" id="healthDeg">--</div>
+                    <div class="health-sub" id="healthDegSub">Degradation factor</div>
+                </div>
+                <div class="health-card">
+                    <h3>Compliance Tier</h3>
+                    <div class="health-value" id="healthTier">--</div>
+                    <div class="health-sub" id="healthTierSub">Based on CES score</div>
+                </div>
+                <div class="health-card">
+                    <h3>Next PUC Due</h3>
+                    <div class="health-value" id="healthPUC">--</div>
+                    <div class="health-sub" id="healthPUCSub">Estimated from records</div>
+                </div>
+                <div class="health-card">
+                    <h3>CES Score</h3>
+                    <div class="health-value" id="healthCES">--</div>
+                    <div class="health-sub" id="healthCESSub">Composite Emission Score</div>
+                </div>
+            </div>
+
+            <!-- Maintenance Comparison -->
+            <div class="maint-comparison" id="maintComparison">
+                <div class="section-title">&#128295; Before / After Maintenance Comparison</div>
+                <div class="maint-grid">
+                    <div class="maint-col before">
+                        <h3>Current State</h3>
+                        <div id="maintBefore"></div>
+                    </div>
+                    <div class="maint-arrow-col">&#10132;</div>
+                    <div class="maint-col after">
+                        <h3>Post-Maintenance</h3>
+                        <div id="maintAfter"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+    <script src="wallet.js"></script>
+    <script>
+        const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+        let currentVehicle = null;
+        let currentData = null;
+        let cloudInterval = null;
+
+        /* ---- Wallet ---- */
+        async function connectWallet() {
+            if (typeof window.ethereum === 'undefined') { alert('MetaMask not detected.'); return; }
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (accounts.length > 0) {
+                    document.getElementById('walletAddress').textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
+                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('connectWalletBtn').textContent = 'Connected';
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        /* ---- Load vehicle list ---- */
+        async function loadVehicles() {
+            try {
+                const res = await fetch(`${API_BASE}/api/vehicles/profiles`);
+                const data = await res.json();
+                if (data.success && data.vehicles) {
+                    const sel = document.getElementById('vehicleSelector');
+                    data.vehicles.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v.registration_no;
+                        opt.textContent = `${v.registration_no} — ${v.manufacturer || ''} ${v.model || ''} (${(v.vehicle_class||'').replace(/_/g,' ')})`;
+                        sel.appendChild(opt);
+                    });
+                }
+            } catch(e) { console.warn('Failed to load vehicles:', e); }
+        }
+
+        /* ---- Vehicle SVG generators ---- */
+        function svgSedan() {
+            return `<svg viewBox="0 0 400 160" xmlns="http://www.w3.org/2000/svg">
+                <rect x="40" y="70" width="300" height="55" rx="20" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
+                <path d="M120 70 Q130 30 180 25 L260 25 Q310 30 300 70" fill="#232d42" stroke="#6366f1" stroke-width="2"/>
+                <rect x="145" y="32" width="50" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="210" y="32" width="55" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <circle cx="110" cy="130" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="110" cy="130" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle cx="290" cy="130" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="290" cy="130" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <rect x="55" y="80" width="18" height="8" rx="3" fill="#22d3ee" opacity="0.8"/>
+                <rect x="310" y="80" width="18" height="8" rx="3" fill="#ef4444" opacity="0.8"/>
+                <circle id="exhaustPoint" cx="42" cy="100" r="0" fill="none"/>
+            </svg>`;
+        }
+        function svgTruck() {
+            return `<svg viewBox="0 0 450 170" xmlns="http://www.w3.org/2000/svg">
+                <rect x="20" y="50" width="280" height="75" rx="8" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
+                <rect x="300" y="40" width="120" height="85" rx="12" fill="#232d42" stroke="#6366f1" stroke-width="2"/>
+                <rect x="315" y="50" width="45" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="370" y="50" width="35" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <circle cx="80" cy="140" r="24" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="80" cy="140" r="13" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle cx="200" cy="140" r="24" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="200" cy="140" r="13" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle cx="360" cy="140" r="24" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="360" cy="140" r="13" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <rect x="25" y="55" width="6" height="50" rx="3" fill="#22d3ee" opacity="0.6"/>
+                <circle id="exhaustPoint" cx="22" cy="90" r="0" fill="none"/>
+            </svg>`;
+        }
+        function svgTwoWheeler() {
+            return `<svg viewBox="0 0 300 160" xmlns="http://www.w3.org/2000/svg">
+                <path d="M100 90 L160 50 L200 50 L220 70 L200 100 L140 110 Z" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
+                <line x1="160" y1="50" x2="170" y2="30" stroke="#6366f1" stroke-width="3" stroke-linecap="round"/>
+                <line x1="170" y1="30" x2="185" y2="25" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="85" cy="120" r="28" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="85" cy="120" r="16" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle cx="230" cy="120" r="28" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="230" cy="120" r="16" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <rect x="78" y="85" width="10" height="5" rx="2" fill="#22d3ee" opacity="0.8"/>
+                <circle id="exhaustPoint" cx="82" cy="108" r="0" fill="none"/>
+            </svg>`;
+        }
+        function svgBus() {
+            return `<svg viewBox="0 0 420 180" xmlns="http://www.w3.org/2000/svg">
+                <rect x="30" y="25" width="350" height="110" rx="12" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
+                <rect x="50" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="110" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="170" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="230" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="300" y="40" width="60" height="55" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="120" y="95" width="40" height="35" rx="3" fill="#232d42" stroke="#6366f1" stroke-width="1.5"/>
+                <circle cx="90" cy="150" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="90" cy="150" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle cx="330" cy="150" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="330" cy="150" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle id="exhaustPoint" cx="32" cy="100" r="0" fill="none"/>
+            </svg>`;
+        }
+        function svgAutoRickshaw() {
+            return `<svg viewBox="0 0 300 160" xmlns="http://www.w3.org/2000/svg">
+                <path d="M80 55 L200 45 L220 55 L230 100 L70 100 Z" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
+                <path d="M90 55 L130 35 L190 35 L200 45 L90 55" fill="#232d42" stroke="#6366f1" stroke-width="1.5"/>
+                <rect x="100" y="45" width="35" height="25" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <rect x="150" y="45" width="35" height="25" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
+                <circle cx="95" cy="120" r="20" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="95" cy="120" r="11" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle cx="210" cy="120" r="20" fill="#111827" stroke="#6366f1" stroke-width="2"/>
+                <circle cx="210" cy="120" r="11" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <circle id="exhaustPoint" cx="72" cy="100" r="0" fill="none"/>
+            </svg>`;
+        }
+
+        function getVehicleSVG(vehicleClass) {
+            const cls = (vehicleClass || '').toUpperCase();
+            if (cls.includes('TRUCK')) return svgTruck();
+            if (cls.includes('TWO') || cls.includes('BIKE') || cls.includes('MOTORCYCLE')) return svgTwoWheeler();
+            if (cls.includes('BUS')) return svgBus();
+            if (cls.includes('AUTO') || cls.includes('RICKSHAW')) return svgAutoRickshaw();
+            return svgSedan(); // default for sedan, hatchback, suv
+        }
+
+        /* ---- Emission clouds ---- */
+        function getCloudColor(ces) {
+            if (ces < 0.5) return 'rgba(16,185,129,';
+            if (ces < 0.75) return 'rgba(245,158,11,';
+            if (ces < 1.0) return 'rgba(249,115,22,';
+            return 'rgba(239,68,68,';
+        }
+
+        function spawnCloud(ces) {
+            const container = document.getElementById('cloudContainer');
+            const vizArea = document.getElementById('vizArea');
+            if (!container || !vizArea) return;
+
+            const cloud = document.createElement('div');
+            cloud.className = 'emission-cloud';
+            const size = 15 + Math.min(ces, 2) * 20 + Math.random() * 10;
+            const opacity = 0.3 + Math.min(ces, 2) * 0.25;
+            const colorBase = getCloudColor(ces);
+
+            cloud.style.width = size + 'px';
+            cloud.style.height = size + 'px';
+            cloud.style.background = `radial-gradient(circle, ${colorBase}${opacity}) 0%, ${colorBase}0) 70%)`;
+            cloud.style.left = (50 + Math.random() * 60) + 'px';
+            cloud.style.bottom = (80 + Math.random() * 30) + 'px';
+            cloud.style.animationDuration = (2 + Math.random() * 1.5) + 's';
+
+            container.appendChild(cloud);
+            setTimeout(() => cloud.remove(), 4000);
+        }
+
+        function startClouds(ces) {
+            if (cloudInterval) clearInterval(cloudInterval);
+            const interval = Math.max(200, 800 - ces * 400);
+            cloudInterval = setInterval(() => spawnCloud(ces), interval);
+        }
+        function stopClouds() {
+            if (cloudInterval) { clearInterval(cloudInterval); cloudInterval = null; }
+        }
+
+        /* ---- Fetch vehicle data ---- */
+        async function fetchVehicleData(vehicleId) {
+            try {
+                const [profilesRes, analyticsRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/vehicles/profiles`),
+                    fetch(`${API_BASE}/api/analytics/fleet`)
+                ]);
+                const profiles = await profilesRes.json();
+                const analytics = await analyticsRes.json();
+
+                let profile = null;
+                if (profiles.success && profiles.vehicles) {
+                    profile = profiles.vehicles.find(v => v.registration_no === vehicleId);
+                }
+
+                let stats = null;
+                if (analytics.success) {
+                    // Check worst_performers for vehicle data
+                    const wp = analytics.worst_performers || [];
+                    stats = wp.find(v => v.vehicle_id === vehicleId);
+                }
+
+                // Also fetch latest reading
+                let reading = null;
+                try {
+                    const readRes = await fetch(`${API_BASE}/api/simulate/${encodeURIComponent(vehicleId)}`);
+                    const readData = await readRes.json();
+                    if (readData.success) reading = readData;
+                } catch(e) { /* simulation might not be available */ }
+
+                return { profile, stats, reading };
+            } catch(e) {
+                console.error('Error fetching vehicle data:', e);
+                return { profile: null, stats: null, reading: null };
+            }
+        }
+
+        /* ---- Update visualization ---- */
+        function updateViz(data) {
+            const { profile, stats, reading } = data;
+            currentData = data;
+
+            // Show content
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('twinContent').style.display = '';
+            document.getElementById('maintBtn').disabled = false;
+
+            // Vehicle SVG
+            const vehicleClass = profile ? profile.vehicle_class : 'SEDAN';
+            document.getElementById('vizSvgWrap').innerHTML = getVehicleSVG(vehicleClass);
+
+            // CES score
+            const ces = reading && reading.emission
+                ? (reading.emission.ces_score || 0)
+                : (stats ? (stats.avg_ces || 0) : 0);
+
+            // Start emission clouds
+            startClouds(ces);
+
+            // Update metrics from reading
+            if (reading && reading.emission) {
+                const e = reading.emission;
+                updateGauge('CO2', e.co2_gpkm, 300);
+                updateGauge('CO', e.co_gpkm, 5);
+                updateGauge('NOx', e.nox_gpkm, 0.5);
+                updateGauge('HC', e.hc_gpkm, 0.3);
+                updateGauge('PM', e.pm25_mgpkm, 10);
+            } else {
+                ['CO2','CO','NOx','HC','PM'].forEach(g => {
+                    document.getElementById('val'+g).textContent = '--';
+                    document.getElementById('bar'+g).style.width = '0%';
+                });
+            }
+
+            // Health summary
+            const degFactor = reading && reading.emission ? (reading.emission.degradation_factor || 1.0) : 1.0;
+            const degRisk = degFactor > 1.3 ? 'HIGH' : degFactor > 1.1 ? 'MODERATE' : 'LOW';
+            const degColor = degFactor > 1.3 ? 'var(--clr-fail)' : degFactor > 1.1 ? 'var(--clr-warn)' : 'var(--clr-pass)';
+            document.getElementById('healthDeg').textContent = degRisk;
+            document.getElementById('healthDeg').style.color = degColor;
+            document.getElementById('healthDegSub').textContent = `Factor: ${degFactor.toFixed(3)}`;
+
+            const tier = ces < 0.5 ? 'EXCELLENT' : ces < 0.75 ? 'GOOD' : ces < 1.0 ? 'MARGINAL' : 'NON-COMPLIANT';
+            const tierColor = ces < 0.5 ? 'var(--clr-pass)' : ces < 0.75 ? 'var(--clr-accent)' : ces < 1.0 ? 'var(--clr-warn)' : 'var(--clr-fail)';
+            document.getElementById('healthTier').textContent = tier;
+            document.getElementById('healthTier').style.color = tierColor;
+            document.getElementById('healthTierSub').textContent = `CES: ${ces.toFixed(4)}`;
+
+            // Next PUC estimate
+            const daysLeft = ces < 0.5 ? 180 : ces < 0.75 ? 120 : ces < 1.0 ? 60 : 15;
+            const pucDate = new Date(Date.now() + daysLeft * 86400000);
+            document.getElementById('healthPUC').textContent = pucDate.toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric' });
+            document.getElementById('healthPUCSub').textContent = `~${daysLeft} days remaining`;
+
+            document.getElementById('healthCES').textContent = ces.toFixed(4);
+            document.getElementById('healthCES').style.color = tierColor;
+        }
+
+        function updateGauge(name, value, max) {
+            const v = value || 0;
+            document.getElementById('val'+name).textContent = v.toFixed(name === 'PM' ? 2 : 3);
+            const pct = Math.min((v / max) * 100, 100);
+            document.getElementById('bar'+name).style.width = pct + '%';
+        }
+
+        /* ---- Vehicle selection ---- */
+        async function onVehicleSelected(vehicleId) {
+            if (!vehicleId) {
+                document.getElementById('emptyState').style.display = '';
+                document.getElementById('twinContent').style.display = 'none';
+                document.getElementById('maintBtn').disabled = true;
+                document.getElementById('maintComparison').classList.remove('visible');
+                stopClouds();
+                return;
+            }
+            currentVehicle = vehicleId;
+            const data = await fetchVehicleData(vehicleId);
+            updateViz(data);
+        }
+
+        /* ---- Maintenance simulation ---- */
+        function toggleMaintenance() {
+            const comp = document.getElementById('maintComparison');
+            if (comp.classList.contains('visible')) {
+                comp.classList.remove('visible');
+                return;
+            }
+            if (!currentData) return;
+
+            const { reading, stats } = currentData;
+            const ces = reading && reading.emission ? reading.emission.ces_score : (stats ? stats.avg_ces : 0.5);
+            const degFactor = reading && reading.emission ? (reading.emission.degradation_factor || 1.0) : 1.0;
+            const co2 = reading && reading.emission ? reading.emission.co2_gpkm : 150;
+            const co = reading && reading.emission ? reading.emission.co_gpkm : 1.5;
+            const nox = reading && reading.emission ? reading.emission.nox_gpkm : 0.12;
+
+            // Post-maintenance: reduce degradation to 1.0, CES by 15-25%
+            const reduction = 0.15 + Math.random() * 0.10;
+            const newCES = ces * (1 - reduction);
+            const newDeg = 1.0;
+            const newCO2 = co2 * (1 - reduction * 0.8);
+            const newCO = co * (1 - reduction * 1.2);
+            const newNOx = nox * (1 - reduction * 0.9);
+
+            const daysOld = ces < 0.5 ? 180 : ces < 0.75 ? 120 : ces < 1.0 ? 60 : 15;
+            const daysNew = newCES < 0.5 ? 180 : newCES < 0.75 ? 120 : newCES < 1.0 ? 60 : 15;
+            const daysExtended = daysNew - daysOld;
+
+            const beforeHTML = buildMaintRows([
+                ['CES Score', ces.toFixed(4)],
+                ['Degradation Factor', degFactor.toFixed(3)],
+                ['CO2 (g/km)', co2.toFixed(2)],
+                ['CO (g/km)', co.toFixed(3)],
+                ['NOx (g/km)', nox.toFixed(4)],
+                ['PUC Days Left', daysOld]
+            ]);
+            const pctDelta = (reduction * 100).toFixed(0);
+            const afterHTML = buildMaintRows([
+                ['CES Score', newCES.toFixed(4), `-${pctDelta}%`, true],
+                ['Degradation Factor', newDeg.toFixed(3), degFactor > 1.0 ? 'Reset' : '--', true],
+                ['CO2 (g/km)', newCO2.toFixed(2), `-${(reduction*80).toFixed(0)}%`, true],
+                ['CO (g/km)', newCO.toFixed(3), `-${(reduction*120).toFixed(0)}%`, true],
+                ['NOx (g/km)', newNOx.toFixed(4), `-${(reduction*90).toFixed(0)}%`, true],
+                ['PUC Days Left', daysNew, daysExtended > 0 ? `+${daysExtended} days` : '--', daysExtended > 0]
+            ]);
+
+            document.getElementById('maintBefore').innerHTML = beforeHTML;
+            document.getElementById('maintAfter').innerHTML = afterHTML;
+            comp.classList.add('visible');
+        }
+
+        function buildMaintRows(rows) {
+            return rows.map(r => {
+                let delta = '';
+                if (r.length > 2 && r[2] && r[2] !== '--') {
+                    const good = r[3];
+                    delta = `<span class="delta-badge ${good ? 'delta-good' : 'delta-bad'}">${r[2]}</span>`;
+                }
+                return `<div class="maint-row">
+                    <span class="maint-label">${r[0]}</span>
+                    <span class="maint-val">${r[1]}${delta}</span>
+                </div>`;
+            }).join('');
+        }
+
+        /* ---- Hamburger ---- */
+        (function(){
+            var btn = document.getElementById('hamburgerBtn');
+            var nav = document.getElementById('navbarActions');
+            if(btn&&nav){
+                btn.addEventListener('click', function(){ nav.classList.toggle('active'); });
+                nav.querySelectorAll('.nav-link').forEach(function(l){ l.addEventListener('click', function(){ nav.classList.remove('active'); }); });
+            }
+        })();
+
+        // Init
+        loadVehicles();
+    </script>
+</body>
+</html>

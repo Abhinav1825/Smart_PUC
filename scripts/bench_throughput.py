@@ -6,11 +6,21 @@ Sweeps worker counts and measures sustained records-per-second against a
 running Smart PUC station backend. Produces the data table in
 docs/BENCHMARKS.md §3.
 
-Usage:
-    python scripts/bench_throughput.py --workers 1,4,8,16,32 \
-        --samples-per-worker 200 \
-        --station-url http://localhost:5000 \
+Default mode is **local** (for CI). Use ``--live`` to run against a real
+testnet deployment (e.g. Polygon Amoy) for publication-grade measurements.
+
+Usage (local)::
+
+    python scripts/bench_throughput.py --workers 1,4,8,16,32 \\
+        --samples-per-worker 200 \\
+        --station-url http://localhost:5000 \\
         --output docs/bench_throughput.json
+
+Usage (live testnet)::
+
+    python scripts/bench_throughput.py --live \\
+        --station-url https://your-amoy-station.example.com \\
+        --output docs/throughput_live_report.json
 """
 
 from __future__ import annotations
@@ -88,6 +98,8 @@ def main() -> int:
     ap.add_argument("--device-key", default=None)
     ap.add_argument("--api-key", default=None)
     ap.add_argument("--output", default="docs/bench_throughput.json")
+    ap.add_argument("--live", action="store_true",
+                    help="Tag report as 'live' testnet measurements (vs local Hardhat).")
     args = ap.parse_args()
 
     # Load .env
@@ -118,9 +130,15 @@ def main() -> int:
         print(f"  latency p50/p95 = {res['latency_ms']['p50']} / {res['latency_ms']['p95']} ms")
         results.append(res)
 
+    mode = "live" if args.live else "local"
     report = {
         "generated_at": int(time.time()),
+        "mode": mode,
         "station_url": args.station_url,
+        "note": (
+            "LIVE testnet measurements." if mode == "live"
+            else "LOCAL Hardhat/Ganache measurements (for CI). Use --live for testnet."
+        ),
         "sweeps": results,
     }
     out_path = Path(args.output)

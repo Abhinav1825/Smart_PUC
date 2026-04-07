@@ -69,3 +69,24 @@ BS4_THRESHOLDS_DIESEL: Dict[str, float] = {
     "hc": 0.05,
     "pm25": 0.025,
 }
+
+# ─────────────────── Extended fuel-type thresholds (CNG/LPG/Hybrid/Electric) ──
+# India does not define separate CNG/LPG thresholds — use petrol thresholds
+# as the closest regulatory match. Electric vehicles use very high thresholds
+# so they always pass (zero direct emissions).
+
+BSVI_THRESHOLDS_CNG: Dict[str, float] = dict(BSVI_THRESHOLDS_PETROL)
+BSVI_THRESHOLDS_LPG: Dict[str, float] = dict(BSVI_THRESHOLDS_PETROL)
+BSVI_THRESHOLDS_HYBRID: Dict[str, float] = dict(BSVI_THRESHOLDS_PETROL)
+BSVI_THRESHOLDS_ELECTRIC: Dict[str, float] = {
+    "co2": 99999.0, "co": 99999.0, "nox": 99999.0,
+    "hc": 99999.0, "pm25": 99999.0,
+}
+
+BS4_THRESHOLDS_CNG: Dict[str, float] = dict(BS4_THRESHOLDS_PETROL)
+BS4_THRESHOLDS_LPG: Dict[str, float] = dict(BS4_THRESHOLDS_PETROL)
+BS4_THRESHOLDS_HYBRID: Dict[str, float] = dict(BS4_THRESHOLDS_PETROL)
+BS4_THRESHOLDS_ELECTRIC: Dict[str, float] = {
+    "co2": 99999.0, "co": 99999.0, "nox": 99999.0,
+    "hc": 99999.0, "pm25": 99999.0,
+}

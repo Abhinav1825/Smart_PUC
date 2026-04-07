@@ -92,7 +92,19 @@ from backend.ces_constants import (  # noqa: E402
     BSVI_THRESHOLDS_DIESEL as _BSVI_DIESEL_GEN,
     BS4_THRESHOLDS_PETROL as _BS4_PETROL_GEN,
     BS4_THRESHOLDS_DIESEL as _BS4_DIESEL_GEN,
+    BSVI_THRESHOLDS_CNG as _BSVI_CNG_GEN,
+    BSVI_THRESHOLDS_LPG as _BSVI_LPG_GEN,
+    BS4_THRESHOLDS_CNG as _BS4_CNG_GEN,
+    BS4_THRESHOLDS_LPG as _BS4_LPG_GEN,
+    BSVI_THRESHOLDS_ELECTRIC as _BSVI_ELECTRIC_GEN,
+    BS4_THRESHOLDS_ELECTRIC as _BS4_ELECTRIC_GEN,
 )
+
+# Vehicle profile support (optional dependency — only used when a profile is passed)
+try:
+    from backend.vehicle_profiles import get_emission_scalers as _get_vehicle_scalers
+except ImportError:
+    _get_vehicle_scalers = None  # type: ignore[assignment]
 
 
 class BSStandard(str, enum.Enum):
@@ -170,23 +182,53 @@ BSVI_DIESEL_THRESHOLDS: Dict[str, float] = dict(_BSVI_DIESEL_GEN)
 BS4_THRESHOLDS: Dict[str, float] = dict(_BS4_PETROL_GEN)
 BS4_DIESEL_THRESHOLDS: Dict[str, float] = dict(_BS4_DIESEL_GEN)
 
+# ──────────────────────────── CNG / LPG / Electric Thresholds Maps ─────────
+
+BSVI_CNG_THRESHOLDS: Dict[str, float] = dict(_BSVI_CNG_GEN)
+BSVI_LPG_THRESHOLDS: Dict[str, float] = dict(_BSVI_LPG_GEN)
+BSVI_ELECTRIC_THRESHOLDS: Dict[str, float] = dict(_BSVI_ELECTRIC_GEN)
+
+BS4_CNG_THRESHOLDS: Dict[str, float] = dict(_BS4_CNG_GEN)
+BS4_LPG_THRESHOLDS: Dict[str, float] = dict(_BS4_LPG_GEN)
+BS4_ELECTRIC_THRESHOLDS: Dict[str, float] = dict(_BS4_ELECTRIC_GEN)
+
+# Lookup tables for get_thresholds() — keyed by normalised fuel_type string.
+_BSVI_THRESHOLD_MAP: Dict[str, Dict[str, float]] = {
+    "petrol": BSVI_THRESHOLDS,
+    "diesel": BSVI_DIESEL_THRESHOLDS,
+    "cng": BSVI_CNG_THRESHOLDS,
+    "lpg": BSVI_LPG_THRESHOLDS,
+    "hybrid_petrol": BSVI_THRESHOLDS,       # Hybrid uses petrol thresholds
+    "electric": BSVI_ELECTRIC_THRESHOLDS,
+}
+
+_BS4_THRESHOLD_MAP: Dict[str, Dict[str, float]] = {
+    "petrol": BS4_THRESHOLDS,
+    "diesel": BS4_DIESEL_THRESHOLDS,
+    "cng": BS4_CNG_THRESHOLDS,
+    "lpg": BS4_LPG_THRESHOLDS,
+    "hybrid_petrol": BS4_THRESHOLDS,         # Hybrid uses petrol thresholds
+    "electric": BS4_ELECTRIC_THRESHOLDS,
+}
+
 
 def get_thresholds(fuel_type: str, standard: BSStandard = BSStandard.BS6) -> Dict[str, float]:
     """
     Return the per-pollutant thresholds for a given fuel type and BS standard.
 
     Args:
-        fuel_type: ``"petrol"`` or ``"diesel"``.
+        fuel_type: ``"petrol"``, ``"diesel"``, ``"cng"``, ``"lpg"``,
+                   ``"hybrid_petrol"``, or ``"electric"``.
         standard:  :class:`BSStandard` — BS-IV or BS-VI (default BS-VI).
 
     Returns:
         Mapping of pollutant name (``co2``, ``co``, ``nox``, ``hc``, ``pm25``)
         to its g/km cap.
     """
-    diesel = fuel_type.lower() == "diesel"
+    ft = fuel_type.lower()
     if standard is BSStandard.BS4:
-        return BS4_DIESEL_THRESHOLDS if diesel else BS4_THRESHOLDS
-    return BSVI_DIESEL_THRESHOLDS if diesel else BSVI_THRESHOLDS
+        return _BS4_THRESHOLD_MAP.get(ft, BS4_THRESHOLDS)
+    return _BSVI_THRESHOLD_MAP.get(ft, BSVI_THRESHOLDS)
 
 
 def _get_thresholds(fuel_type: str) -> Dict[str, float]:
@@ -198,8 +240,12 @@ def _get_thresholds(fuel_type: str) -> Dict[str, float]:
 # ──────────────────────────── IPCC Fuel-Based CO2 Factors ────────────────────
 
 EMISSION_FACTORS: Dict[str, int] = {
-    "petrol": 2310,   # g CO2 per litre  [IPCC / ARAI]
-    "diesel": 2680,   # g CO2 per litre  [IPCC / ARAI]
+    "petrol": 2310,          # g CO2 per litre  [IPCC / ARAI]
+    "diesel": 2680,          # g CO2 per litre  [IPCC / ARAI]
+    "cng": 1840,             # Natural gas — ~20% less CO2 than petrol
+    "lpg": 1665,             # LPG — ~28% less CO2 than petrol
+    "hybrid_petrol": 2310,   # Same base factor (reduction via electric fraction)
+    "electric": 0,           # Zero tailpipe CO2
 }
 
 # ──────────────────────────── MOVES Operating Mode Emission Rates ────────────
@@ -308,7 +354,7 @@ _SCALE_HEIGHT: float = 8500.0    # Atmospheric scale height [m]
 
 # Legacy constants (kept for backward compatibility)
 DEFAULT_THRESHOLD: int = 120     # g/km — same as CO2_THRESHOLD
-IDLE_CO2_CAP: float = 300.0      # g/km cap for idle/very-low-speed
+IDLE_CO2_CAP: float = 20.0       # g/km cap for idle/very-low-speed (audit L4: lowered from 300)
 MIN_MOVING_SPEED: float = 2.0    # km/h
 
 
@@ -325,6 +371,7 @@ def calculate_emissions(
     altitude: float = 0.0,
     cold_start: bool = False,
     bs_standard: BSStandard = BSStandard.BS6,
+    vehicle_profile: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Calculate multi-pollutant emissions using MOVES operating-mode rates,
@@ -350,6 +397,14 @@ def calculate_emissions(
         Altitude above sea level in metres (default 0.0).
     cold_start : bool
         Whether the engine is in cold-start phase (default ``False``).
+    vehicle_profile : object, optional
+        A ``VehicleProfile`` from ``backend.vehicle_profiles``.  When
+        provided, vehicle-class / fuel-type / displacement / degradation
+        scalers are applied to the base MOVES rates.  For hybrid vehicles,
+        emissions are reduced by the profile's ``hybrid_electric_fraction``.
+        For electric vehicles, all-zero emissions are returned immediately.
+        When ``None`` (default), behaviour is identical to the original
+        engine (full backward compatibility).
 
     Returns
     -------
@@ -397,6 +452,29 @@ def calculate_emissions(
 
     corrections_applied: List[str] = []
 
+    # ── 0. Electric vehicle fast-path ────────────────────────────────────
+    #    Electric vehicles have zero tailpipe emissions — return immediately.
+    _is_electric = (
+        fuel_type.lower() == "electric"
+        or (vehicle_profile is not None and getattr(vehicle_profile, "fuel_type", "").lower() == "electric")
+    )
+    if _is_electric:
+        _zero_thresholds = get_thresholds("electric", bs_standard)
+        _zero_compliance = {p: True for p in CES_WEIGHTS}
+        _zero_compliance["overall"] = True
+        return {
+            "co2_g_per_km":        0.0,
+            "co_g_per_km":         0.0,
+            "nox_g_per_km":        0.0,
+            "hc_g_per_km":         0.0,
+            "pm25_g_per_km":       0.0,
+            "ces_score":           0.0,
+            "compliance":          _zero_compliance,
+            "status":              "PASS",
+            "operating_mode_bin":  operating_mode_bin,
+            "corrections_applied": ["electric_vehicle(zero_emissions)"],
+        }
+
     # ── 1. Base emission rates from MOVES lookup table [1] ────────────────
     if operating_mode_bin not in EMISSION_RATES:
         # Fall back to the nearest lower bin
@@ -410,6 +488,35 @@ def calculate_emissions(
     hc_gs = base_rates["hc"]
     pm25_gs = base_rates["pm25"]
 
+    # ── 1b. Vehicle profile emission scalers ─────────────────────────────
+    #    When a VehicleProfile is supplied, apply combined fuel-type /
+    #    vehicle-class / displacement / degradation scalers from
+    #    vehicle_profiles.get_emission_scalers().  For hybrids, further
+    #    reduce by the electric-driving fraction.
+    if vehicle_profile is not None and _get_vehicle_scalers is not None:
+        scalers = _get_vehicle_scalers(vehicle_profile)
+        co2_gs  *= scalers.get("co2",  1.0)
+        co_gs   *= scalers.get("co",   1.0)
+        nox_gs  *= scalers.get("nox",  1.0)
+        hc_gs   *= scalers.get("hc",   1.0)
+        pm25_gs *= scalers.get("pm25", 1.0)
+        corrections_applied.append(
+            f"vehicle_profile_scalers({scalers})"
+        )
+
+        # Hybrid reduction: emissions proportional to combustion-mode fraction
+        hybrid_ef = getattr(vehicle_profile, "hybrid_electric_fraction", 0.0)
+        if hybrid_ef > 0.0:
+            combustion_fraction = 1.0 - hybrid_ef
+            co2_gs  *= combustion_fraction
+            co_gs   *= combustion_fraction
+            nox_gs  *= combustion_fraction
+            hc_gs   *= combustion_fraction
+            pm25_gs *= combustion_fraction
+            corrections_applied.append(
+                f"hybrid_electric_fraction({hybrid_ef:.2f})"
+            )
+
     # ── 2. NOx Arrhenius temperature correction [3] ───────────────────────
     #    NOx_corrected = NOx_base * exp[Ea/R * (1/T_ref - 1/T_amb)]
     t_amb_k: float = ambient_temp + 273.15
@@ -417,6 +524,8 @@ def calculate_emissions(
         nox_temp_factor: float = math.exp(
             _EA_OVER_R * (1.0 / _T_REF - 1.0 / t_amb_k)
         )
+        # Clamp to physically plausible bounds (audit L2)
+        nox_temp_factor = max(0.5, min(5.0, nox_temp_factor))
         nox_gs *= nox_temp_factor
         corrections_applied.append(
             f"NOx_temp_correction(factor={nox_temp_factor:.4f})"
@@ -628,7 +737,10 @@ def calculate_co2(
     }
 
 
-def process_obd_reading(reading: Dict[str, Any]) -> Dict[str, Any]:
+def process_obd_reading(
+    reading: Dict[str, Any],
+    vehicle_profile: Optional[Any] = None,
+) -> Dict[str, Any]:
     """
     Convenience wrapper: takes a full OBD-II reading dict, computes
     multi-pollutant emissions, and returns the enriched result.
@@ -648,6 +760,9 @@ def process_obd_reading(reading: Dict[str, Any]) -> Dict[str, Any]:
         - ``ambient_temp`` (float) — deg C, default 25.0
         - ``altitude`` (float) — metres, default 0.0
         - ``cold_start`` (bool) — default ``False``
+    vehicle_profile : object, optional
+        A ``VehicleProfile`` instance to apply vehicle-aware scaling.
+        When ``None`` (default), behaviour is identical to the original.
 
     Returns
     -------
@@ -672,6 +787,7 @@ def process_obd_reading(reading: Dict[str, Any]) -> Dict[str, Any]:
         ambient_temp=reading.get("ambient_temp", 25.0),
         altitude=reading.get("altitude", 0.0),
         cold_start=reading.get("cold_start", False),
+        vehicle_profile=vehicle_profile,
     )
 
     # Add legacy convenience keys

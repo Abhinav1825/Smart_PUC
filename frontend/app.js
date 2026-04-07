@@ -274,7 +274,7 @@ function moveCarAlongRoute() {
 
 // === Simulation Step ===
 async function runSimulationStep() {
-    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
 
     try {
         const res = await fetch(API_BASE + '/api/record', {
@@ -412,7 +412,7 @@ function checkCertificateEligibility(certEligible) {
 }
 
 async function loadCertificateStatus() {
-    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
     try {
         const res = await fetch(`${API_BASE}/api/certificate/${encodeURIComponent(vehicleId)}`);
         const data = await res.json();
@@ -445,7 +445,7 @@ async function loadCertificateStatus() {
 }
 
 async function requestCertificate() {
-    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
     if (!signer) { showAlert('Connect MetaMask first', 'warning'); return; }
 
     const ownerAddress = await signer.getAddress();
@@ -468,7 +468,7 @@ async function requestCertificate() {
 
 // === History Loading ===
 async function loadHistory() {
-    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
     const tbody = document.getElementById('historyTableBody');
     if (!tbody) return;
 

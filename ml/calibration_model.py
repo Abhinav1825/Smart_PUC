@@ -53,6 +53,10 @@ from backend.ces_constants import (
 )
 
 
+VALID_BS_STANDARDS = {"BS4", "BS6", "BSIV", "BSVI"}
+VALID_FUEL_TYPES = {"petrol", "diesel"}
+
+
 def _get_thresholds(fuel_type: str, bs_standard: str) -> Dict[str, float]:
     """Return the pollutant thresholds for a given fuel type and BS standard."""
     if bs_standard.upper() in ("BS6", "BSVI"):
@@ -163,6 +167,19 @@ class CalibrationModel:
         """
         df = pd.read_csv(paired_csv_path)
 
+        # Validate categorical columns before encoding
+        unique_standards = set(df["bs_standard"].str.upper().unique()) if "bs_standard" in df.columns else set()
+        unknown_standards = unique_standards - VALID_BS_STANDARDS
+        if unknown_standards:
+            import warnings
+            warnings.warn(f"Unknown BS standards in training data: {unknown_standards}. These will be encoded as BS6 (default).")
+
+        unique_fuels = set(df["fuel_type"].str.lower().unique()) if "fuel_type" in df.columns else set()
+        unknown_fuels = unique_fuels - VALID_FUEL_TYPES
+        if unknown_fuels:
+            import warnings
+            warnings.warn(f"Unknown fuel types in training data: {unknown_fuels}. These will be encoded as petrol (default).")
+
         # Add derived features and encode categoricals
         df = self._add_derived_features(df)
 
@@ -246,6 +263,14 @@ class CalibrationModel:
                 "CalibrationModel has not been trained yet. Call train() first."
             )
 
+        # Validate categorical inputs
+        if bs_standard.upper() not in VALID_BS_STANDARDS:
+            import warnings
+            warnings.warn(f"Unknown BS standard '{bs_standard}', defaulting to BS6")
+        if fuel_type.lower() not in VALID_FUEL_TYPES:
+            import warnings
+            warnings.warn(f"Unknown fuel type '{fuel_type}', defaulting to petrol")
+
         # Normalise speed key
         speed = obd_reading.get("speed_kmh", obd_reading.get("speed", 0.0))
         rpm = obd_reading.get("rpm", 0.0)
@@ -316,7 +341,78 @@ class CalibrationModel:
 
     def evaluate(self) -> dict:
         """Return the holdout evaluation metrics from the last train() call."""
-        return dict(self._eval_metrics)
+        result = dict(self._eval_metrics)
+        result["caveat"] = (
+            "R² is computed on a row-level train/test split stratified by vehicle_class. "
+            "Since the same vehicle class may appear in both train and test folds with "
+            "identical degradation characteristics, this may overestimate generalization "
+            "to unseen vehicle classes. For deployment, use vehicle-level cross-validation "
+            "via cross_validate_by_vehicle()."
+        )
+        return result
+
+    def _create_regressor(self) -> XGBRegressor:
+        """Return a fresh XGBRegressor (or GBR fallback) with stored hyperparams.
+
+        This is an alias for :meth:`_make_regressor` exposed for use by
+        :meth:`cross_validate_by_vehicle` and other evaluation helpers.
+        """
+        return self._make_regressor()
+
+    def cross_validate_by_vehicle(self, paired_csv_path: str, n_folds: int = 5) -> dict:
+        """Cross-validate by holding out entire vehicles (not rows).
+
+        This provides a more honest estimate of generalization because
+        the model cannot exploit vehicle-level correlations.
+
+        Returns: dict with per-pollutant R², MAE, RMSE averaged across folds
+        """
+        from sklearn.model_selection import GroupKFold
+
+        df = pd.read_csv(paired_csv_path)
+        df = self._add_derived_features(df)  # reuse existing feature engineering
+
+        groups = df["vehicle_id"] if "vehicle_id" in df.columns else df.index
+        n_unique = len(df["vehicle_id"].unique()) if "vehicle_id" in df.columns else n_folds
+        gkf = GroupKFold(n_splits=min(n_folds, n_unique))
+
+        results = {p: {"r2_folds": [], "mae_folds": [], "rmse_folds": []} for p in self.POLLUTANTS}
+
+        # Ensure all feature columns exist
+        for col in self.FEATURE_COLUMNS:
+            if col not in df.columns:
+                df[col] = 0.0
+
+        X = df[self.FEATURE_COLUMNS].fillna(0)
+
+        for train_idx, test_idx in gkf.split(X, groups=groups):
+            for pollutant in self.POLLUTANTS:
+                obd_col = f"obd_{pollutant}"
+                tp_col = f"tailpipe_{pollutant}"
+                if obd_col not in df.columns or tp_col not in df.columns:
+                    continue
+                y = df[tp_col] - df[obd_col]
+
+                model = self._create_regressor()
+                model.fit(X.iloc[train_idx], y.iloc[train_idx])
+                y_pred = model.predict(X.iloc[test_idx])
+
+                results[pollutant]["r2_folds"].append(r2_score(y.iloc[test_idx], y_pred))
+                results[pollutant]["mae_folds"].append(mean_absolute_error(y.iloc[test_idx], y_pred))
+                results[pollutant]["rmse_folds"].append(float(np.sqrt(mean_squared_error(y.iloc[test_idx], y_pred))))
+
+        summary: dict = {}
+        for p in self.POLLUTANTS:
+            if results[p]["r2_folds"]:
+                summary[p] = {
+                    "r2_mean": float(np.mean(results[p]["r2_folds"])),
+                    "r2_std": float(np.std(results[p]["r2_folds"])),
+                    "mae_mean": float(np.mean(results[p]["mae_folds"])),
+                    "rmse_mean": float(np.mean(results[p]["rmse_folds"])),
+                }
+        summary["method"] = "GroupKFold by vehicle_id"
+        summary["n_folds"] = n_folds
+        return summary
 
     def feature_importance(self, pollutant: str = "co2") -> dict:
         """Return feature importance scores for a pollutant model.

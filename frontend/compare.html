@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <title>Smart PUC — Vehicle Comparison</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Vehicle selector grid */
+        .vehicle-selector-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .vehicle-card {
+            background: var(--bg-card, #111834);
+            border-radius: 14px;
+            padding: 1.2rem;
+            border: 2px solid rgba(255,255,255,0.06);
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .vehicle-card:hover {
+            border-color: rgba(0,122,255,0.4);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .vehicle-card.selected {
+            border-color: #007AFF;
+            background: rgba(0,122,255,0.08);
+            box-shadow: 0 0 0 1px #007AFF, 0 8px 24px rgba(0,122,255,0.15);
+        }
+        .vehicle-card .vc-id {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #e6f1ff;
+            margin-bottom: 0.3rem;
+        }
+        .vehicle-card .vc-meta {
+            font-size: 0.78rem;
+            color: #8892b0;
+            line-height: 1.5;
+        }
+        .vehicle-card .vc-check {
+            float: right;
+            width: 22px; height: 22px;
+            border-radius: 6px;
+            border: 2px solid #2a3158;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+        .vehicle-card.selected .vc-check {
+            background: #007AFF;
+            border-color: #007AFF;
+            color: #fff;
+        }
+
+        /* Compare controls */
+        .compare-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .selected-count {
+            font-size: 0.9rem;
+            color: #8892b0;
+        }
+        .selected-count strong {
+            color: #007AFF;
+        }
+
+        /* Results layout */
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .compare-full {
+            grid-column: 1 / -1;
+        }
+
+        /* Specs comparison table */
+        .specs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        .specs-table th {
+            text-align: left;
+            font-size: 0.72rem;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding: 0.7rem 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card, #111834);
+        }
+        .specs-table td {
+            padding: 0.65rem 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .specs-table tr:hover td {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Summary stats table */
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        .summary-table th {
+            text-align: left;
+            font-size: 0.72rem;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding: 0.7rem 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .summary-table td {
+            padding: 0.65rem 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .summary-table tr:hover td {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Timeline bars */
+        .timeline-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .timeline-label {
+            min-width: 120px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #e6f1ff;
+        }
+        .timeline-bar-container {
+            flex: 1;
+            display: flex;
+            height: 28px;
+            border-radius: 6px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.04);
+        }
+        .timeline-segment {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #fff;
+            min-width: 2px;
+        }
+        .timeline-segment.pass { background: rgba(76,175,80,0.7); }
+        .timeline-segment.fail { background: rgba(244,67,54,0.7); }
+
+        /* Chart containers */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            min-height: 320px;
+        }
+        .chart-container canvas {
+            width: 100% !important;
+        }
+        .chart-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 280px;
+            color: #8892b0;
+            font-size: 0.9rem;
+        }
+        .chart-loading .spinner {
+            width: 28px; height: 28px;
+            border: 3px solid rgba(0,122,255,0.2);
+            border-top-color: #007AFF;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.75rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Section title */
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .section-title .icon { font-size: 1.2rem; }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #8892b0;
+        }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+        .empty-state p { font-size: 0.95rem; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .compare-grid { grid-template-columns: 1fr; }
+            .vehicle-selector-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+        }
+        @media (max-width: 600px) {
+            .compare-controls { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div><h1>Smart PUC</h1><span>Vehicle Comparison</span></div>
+            </a>
+            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
+            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+            <a href="compare.html" class="nav-link active" data-i18n="nav_compare">Compare</a>
+            <a href="twin.html" class="nav-link">Twin</a>
+            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+            <a href="explorer.html" class="nav-link">Explorer</a>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                </div>
+            </div>
+            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+        </div>
+    </nav>
+
+    <div id="alertsContainer"></div>
+
+    <!-- Vehicle Selector -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#128663;</span> Select Vehicles to Compare (2-5)</div>
+            <span class="text-muted text-mono" id="selectorStatus">Loading fleet...</span>
+        </div>
+        <div class="vehicle-selector-grid" id="vehicleSelectorGrid">
+            <div class="chart-loading" id="selectorLoading">
+                <div class="spinner"></div> Loading vehicles...
+            </div>
+        </div>
+        <div class="compare-controls">
+            <span class="selected-count">Selected: <strong id="selectedCount">0</strong> / 5</span>
+            <button class="btn btn-accent" id="compareBtn" onclick="runComparison()" disabled>Compare Selected</button>
+            <button class="btn" onclick="clearSelection()" style="border:1px solid #2a3158;">Clear Selection</button>
+        </div>
+    </div>
+
+    <!-- Comparison Results (hidden until compare is clicked) -->
+    <div id="comparisonResults" style="display:none;">
+
+        <!-- Vehicle Specs Comparison Table -->
+        <div class="card compare-full" style="margin-bottom: 1.5rem;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128203;</span> Vehicle Specs Comparison</div>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="specs-table" id="specsTable">
+                    <thead><tr id="specsHeader"></tr></thead>
+                    <tbody id="specsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="compare-grid">
+            <!-- CES Trend Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#128200;</span> CES Trend Comparison</div>
+                    <span class="text-muted text-mono" id="cesTrendStatus">Loading...</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="cesTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Pollutant Breakdown Radar Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">&#128161;</span> Pollutant Radar (Latest vs Threshold)</div>
+                    <span class="text-muted text-mono" id="radarStatus">Loading...</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compliance History Timeline -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128197;</span> Compliance History Timeline</div>
+                <span class="text-muted text-mono" id="timelineStatus">Loading...</span>
+            </div>
+            <div id="timelineContainer" style="padding: 0.5rem 0;"></div>
+        </div>
+
+        <!-- Summary Stats Table -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#128202;</span> Summary Statistics</div>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="summary-table" id="summaryTable">
+                    <thead><tr id="summaryHeader"></tr></thead>
+                    <tbody id="summaryBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Smart PUC &mdash; Vehicle Comparison | Blockchain-Based Multi-Pollutant Vehicle Emission Monitoring &amp; Compliance System (BSVI)
+    </footer>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="wallet.js"></script>
+<script src="app.js"></script>
+<script src="i18n.js"></script>
+<script>
+const API = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+
+// ── State ──
+let allProfiles = {};
+let selectedVehicles = [];
+let cesTrendChartInstance = null;
+let radarChartInstance = null;
+
+const VEHICLE_COLORS = [
+    '#007AFF', '#F44336', '#4CAF50', '#FF9800', '#9C27B0'
+];
+const VEHICLE_COLORS_ALPHA = [
+    'rgba(0,122,255,0.15)', 'rgba(244,67,54,0.15)', 'rgba(76,175,80,0.15)',
+    'rgba(255,152,0,0.15)', 'rgba(156,39,176,0.15)'
+];
+
+// BS-VI thresholds for radar normalization (g/km)
+const POLLUTANT_THRESHOLDS = {
+    CO2: 130.0,
+    CO: 1.0,
+    NOx: 0.06,
+    HC: 0.10,
+    PM25: 0.005
+};
+
+// ── Utility ──
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Load fleet profiles ──
+async function loadFleet() {
+    try {
+        const res = await fetch(`${API}/api/vehicles/profiles`);
+        const data = await res.json();
+        const profiles = data.profiles || data;
+
+        const grid = document.getElementById('vehicleSelectorGrid');
+        grid.innerHTML = '';
+
+        if (!profiles || (Array.isArray(profiles) && profiles.length === 0) ||
+            (typeof profiles === 'object' && Object.keys(profiles).length === 0)) {
+            grid.innerHTML = '<div class="empty-state"><div class="icon">&#128663;</div><p>No vehicles found in fleet.</p></div>';
+            document.getElementById('selectorStatus').textContent = '0 vehicles';
+            return;
+        }
+
+        // profiles might be object keyed by id or array
+        let profileList = [];
+        if (Array.isArray(profiles)) {
+            profileList = profiles;
+        } else {
+            profileList = Object.entries(profiles).map(([id, p]) => {
+                if (typeof p === 'object') return { vehicle_id: id, ...p };
+                return { vehicle_id: id };
+            });
+        }
+
+        profileList.forEach(p => {
+            const vid = p.vehicle_id || p.id || '';
+            allProfiles[vid] = p;
+
+            const card = document.createElement('div');
+            card.className = 'vehicle-card';
+            card.dataset.vehicleId = vid;
+            card.innerHTML = `
+                <div class="vc-check" id="check-${vid}"></div>
+                <div class="vc-id">${escapeHtml(vid)}</div>
+                <div class="vc-meta">
+                    ${p.vehicle_class ? escapeHtml(p.vehicle_class) : ''}
+                    ${p.fuel_type ? ' | ' + escapeHtml(p.fuel_type) : ''}
+                    ${p.bs_class ? '<br>' + escapeHtml(p.bs_class) : ''}
+                </div>
+            `;
+            card.addEventListener('click', () => toggleVehicle(vid, card));
+            grid.appendChild(card);
+        });
+
+        document.getElementById('selectorStatus').textContent = profileList.length + ' vehicles';
+    } catch (e) {
+        console.error('Failed to load fleet:', e);
+        document.getElementById('vehicleSelectorGrid').innerHTML =
+            '<div class="empty-state"><p style="color:#F44336;">Failed to load vehicles: ' + escapeHtml(e.message) + '</p></div>';
+        document.getElementById('selectorStatus').textContent = 'Error';
+    }
+}
+
+function toggleVehicle(vid, cardEl) {
+    const idx = selectedVehicles.indexOf(vid);
+    if (idx >= 0) {
+        selectedVehicles.splice(idx, 1);
+        cardEl.classList.remove('selected');
+        document.getElementById('check-' + vid).innerHTML = '';
+    } else {
+        if (selectedVehicles.length >= 5) {
+            showAlert('Maximum 5 vehicles can be compared at once.', 'warn');
+            return;
+        }
+        selectedVehicles.push(vid);
+        cardEl.classList.add('selected');
+        document.getElementById('check-' + vid).innerHTML = '&#10003;';
+    }
+    document.getElementById('selectedCount').textContent = selectedVehicles.length;
+    document.getElementById('compareBtn').disabled = selectedVehicles.length < 2;
+}
+
+function clearSelection() {
+    selectedVehicles = [];
+    document.querySelectorAll('.vehicle-card.selected').forEach(c => {
+        c.classList.remove('selected');
+        const checkEl = c.querySelector('.vc-check');
+        if (checkEl) checkEl.innerHTML = '';
+    });
+    document.getElementById('selectedCount').textContent = '0';
+    document.getElementById('compareBtn').disabled = true;
+    document.getElementById('comparisonResults').style.display = 'none';
+}
+
+function showAlert(msg, type) {
+    const container = document.getElementById('alertsContainer');
+    const borderColor = type === 'warn' ? '#FF9800' : type === 'fail' ? '#F44336' : '#007AFF';
+    container.innerHTML = `<div class="alert" style="margin:0.5rem 0; padding:0.75rem 1rem; border-radius:8px; background:rgba(255,152,0,0.1); border-left:4px solid ${borderColor}; display:flex; justify-content:space-between; align-items:center;">
+        <span>${escapeHtml(msg)}</span>
+        <button style="background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.2rem;" onclick="this.parentElement.remove()">&#10005;</button>
+    </div>`;
+    setTimeout(() => { if (container.firstChild) container.firstChild.remove(); }, 5000);
+}
+
+// ── Run comparison ──
+async function runComparison() {
+    if (selectedVehicles.length < 2) return;
+
+    document.getElementById('comparisonResults').style.display = 'block';
+
+    // Scroll to results
+    document.getElementById('comparisonResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Fetch all data in parallel
+    const trendsPromises = selectedVehicles.map(vid =>
+        fetch(`${API}/api/analytics/trends/${encodeURIComponent(vid)}`).then(r => r.json()).catch(() => null)
+    );
+    const statsPromises = selectedVehicles.map(vid =>
+        fetch(`${API}/api/analytics/vehicle-stats/${encodeURIComponent(vid)}`).then(r => r.json()).catch(() => null)
+    );
+
+    const [trendsResults, statsResults] = await Promise.all([
+        Promise.all(trendsPromises),
+        Promise.all(statsPromises)
+    ]);
+
+    // 1. Render specs table
+    renderSpecsTable();
+
+    // 2. Render CES trend chart
+    renderCESTrendChart(trendsResults);
+
+    // 3. Render radar chart
+    renderRadarChart(trendsResults);
+
+    // 4. Render compliance timeline
+    renderComplianceTimeline(trendsResults, statsResults);
+
+    // 5. Render summary stats
+    renderSummaryStats(statsResults);
+}
+
+// ── 1. Vehicle Specs Comparison Table ──
+function renderSpecsTable() {
+    const headerRow = document.getElementById('specsHeader');
+    const body = document.getElementById('specsBody');
+
+    headerRow.innerHTML = '<th>Attribute</th>' +
+        selectedVehicles.map(vid => '<th>' + escapeHtml(vid) + '</th>').join('');
+
+    const attrs = [
+        { key: 'vehicle_class', label: 'Vehicle Class' },
+        { key: 'fuel_type', label: 'Fuel Type' },
+        { key: 'engine_cc', label: 'Engine (cc)' },
+        { key: 'kerb_weight_kg', label: 'Weight (kg)' },
+        { key: 'transmission', label: 'Transmission' },
+        { key: 'bs_class', label: 'BS Standard' }
+    ];
+
+    body.innerHTML = attrs.map(attr => {
+        return '<tr><td style="font-weight:600; color:#e6f1ff;">' + attr.label + '</td>' +
+            selectedVehicles.map(vid => {
+                const p = allProfiles[vid] || {};
+                const val = p[attr.key];
+                return '<td>' + escapeHtml(val != null ? String(val) : '--') + '</td>';
+            }).join('') + '</tr>';
+    }).join('');
+}
+
+// ── 2. CES Trend Chart (multi-line) ──
+function renderCESTrendChart(trendsResults) {
+    const statusEl = document.getElementById('cesTrendStatus');
+
+    if (cesTrendChartInstance) cesTrendChartInstance.destroy();
+
+    const datasets = [];
+    let maxLen = 0;
+    let allLabels = [];
+
+    selectedVehicles.forEach((vid, i) => {
+        const data = trendsResults[i];
+        if (!data || data.success === false) return;
+        const trends = data.trends || data;
+        const ces = trends.ces || [];
+        const timestamps = trends.timestamps || [];
+
+        if (timestamps.length > maxLen) {
+            maxLen = timestamps.length;
+            allLabels = timestamps.map(t =>
+                new Date(t * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+            );
+        }
+
+        datasets.push({
+            label: vid,
+            data: ces,
+            borderColor: VEHICLE_COLORS[i],
+            backgroundColor: VEHICLE_COLORS_ALPHA[i],
+            borderWidth: 2,
+            tension: 0.3,
+            fill: false,
+            pointRadius: 3
+        });
+    });
+
+    if (datasets.length === 0) {
+        statusEl.textContent = 'No CES data';
+        return;
+    }
+
+    const canvas = document.getElementById('cesTrendChart');
+    cesTrendChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels: allLabels, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { color: '#8892b0', usePointStyle: true, padding: 16 } },
+                tooltip: {
+                    backgroundColor: '#1a2044', titleColor: '#e6f1ff',
+                    bodyColor: '#8892b0', borderColor: '#2a3158', borderWidth: 1
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#8892b0', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: {
+                    ticks: { color: '#8892b0' },
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    title: { display: true, text: 'CES Score', color: '#8892b0' }
+                }
+            }
+        }
+    });
+
+    statusEl.textContent = datasets.length + ' vehicles plotted';
+}
+
+// ── 3. Pollutant Radar Chart ──
+function renderRadarChart(trendsResults) {
+    const statusEl = document.getElementById('radarStatus');
+
+    if (radarChartInstance) radarChartInstance.destroy();
+
+    const pollutantKeys = ['CO2', 'CO', 'NOx', 'HC', 'PM25'];
+    const pollutantLabels = ['CO2', 'CO', 'NOx', 'HC', 'PM2.5'];
+
+    const datasets = [];
+
+    selectedVehicles.forEach((vid, i) => {
+        const data = trendsResults[i];
+        if (!data || data.success === false) return;
+        const trends = data.trends || data;
+
+        // Get latest value for each pollutant, normalized to threshold
+        const values = pollutantKeys.map(key => {
+            const arr = trends[key.toLowerCase()] || trends[key] || [];
+            if (arr.length === 0) return 0;
+            const latest = arr[arr.length - 1] || 0;
+            const threshold = POLLUTANT_THRESHOLDS[key] || 1;
+            return (latest / threshold) * 100; // percentage of threshold
+        });
+
+        datasets.push({
+            label: vid,
+            data: values,
+            borderColor: VEHICLE_COLORS[i],
+            backgroundColor: VEHICLE_COLORS_ALPHA[i],
+            borderWidth: 2,
+            pointBackgroundColor: VEHICLE_COLORS[i],
+            pointRadius: 4
+        });
+    });
+
+    if (datasets.length === 0) {
+        statusEl.textContent = 'No pollutant data';
+        return;
+    }
+
+    const canvas = document.getElementById('radarChart');
+    radarChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'radar',
+        data: { labels: pollutantLabels, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#8892b0', usePointStyle: true, padding: 16 } },
+                tooltip: {
+                    backgroundColor: '#1a2044', titleColor: '#e6f1ff',
+                    bodyColor: '#8892b0', borderColor: '#2a3158', borderWidth: 1,
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '% of threshold';
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    angleLines: { color: 'rgba(255,255,255,0.08)' },
+                    grid: { color: 'rgba(255,255,255,0.08)' },
+                    pointLabels: { color: '#8892b0', font: { size: 12 } },
+                    ticks: { color: '#8892b0', backdropColor: 'transparent' },
+                    suggestedMin: 0,
+                    suggestedMax: 150
+                }
+            }
+        }
+    });
+
+    statusEl.textContent = datasets.length + ' vehicles';
+}
+
+// ── 4. Compliance History Timeline ──
+function renderComplianceTimeline(trendsResults, statsResults) {
+    const container = document.getElementById('timelineContainer');
+    const statusEl = document.getElementById('timelineStatus');
+
+    let html = '';
+    let validCount = 0;
+
+    selectedVehicles.forEach((vid, i) => {
+        const data = trendsResults[i];
+        if (!data || data.success === false) {
+            html += `<div class="timeline-row">
+                <div class="timeline-label">${escapeHtml(vid)}</div>
+                <div class="timeline-bar-container"><div style="padding:4px 8px; color:#8892b0; font-size:0.75rem;">No data</div></div>
+            </div>`;
+            return;
+        }
+
+        const trends = data.trends || data;
+        const ces = trends.ces || [];
+        if (ces.length === 0) {
+            html += `<div class="timeline-row">
+                <div class="timeline-label">${escapeHtml(vid)}</div>
+                <div class="timeline-bar-container"><div style="padding:4px 8px; color:#8892b0; font-size:0.75rem;">No records</div></div>
+            </div>`;
+            return;
+        }
+
+        validCount++;
+        // Build pass/fail segments
+        const total = ces.length;
+        let segments = '';
+        ces.forEach(c => {
+            const pass = c < 1.0;
+            const pct = (100 / total).toFixed(2);
+            segments += `<div class="timeline-segment ${pass ? 'pass' : 'fail'}" style="width:${pct}%;" title="CES: ${Number(c).toFixed(4)}"></div>`;
+        });
+
+        html += `<div class="timeline-row">
+            <div class="timeline-label" style="color:${VEHICLE_COLORS[i]}">${escapeHtml(vid)}</div>
+            <div class="timeline-bar-container">${segments}</div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+    statusEl.textContent = validCount + ' vehicles with history';
+}
+
+// ── 5. Summary Stats Table ──
+function renderSummaryStats(statsResults) {
+    const headerRow = document.getElementById('summaryHeader');
+    const body = document.getElementById('summaryBody');
+
+    headerRow.innerHTML = '<th>Metric</th>' +
+        selectedVehicles.map((vid, i) =>
+            '<th style="color:' + VEHICLE_COLORS[i] + '">' + escapeHtml(vid) + '</th>'
+        ).join('');
+
+    const metrics = [
+        { key: 'avg_ces', label: 'Avg CES', fmt: v => v != null ? Number(v).toFixed(4) : '--' },
+        { key: 'total_records', label: 'Total Records', fmt: v => v != null ? String(v) : '--' },
+        { key: 'violations', label: 'Violations', fmt: v => v != null ? String(v) : '--' },
+        { key: 'fraud_alerts', label: 'Fraud Alerts', fmt: v => v != null ? String(v) : '--' },
+        { key: 'compliance_rate', label: 'Compliance Rate', fmt: v => v != null ? Number(v).toFixed(1) + '%' : '--' }
+    ];
+
+    body.innerHTML = metrics.map(m => {
+        return '<tr><td style="font-weight:600; color:#e6f1ff;">' + m.label + '</td>' +
+            selectedVehicles.map((vid, i) => {
+                const stats = statsResults[i] || {};
+                const s = stats.stats || stats;
+                const val = s[m.key];
+                const display = m.fmt(val);
+                let style = '';
+                if (m.key === 'violations' && val > 0) style = 'color:#F44336;';
+                if (m.key === 'compliance_rate' && val != null) {
+                    style = val >= 80 ? 'color:#4CAF50;' : val >= 50 ? 'color:#FF9800;' : 'color:#F44336;';
+                }
+                return '<td class="mono" style="' + style + '">' + escapeHtml(display) + '</td>';
+            }).join('') + '</tr>';
+    }).join('');
+}
+
+// ── Initialize ──
+document.addEventListener('DOMContentLoaded', function() {
+    loadFleet();
+    // Hamburger menu
+    var hBtn = document.getElementById('hamburgerBtn');
+    var hNav = document.getElementById('navbarActions');
+    if (hBtn && hNav) {
+        hBtn.addEventListener('click', function() { hNav.classList.toggle('active'); });
+        hNav.querySelectorAll('.nav-link').forEach(function(l) {
+            l.addEventListener('click', function() { hNav.classList.remove('active'); });
+        });
+    }
+});
+</script>
+</body>
+</html>

@@ -68,6 +68,15 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # ---------------------------------------------------------------------------
+# Report disclaimer — must appear in all generated output
+# ---------------------------------------------------------------------------
+REPORT_DISCLAIMER: str = (
+    "This comparison uses published platform benchmarks from vendor documentation "
+    "and peer-reviewed literature. These are NOT measured values from SmartPUC "
+    "deployments. See references for sources."
+)
+
+# ---------------------------------------------------------------------------
 # Optional pandas import with graceful fallback
 # ---------------------------------------------------------------------------
 try:
@@ -191,7 +200,7 @@ def generate_comparison_table() -> str:
     lines: List[str] = [
         r"\begin{table*}[htbp]",
         r"\centering",
-        r"\caption{Blockchain platform comparison for vehicular emission monitoring}",
+        r"\caption{Blockchain platform comparison (published benchmarks, not experimental measurements)}",
         r"\label{tab:blockchain-comparison}",
         r"\small",
         f"\\begin{{tabular}}{{{col_spec}}}",
@@ -227,6 +236,7 @@ def get_recommendation() -> str:
         A multi-line string containing the recommendation and rationale.
     """
     recommendation = (
+        f"NOTE: {REPORT_DISCLAIMER}\n\n"
         "Recommended Platform: Polygon PoS (Mumbai / Amoy testnet)\n"
         "\n"
         "Rationale:\n"

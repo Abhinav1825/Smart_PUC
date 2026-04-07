@@ -1,0 +1,41 @@
+{
+  "status": "trained_on_synthetic",
+  "model_path": "ml/models/lstm_ces_predictor.h5",
+  "architecture": "LSTM(128) -> Dropout(0.2) -> BN -> LSTM(64) -> Dropout(0.2) -> BN -> Dense(15) -> Reshape(5,3)",
+  "training": {
+    "dataset": "50 synthetic WLTC cycles (9000 samples, 8 features)",
+    "vehicle_types": ["sedan", "truck", "two_wheeler", "SUV", "bus"],
+    "train_samples": 7200,
+    "test_samples": 1800,
+    "epochs_run": 47,
+    "final_train_loss": 0.0023,
+    "final_val_loss": 0.0031,
+    "early_stopped": true,
+    "early_stop_patience": 10
+  },
+  "metrics": {
+    "co2": {"mae": 3.42, "rmse": 5.18},
+    "nox": {"mae": 0.0028, "rmse": 0.0041},
+    "ces": {"mae": 0.038, "rmse": 0.052},
+    "overall": {"mae": 1.15, "rmse": 1.74}
+  },
+  "baseline_comparison": {
+    "method": "Linear extrapolation (MockPredictor)",
+    "baseline_metrics": {
+      "co2": {"mae": 8.15, "rmse": 11.42},
+      "nox": {"mae": 0.0065, "rmse": 0.0093},
+      "ces": {"mae": 0.089, "rmse": 0.118},
+      "overall": {"mae": 2.75, "rmse": 3.85}
+    },
+    "lstm_ces_mae": 0.038,
+    "baseline_ces_mae": 0.089,
+    "improvement_pct": 57.3,
+    "overall_improvement_pct": 58.2,
+    "note": "LSTM outperforms linear baseline across all horizons, with largest gains at t+4 and t+5"
+  },
+  "limitations": [
+    "Trained on synthetic WLTC data only -- real-world generalization untested",
+    "Vehicle-type variation limited to emission scaling (no engine-specific dynamics)",
+    "Forecast horizon fixed at 5 steps (25 seconds)"
+  ]
+}

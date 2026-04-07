@@ -17,7 +17,7 @@ import time
 from typing import Optional
 
 import jwt  # PyJWT
-from fastapi import Header, HTTPException, Query, Request, status
+from fastapi import Depends, Header, HTTPException, Query, Request, status
 
 
 # ────────────────────────── Configuration ────────────────────────────────
@@ -184,6 +184,27 @@ def verify_credentials(username: str, password: str) -> bool:
         hmac.compare_digest(username, AUTH_USERNAME)
         and hmac.compare_digest(password, AUTH_PASSWORD)
     )
+
+
+def require_rto_role(auth_user: str = Depends(require_auth)) -> str:
+    """Require the authenticated user to be an authorized RTO officer.
+
+    Checks against the RTO_OFFICERS env var (comma-separated usernames).
+    Falls back to allowing the admin user if RTO_OFFICERS is not configured.
+    """
+    rto_officers = os.getenv("RTO_OFFICERS", "").strip()
+    admin_user = os.getenv("AUTH_USERNAME", "admin")
+
+    if rto_officers:
+        allowed = {u.strip() for u in rto_officers.split(",") if u.strip()}
+        allowed.add(admin_user)  # admin always allowed
+    else:
+        # If RTO_OFFICERS not configured, only admin can access
+        allowed = {admin_user}
+
+    if auth_user not in allowed:
+        raise HTTPException(status_code=403, detail="Not authorized for RTO operations")
+    return auth_user
 
 
 def auth_is_configured() -> bool:

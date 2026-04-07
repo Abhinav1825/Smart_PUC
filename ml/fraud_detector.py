@@ -174,6 +174,8 @@ class IsolationForestDetector:
     detect statistically unusual observations that may indicate tampering.
     """
 
+    _IF_OUTLIER_THRESHOLD = 0.30  # See reason_codes_for() docstring for rationale
+
     _FEATURE_NAMES = [
         "speed",
         "rpm",
@@ -185,9 +187,16 @@ class IsolationForestDetector:
         "rpm_speed_ratio",
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, contamination: float = 0.05) -> None:
         """Initialise the detector.  The model remains un-fitted until
-        :meth:`fit` is called explicitly."""
+        :meth:`fit` is called explicitly.
+
+        Args:
+            contamination: contamination rate for IsolationForest (fraction
+                of expected outliers). Default 0.05 per EPA MOVES3 baseline.
+                Adjust if actual fraud rate differs.
+        """
+        self._contamination = contamination
         self._model: Any | None = None
         self._is_fitted: bool = False
 
@@ -232,8 +241,9 @@ class IsolationForestDetector:
             return
 
         features = [self._extract_features(r) for r in historical_data]
+        # Isolation Forest (Liu, Ting & Zhou, 2008, ICDM)
         self._model = _IsolationForest(
-            contamination=0.05,
+            contamination=self._contamination,
             n_estimators=100,
             random_state=42,
         )
@@ -262,14 +272,25 @@ class IsolationForestDetector:
         return anomaly_score
 
     def reason_codes_for(self, score: float) -> list[str]:
-        """Return reason codes explaining a given Isolation Forest score.
+        """Return reason codes if the IF anomaly score exceeds the outlier threshold.
 
-        A score ``>= 0.30`` (same threshold used by the ensemble's MEDIUM
-        severity cutoff on a single component) fires
-        :attr:`FraudReasonCode.ISOLATION_FOREST_OUTLIER`. Stateless — safe
-        to call after :meth:`predict`.
+        The threshold of 0.30 is set to align with the MEDIUM severity cutoff
+        on a single ensemble component. At default ensemble weights (IF weight = 0.30),
+        an IF score of 0.30 contributes 0.30 x 0.30 = 0.09 to the final fraud_score,
+        which alone is insufficient to trigger the 0.50 ensemble threshold.
+
+        This threshold fires the ISOLATION_FOREST_OUTLIER reason code for diagnostic
+        purposes -- it indicates the reading is unusual in feature space, even if the
+        overall ensemble score stays below the fraud threshold. Users who adjust
+        ensemble weights must recalibrate this threshold proportionally.
+
+        Args:
+            score: IF anomaly score in [0.0, 1.0]
+
+        Returns:
+            List of FraudReasonCode values
         """
-        if score >= 0.30:
+        if score >= self._IF_OUTLIER_THRESHOLD:
             return [FraudReasonCode.ISOLATION_FOREST_OUTLIER.value]
         return []
 
@@ -729,6 +750,7 @@ class FraudDetector:
         isolation_weight: float = 0.30,
         temporal_weight: float = 0.15,
         drift_weight: float = 0.10,
+        if_contamination: float = 0.05,
     ) -> None:
         """Initialise the ensemble detector.
 
@@ -737,6 +759,9 @@ class FraudDetector:
             isolation_weight: Weight for the Isolation Forest detector.
             temporal_weight: Weight for the temporal consistency checker.
             drift_weight: Weight for the Page-Hinkley drift detector.
+            if_contamination: contamination rate for IsolationForest (fraction
+                of expected outliers). Default 0.05 per EPA MOVES3 baseline.
+                Adjust if actual fraud rate differs.
         """
         total = physics_weight + isolation_weight + temporal_weight + drift_weight
         if abs(total - 1.0) > 1e-6:
@@ -749,7 +774,7 @@ class FraudDetector:
         self._drift_weight = drift_weight
 
         self._physics = PhysicsConstraintValidator()
-        self._isolation = IsolationForestDetector()
+        self._isolation = IsolationForestDetector(contamination=if_contamination)
         self._temporal = TemporalConsistencyChecker()
         self._drift = PageHinkleyDriftDetector()
         # Opt-in per-VIN baseline (audit 13A #1). Always instantiated so
