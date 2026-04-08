@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import sys
 import importlib
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -138,8 +139,9 @@ def test_record_requires_api_key():
 
 
 def test_record_with_api_key_accepts_payload():
+    _nonce = str(int(time.time() * 1000))[-8:]
     payload = {
-        "vehicle_id": "TEST001",
+        "vehicle_id": f"TEST{_nonce}",
         "speed": 60.0,
         "rpm": 2200,
         "fuel_rate": 6.5,
@@ -155,7 +157,7 @@ def test_record_with_api_key_accepts_payload():
     # with tx_status='offline'). 4xx means our contract is wrong.
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body.get("vehicle_id") == "TEST001" or body.get("success") is True
+    assert body.get("vehicle_id") == f"TEST{_nonce}" or body.get("success") is True
 
 
 def test_record_with_invalid_speed_is_clamped_or_rejected():
@@ -314,12 +316,13 @@ def test_record_idempotency_key_caches_response(monkeypatch):
     monkeypatch.setattr(backend_main, "blockchain", _FakeBlockchain())
     monkeypatch.setattr(backend_main, "blockchain_connected", True)
 
+    _nonce = str(int(time.time() * 1000))[-8:]
     payload = {
-        "vehicle_id": "IDEMP001",
+        "vehicle_id": f"IDEMP{_nonce}",
         "speed": 55.0, "rpm": 2100, "fuel_rate": 5.5,
         "acceleration": 0.1, "wltc_phase": 1,
     }
-    headers = {"X-API-Key": API_KEY, "Idempotency-Key": "pytest-idem-key-123"}
+    headers = {"X-API-Key": API_KEY, "Idempotency-Key": f"pytest-idem-key-{_nonce}"}
 
     r1 = client.post("/api/record", json=payload, headers=headers)
     r2 = client.post("/api/record", json=payload, headers=headers)

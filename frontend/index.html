@@ -15,14 +15,13 @@
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
       script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com;
-      style-src  'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net;
+      style-src  'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com;
       img-src    'self' data: blob: https://*.tile.openstreetmap.org;
-      font-src   'self' data:;
-      connect-src 'self' http://localhost:5000 http://127.0.0.1:5000 https://router.project-osrm.org ws://localhost:* ws://127.0.0.1:* http://localhost:*;
+      font-src   'self' data: https://fonts.gstatic.com;
+      connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*;
       object-src 'none';
       base-uri   'self';
       form-action 'self';
-      frame-ancestors 'none';
     ">
     <title>Smart PUC — Vehicle Dashboard</title>
     <link rel="stylesheet" href="style.css">
@@ -255,7 +254,7 @@
                     <span class="wallet-dot" id="walletDot"></span>
                     <span id="walletAddress">Not Connected</span>
                 </div>
-                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">
+                <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
                     Connect Wallet
                 </button>
             </div>
@@ -278,27 +277,20 @@
 
         <!-- Vehicle ID, Route Selection & WLTC Phase -->
         <div class="card mb-lg">
-            <div style="display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap;">
-                <div class="form-group" style="flex: 1; min-width: 200px;">
+            <div class="vehicle-controls-grid">
+                <div class="form-group">
                     <label class="form-label" for="vehicleSelectorDropdown" data-i18n="lbl_vehicle_select">Select Vehicle</label>
                     <select class="form-select" id="vehicleSelectorDropdown" onchange="onVehicleSelected(this.value)">
                         <option value="">-- Select from fleet --</option>
                     </select>
                 </div>
-                <div class="form-group" style="flex: 1; min-width: 180px;">
+                <div class="form-group">
                     <label class="form-label" for="vehicleIdInput" data-i18n="lbl_vehicle_reg">Vehicle Registration</label>
                     <input type="text" class="form-input" id="vehicleIdInput"
-                           placeholder="e.g. MH12AB1234" style="text-transform: uppercase;">
+                           placeholder="E.G. MH12AB1234" style="text-transform: uppercase;" readonly>
                 </div>
-                <div class="form-group" style="min-width:auto;">
-                    <label class="form-label">&nbsp;</label>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <button class="demo-mode-btn" id="demoModeBtn" onclick="toggleDemoMode()">Demo Mode</button>
-                        <span class="demo-countdown" id="demoCountdown">Next: 20s</span>
-                    </div>
-                </div>
-                <div class="form-group" style="flex: 2; min-width: 250px;">
-                    <label class="form-label" for="routeSelect" data-i18n="lbl_route">Mumbai Route Selection</label>
+                <div class="form-group">
+                    <label class="form-label" for="routeSelect" data-i18n="lbl_route">Mumbai Route</label>
                     <select class="form-select" id="routeSelect"></select>
                 </div>
                 <div class="form-group">
@@ -312,13 +304,11 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">&nbsp;</label>
-                    <div style="display: flex; gap: var(--space-sm);">
-                        <button class="btn btn-accent" id="startRouteBtn" onclick="toggleRouteSimulation()" data-i18n="btn_start_route">
-                            Start Route
-                        </button>
-                        <button class="btn btn-outline btn-sm" onclick="loadHistory()" data-i18n="btn_history">
-                            History
-                        </button>
+                    <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                        <button class="btn btn-accent" id="startRouteBtn" onclick="toggleRouteSimulation()" title="Start live simulation — car moves on map, gauges update" data-i18n="btn_start_route">Start Route</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadHistory()" title="Load emission history from blockchain" data-i18n="btn_history">History</button>
+                        <button class="demo-mode-btn" id="demoModeBtn" onclick="toggleDemoMode()" title="Auto-cycle through all vehicles every 20s (presentation mode)">Auto</button>
+                        <span class="demo-countdown" id="demoCountdown">20s</span>
                     </div>
                 </div>
             </div>
@@ -378,13 +368,12 @@
             </div>
         </div>
 
-        <!-- Live Leaflet Map -->
-        <div class="card mb-lg" style="padding: 0; overflow: hidden; border: 1px solid var(--clr-border);">
-            <div id="map" class="map-responsive"></div>
-        </div>
-
-        <!-- CES Gauge + Compliance -->
+        <!-- Map + CES Gauge side-by-side -->
         <div class="grid-2 mb-lg">
+            <!-- Live Leaflet Map -->
+            <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--clr-border);">
+                <div id="map" class="map-responsive"></div>
+            </div>
             <!-- CES Gauge -->
             <div class="card ces-gauge-card">
                 <div class="card-header">
@@ -415,15 +404,18 @@
                 </div>
             </div>
 
-            <!-- Compliance Panel -->
-            <div class="compliance-panel" id="compliancePanel">
+        </div>
+
+        <!-- Compliance Status Bar -->
+        <div class="card mb-lg" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-md);">
+            <div class="compliance-panel" id="compliancePanel" style="border:none;padding:0;margin:0;">
                 <div class="compliance-label" data-i18n="lbl_compliance">Overall Compliance</div>
                 <div class="status-badge status-badge-large" id="complianceBadge" data-i18n="status_awaiting">
                     AWAITING DATA
                 </div>
-                <div class="threshold-info">
-                    BSVI Thresholds: CO&#8322;&lt;120, CO&lt;1.0, NOx&lt;0.06, HC&lt;0.10, PM2.5&lt;0.0045 g/km
-                </div>
+            </div>
+            <div class="threshold-info" style="font-size:0.75rem;">
+                BSVI Thresholds: CO&#8322;&lt;120, CO&lt;1.0, NOx&lt;0.06, HC&lt;0.10, PM2.5&lt;0.0045 g/km
             </div>
         </div>
 
@@ -593,6 +585,32 @@
             </div>
         </div>
 
+        <!-- Vehicle Health Forecast (Degradation) -->
+        <div class="card mb-lg" id="degradationCard" style="display:none;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">&#9881;</span> Vehicle Health Forecast</div>
+                <span class="text-muted text-mono" id="degradationStatus">Loading...</span>
+            </div>
+            <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="metric-card" id="degradMonthsCard">
+                    <div class="metric-label">Months Until PUC Failure</div>
+                    <div class="metric-value" id="degradMonths">&mdash;</div>
+                    <div class="metric-unit" id="degradMonthsUnit">estimated</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Catalyst Health</div>
+                    <div class="metric-value" id="degradCatalyst">&mdash;</div>
+                    <div class="metric-unit">efficiency %</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">CES Trend</div>
+                    <div class="metric-value" id="degradRate">&mdash;</div>
+                    <div class="metric-unit">per month</div>
+                </div>
+            </div>
+            <div id="degradRecommendation" style="margin-top:1rem;padding:0.75rem 1rem;border-radius:8px;font-size:0.9rem;font-weight:500;display:none;"></div>
+        </div>
+
         <!-- Fleet Quick-Switch -->
         <div class="card mb-lg" id="fleetQuickSwitchCard" style="display:none;">
             <div class="card-header">
@@ -683,8 +701,38 @@
         // ── Load vehicle profiles from backend ──
         async function loadVehicleProfiles() {
             try {
-                const res = await fetch(_API + '/api/vehicles/profiles');
+                console.log('[SmartPUC] loadVehicleProfiles() fetching from backend...');
+                const controller = new AbortController();
+                const timeout = setTimeout(function() { controller.abort(); }, 5000);
+                var res;
+                try {
+                    res = await fetch(_API + '/api/vehicles/profiles', { signal: controller.signal });
+                    clearTimeout(timeout);
+                } catch (fetchErr) {
+                    clearTimeout(timeout);
+                    console.warn('[SmartPUC] Backend unreachable (' + fetchErr.message + '). Using hardcoded demo fleet.');
+                    // Fallback: hardcoded demo fleet when backend is down
+                    vehicleProfiles = [
+                        { registration_no: 'MH12AB1234', display_name: 'Maruti Ciaz (Sedan)', vehicle_class: 'sedan', fuel_type: 'petrol', bs_standard: 'BS6', manufacturer: 'Maruti Suzuki', model: 'Ciaz' },
+                        { registration_no: 'MH01CD5678', display_name: 'Maruti WagonR (Hatchback)', vehicle_class: 'hatchback', fuel_type: 'petrol', bs_standard: 'BS6', manufacturer: 'Maruti Suzuki', model: 'WagonR' },
+                        { registration_no: 'MH04EF9012', display_name: 'Tata Nexon (SUV)', vehicle_class: 'suv', fuel_type: 'diesel', bs_standard: 'BS6', manufacturer: 'Tata', model: 'Nexon' },
+                        { registration_no: 'MH02GH3456', display_name: 'Hyundai i20 (Hatchback)', vehicle_class: 'hatchback', fuel_type: 'petrol', bs_standard: 'BS6', manufacturer: 'Hyundai', model: 'i20' },
+                    ];
+                    populateVehicleSelector();
+                    if (vehicleProfiles.length > 0) {
+                        var vid = vehicleProfiles[0].registration_no;
+                        document.getElementById('vehicleIdInput').value = vid;
+                        document.getElementById('vehicleSelectorDropdown').value = vid;
+                    }
+                    return;
+                }
+                console.log('[SmartPUC] loadVehicleProfiles() status:', res.status);
+                if (!res.ok) {
+                    console.error('[SmartPUC] loadVehicleProfiles() HTTP error:', res.status);
+                    return;
+                }
                 const data = await res.json();
+                console.log('[SmartPUC] loadVehicleProfiles() got', (data.vehicles||[]).length, 'vehicles');
                 if (data.success && data.vehicles) {
                     vehicleProfiles = data.vehicles;
                     populateVehicleSelector();
@@ -730,6 +778,37 @@
             });
             // Update map marker icon
             updateMapMarkerIcon(profile ? profile.vehicle_class : null);
+            // Fetch degradation forecast for selected vehicle
+            fetchDegradation(regNo);
+
+            // ── Reset simulation state on vehicle change ──
+            // Stop any running simulation
+            if (typeof autoSimInterval !== 'undefined' && autoSimInterval) {
+                clearInterval(autoSimInterval);
+                autoSimInterval = null;
+                var btn = document.getElementById('startRouteBtn');
+                if (btn) { btn.textContent = 'Start Route'; btn.classList.remove('btn-danger'); btn.classList.add('btn-accent'); }
+            }
+            // Reset backend simulator cycle for this vehicle
+            fetch(API_BASE + '/api/simulate/reset?vehicle_id=' + encodeURIComponent(regNo)).catch(function(){});
+            // Clear live metrics
+            ['metricRpm','metricSpeed','metricFuel','metricCo2','metricCo','metricNox','metricHc','metricPm25'].forEach(function(id) {
+                var el = document.getElementById(id); if (el) el.textContent = '--';
+            });
+            ['rpmBar','speedBar','fuelBar'].forEach(function(id) {
+                var el = document.getElementById(id); if (el) el.style.width = '0%';
+            });
+            // Reset CES gauge
+            if (typeof updateCESGauge === 'function') updateCESGauge(0);
+            if (typeof updateComplianceBadge === 'function') updateComplianceBadge('--');
+            // Hide fraud banner
+            var fraudBanner = document.getElementById('fraudAlertBanner');
+            if (fraudBanner) fraudBanner.classList.add('hidden');
+            // Clear history table
+            var tbody = document.getElementById('historyTableBody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center text-dim" style="padding:2rem">Select a vehicle and start simulation</td></tr>';
+            // Load history for new vehicle
+            if (typeof loadHistory === 'function') loadHistory();
         };
 
         // ── Show vehicle specs card ──
@@ -791,6 +870,94 @@
             }).join('');
         }
 
+        // ── Fetch and display degradation / health forecast ──
+        async function fetchDegradation(vehicleId) {
+            var card = document.getElementById('degradationCard');
+            if (!card || !vehicleId) return;
+            card.style.display = '';
+            document.getElementById('degradationStatus').textContent = 'Loading...';
+            try {
+                var res = await fetch(_API + '/api/vehicle/' + encodeURIComponent(vehicleId) + '/degradation');
+                var data = await res.json();
+                if (!data.success) {
+                    document.getElementById('degradationStatus').textContent = 'Unavailable';
+                    return;
+                }
+                var months = data.months_until_failure;
+                var catalyst = data.catalyst_health_pct;
+                var rate = data.monthly_degradation_rate;
+                var rec = data.recommendation || '';
+
+                // Months until failure
+                var mEl = document.getElementById('degradMonths');
+                var mCard = document.getElementById('degradMonthsCard');
+                if (months !== null && months !== undefined) {
+                    mEl.textContent = months;
+                    // Color code: green >12, yellow 6-12, red <6
+                    if (months > 12) {
+                        mEl.style.cssText = '-webkit-text-fill-color:#10b981;color:#10b981;';
+                    } else if (months >= 6) {
+                        mEl.style.cssText = '-webkit-text-fill-color:#f59e0b;color:#f59e0b;';
+                    } else {
+                        mEl.style.cssText = '-webkit-text-fill-color:#ef4444;color:#ef4444;';
+                    }
+                } else {
+                    mEl.textContent = '\u221E';
+                    mEl.style.cssText = '-webkit-text-fill-color:#10b981;color:#10b981;';
+                }
+
+                // Catalyst health
+                var cEl = document.getElementById('degradCatalyst');
+                if (catalyst !== null && catalyst !== undefined) {
+                    cEl.textContent = catalyst.toFixed(1) + '%';
+                } else {
+                    cEl.textContent = '--';
+                }
+
+                // CES trend rate
+                var rEl = document.getElementById('degradRate');
+                if (rate !== null && rate !== undefined) {
+                    var prefix = rate > 0 ? '+' : '';
+                    rEl.textContent = prefix + rate.toFixed(4);
+                    if (rate > 0) {
+                        rEl.style.cssText = '-webkit-text-fill-color:#ef4444;color:#ef4444;';
+                    } else {
+                        rEl.style.cssText = '-webkit-text-fill-color:#10b981;color:#10b981;';
+                    }
+                } else {
+                    rEl.textContent = '--';
+                }
+
+                // Recommendation banner
+                var recEl = document.getElementById('degradRecommendation');
+                if (rec) {
+                    recEl.textContent = rec;
+                    recEl.style.display = '';
+                    if (rec.indexOf('Immediate') !== -1) {
+                        recEl.style.background = 'rgba(239,68,68,0.12)';
+                        recEl.style.color = '#ef4444';
+                        recEl.style.border = '1px solid rgba(239,68,68,0.3)';
+                    } else if (rec.indexOf('Schedule') !== -1) {
+                        recEl.style.background = 'rgba(245,158,11,0.12)';
+                        recEl.style.color = '#f59e0b';
+                        recEl.style.border = '1px solid rgba(245,158,11,0.3)';
+                    } else {
+                        recEl.style.background = 'rgba(16,185,129,0.12)';
+                        recEl.style.color = '#10b981';
+                        recEl.style.border = '1px solid rgba(16,185,129,0.3)';
+                    }
+                } else {
+                    recEl.style.display = 'none';
+                }
+
+                document.getElementById('degradationStatus').textContent =
+                    data.projected_failure_date ? 'Projected: ' + data.projected_failure_date : 'Healthy';
+            } catch (e) {
+                console.warn('Degradation fetch failed:', e.message);
+                document.getElementById('degradationStatus').textContent = 'Unavailable';
+            }
+        }
+
         // ── Hamburger menu toggle ──
         document.addEventListener('DOMContentLoaded', function() {
             var btn = document.getElementById('hamburgerBtn');
@@ -805,8 +972,34 @@
                 });
             }
             // Load vehicle profiles on startup
-            loadVehicleProfiles();
+            loadVehicleProfiles().then(function() {
+                autoLoadDemoIfEmpty();
+                // Fetch degradation for the default / first vehicle
+                var vid = document.getElementById('vehicleIdInput');
+                if (vid && vid.value.trim()) fetchDegradation(vid.value.trim());
+            });
         });
+
+        // ── Auto-load demo data if no history exists (runs once per page load) ──
+        var _demoAutoLoaded = false;
+        async function autoLoadDemoIfEmpty() {
+            if (_demoAutoLoaded) return;
+            _demoAutoLoaded = true;
+            var vehicleId = (document.getElementById('vehicleIdInput')?.value || '').trim().toUpperCase();
+            if (!vehicleId) return;
+            try {
+                var res = await fetch(_API + '/api/history/' + encodeURIComponent(vehicleId));
+                var data = await res.json();
+                if (data.success && (!data.records || data.records.length === 0)) {
+                    showAlert('Loading demo data...', 'info');
+                    await fetch(_API + '/api/simulate?vehicle_id=' + encodeURIComponent(vehicleId) + '&count=30');
+                    // Reload history after demo data is generated
+                    if (typeof loadHistory === 'function') loadHistory();
+                }
+            } catch (e) {
+                console.warn('Auto-demo check failed:', e.message);
+            }
+        }
 
         // ══════════════════════════════════════════════════════════════
         // i18n — Multi-language support
@@ -1383,7 +1576,7 @@
             var time = n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : '';
             return '<div class="notif-item">' +
                 '<span class="notif-item-icon">' + icon + '</span>' +
-                '<div class="notif-item-msg">' + (n.message || '') +
+                '<div class="notif-item-msg">' + escapeHtml(n.message || '') +
                     (time ? '<div class="notif-item-time">' + time + '</div>' : '') +
                 '</div></div>';
         }).join('');
@@ -1391,8 +1584,11 @@
 
     function fetchNotifications() {
         var api = window.SMART_PUC_API || 'http://127.0.0.1:5000';
-        fetch(api + '/api/notifications').then(function(res) { return res.json(); }).then(function(data) {
-            if (data.notifications && Array.isArray(data.notifications)) {
+        authFetch(api + '/api/notifications').then(function(res) {
+            if (!res.ok) return null;
+            return res.json();
+        }).then(function(data) {
+            if (data && data.notifications && Array.isArray(data.notifications)) {
                 var prevLen = _notifications.length;
                 _notifications = data.notifications;
                 var newCount = _notifications.length - prevLen;
@@ -1400,7 +1596,7 @@
                 updateNotifBadge();
                 renderNotifications();
             }
-        }).catch(function() { /* API not available */ });
+        }).catch(function(e) { console.error('[SmartPUC]', e.message); });
     }
 
     // Add local notification (for FAIL events, demo mode switches, etc.)
@@ -1452,7 +1648,8 @@
         var ws = null;
         var wsRetryCount = 0;
         function connectWebSocket() {
-            ws = new WebSocket('ws://127.0.0.1:5000/ws/emissions');
+            var wsUrl = (window.SMART_PUC_API || 'http://127.0.0.1:5000').replace(/^http/, 'ws');
+            ws = new WebSocket(wsUrl + '/ws/emissions');
             ws.onopen = function() {
                 wsRetryCount = 0;
                 console.log('WS connected');

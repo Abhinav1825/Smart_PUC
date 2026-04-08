@@ -298,11 +298,11 @@ class IsolationForestDetector:
 class TemporalConsistencyChecker:
     """Check temporal consistency of sequential OBD-II readings.
 
-    Maintains a rolling window of the last 10 readings and flags
+    Maintains a rolling window of the last 60 readings and flags
     physically impossible transitions or replay-attack patterns.
     """
 
-    _WINDOW_SIZE = 10
+    _WINDOW_SIZE = 60
 
     def __init__(self) -> None:
         """Initialise the checker with an empty reading window."""

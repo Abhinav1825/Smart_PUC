@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -43,6 +44,11 @@ client.__enter__()  # trigger lifespan startup (audit L11 compat)
 API_KEY = os.environ["API_KEY"]
 
 HEADERS = {"X-API-Key": API_KEY}
+_HEADERS = HEADERS  # alias used by some tests
+
+# Unique suffix per test run so reading dedup hashes never collide
+# across pytest invocations.
+_RUN_NONCE = str(int(time.time() * 1000))[-8:]
 
 
 def _post_record(payload: dict) -> dict:
@@ -67,7 +73,7 @@ class TestPhysicsViolation:
 
     def test_speed_with_zero_rpm_is_flagged(self):
         data = _post_record({
-            "vehicle_id": "MH12ZZ0001",
+            "vehicle_id": f"MH12ZZ01{_RUN_NONCE}",
             "speed": 80.0,
             "rpm": 0,
             "fuel_rate": 6.5,
@@ -80,7 +86,7 @@ class TestPhysicsViolation:
 
     def test_high_vsp_with_near_zero_fuel(self):
         data = _post_record({
-            "vehicle_id": "MH12ZZ0002",
+            "vehicle_id": f"MH12ZZ02{_RUN_NONCE}",
             "speed": 100.0,
             "rpm": 4500,
             "fuel_rate": 0.1,
@@ -101,7 +107,7 @@ class TestSuddenSpeedSpike:
     def test_extreme_speed_flagged(self):
         # First, establish a baseline with moderate speed
         _post_record({
-            "vehicle_id": "MH12ZZ0003",
+            "vehicle_id": f"MH12ZZ03{_RUN_NONCE}",
             "speed": 60.0,
             "rpm": 2500,
             "fuel_rate": 5.0,
@@ -109,7 +115,7 @@ class TestSuddenSpeedSpike:
         })
         # Now spike to 250
         data = _post_record({
-            "vehicle_id": "MH12ZZ0003",
+            "vehicle_id": f"MH12ZZ03{_RUN_NONCE}",
             "speed": 250.0,
             "rpm": 7500,
             "fuel_rate": 15.0,
@@ -123,25 +129,30 @@ class TestSuddenSpeedSpike:
 
 class TestReplayAttack:
     """Identical readings repeated N times look like a replay or sensor
-    freeze. The temporal checker should flag after >= 3 identical samples."""
+    freeze. The API-level deduplication rejects exact duplicates with 409,
+    and the temporal checker flags near-duplicates with elevated fraud."""
 
-    def test_identical_readings_are_flagged(self):
+    def test_identical_readings_are_rejected(self):
         frozen_payload = {
-            "vehicle_id": "MH12ZZ0004",
+            "vehicle_id": f"MH12ZZ04{_RUN_NONCE}",
             "speed": 60.0,
             "rpm": 2500,
             "fuel_rate": 5.5,
             "acceleration": 0.0,
         }
-        # Send 5 identical readings
-        last_data = None
-        for _ in range(5):
-            last_data = _post_record(frozen_payload)
-        assert last_data is not None
-        # After 5 identical readings, fraud should be elevated
-        fraud = last_data.get("fraud_score", 0)
-        assert fraud > 0, (
-            f"Expected fraud_score > 0 after 5 identical readings, got {fraud}"
+        # First reading should succeed (200)
+        first_data = _post_record(frozen_payload)
+        assert first_data is not None
+
+        # Subsequent identical readings should be rejected (409) by
+        # the API-level reading deduplication (replay protection)
+        resp = client.post(
+            "/api/record",
+            json=frozen_payload,
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 409, (
+            f"Expected 409 for duplicate reading, got {resp.status_code}"
         )
 
 
@@ -216,7 +227,7 @@ class TestIdleAnomaly:
 
     def test_zero_speed_zero_accel_does_not_crash(self):
         data = _post_record({
-            "vehicle_id": "MH12ZZ0005",
+            "vehicle_id": f"MH12ZZ05{_RUN_NONCE}",
             "speed": 0.0,
             "rpm": 800,
             "fuel_rate": 0.8,

@@ -96,11 +96,14 @@ class TestDegradation:
         data = resp.json()
         assert data["success"] is True
         assert "vehicle_id" in data
-        assert "degradation_risk" in data
-        assert "events" in data
-        assert isinstance(data["events"], list)
+        assert "recommendation" in data
+        # New response shape includes health forecast fields
+        assert "current_ces" in data
+        assert "months_until_failure" in data
+        assert "catalyst_health_pct" in data
 
-    def test_degradation_risk_is_valid(self):
+    def test_degradation_recommendation_is_string(self):
         resp = client.get(f"/api/vehicle/{VID}/degradation")
         data = resp.json()
-        assert data["degradation_risk"] in ("low", "medium", "high")
+        assert isinstance(data["recommendation"], str)
+        assert len(data["recommendation"]) > 0

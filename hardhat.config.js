@@ -42,7 +42,7 @@ module.exports = {
   solidity: {
     version: "0.8.21",
     settings: {
-      viaIR: true,
+      viaIR: true,  // Required — EmissionRegistry has stack-too-deep without IR
       optimizer: { enabled: true, runs: 200 },
     },
   },
@@ -75,6 +75,7 @@ module.exports = {
     localhost: {
       url: process.env.RPC_URL || "http://127.0.0.1:7545",
       chainId: Number(process.env.CHAIN_ID || 5777),
+      timeout: 120_000, // 2 minutes — UUPS proxy deploys can be slow
       // `accounts` is intentionally omitted — Ganache exposes its own
       // accounts over JSON-RPC and the signer list is picked up via
       // `ethers.getSigners()` when targeting an external node.
@@ -86,6 +87,7 @@ module.exports = {
     docker: {
       url: process.env.RPC_URL || "http://ganache:8545",
       chainId: 5777,
+      timeout: 120_000,
     },
 
     // ─── Ethereum Sepolia ─────────────────────────────────────────────

@@ -191,24 +191,28 @@ class BlockchainConnector:
         explicit integer to override (useful for benchmarking).
         """
         sender = Web3.to_checksum_address(from_address) if from_address else self.address
-        partial_tx = {
-            "from": sender,
-            "nonce": self.w3.eth.get_transaction_count(sender),
-            "gasPrice": self.w3.eth.gas_price,
-        }
-        if gas is not None:
-            partial_tx["gas"] = gas
-        else:
-            try:
-                estimated = tx_func.estimate_gas({"from": sender})
-                partial_tx["gas"] = int(estimated * 1.2)
-            except Exception:
-                partial_tx["gas"] = 800000  # fallback for offline/mock chains
-        tx = tx_func.build_transaction(partial_tx)
 
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                # Refresh nonce on every attempt to avoid stale-nonce errors
+                # when concurrent transactions (faucet, simulate telemetry)
+                # increment the nonce between retries.
+                partial_tx = {
+                    "from": sender,
+                    "nonce": self.w3.eth.get_transaction_count(sender),
+                    "gasPrice": self.w3.eth.gas_price,
+                }
+                if gas is not None:
+                    partial_tx["gas"] = gas
+                else:
+                    try:
+                        estimated = tx_func.estimate_gas({"from": sender})
+                        partial_tx["gas"] = int(estimated * 1.2)
+                    except Exception:
+                        partial_tx["gas"] = 800000
+                tx = tx_func.build_transaction(partial_tx)
+
                 if self.account and sender == self.address:
                     signed = self.w3.eth.account.sign_transaction(tx, self.private_key)
                     raw_tx = getattr(signed, 'raw_transaction', None) or getattr(signed, 'rawTransaction', None)
@@ -226,9 +230,8 @@ class BlockchainConnector:
             except Exception as exc:
                 if attempt == max_retries - 1:
                     raise
-                wait = 2 ** attempt  # exponential backoff: 1s, 2s
                 import time as _time
-                _time.sleep(wait)
+                _time.sleep(0.5)  # brief pause before retry
 
     # ─────────────────── Nonce Generation ────────────────────────────
 

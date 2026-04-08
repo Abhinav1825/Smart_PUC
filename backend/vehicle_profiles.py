@@ -102,6 +102,14 @@ class VehicleProfile:
     insurance_valid_until: str = ""
     fitness_valid_until: str = ""
 
+    # Demo overrides — direct multiplier applied on top of the computed
+    # scalers.  A value of 2.0 doubles all emissions (simulates severe
+    # catalyst degradation for demo purposes).
+    emission_multiplier: float = 1.0
+    # When True, the simulator injects physics-inconsistent readings
+    # (mismatched speed/rpm/fuel_rate) that trigger the fraud detector.
+    demo_fraud_vehicle: bool = False
+
     # ── Derived properties ─────────────────────────────────────────────
 
     @property
@@ -473,6 +481,8 @@ def get_emission_scalers(profile: VehicleProfile) -> Dict[str, float]:
     disp = profile.displacement_factor
     degrad = profile.degradation_factor
 
+    demo_mult = profile.emission_multiplier
+
     combined = {}
     for pollutant in ("co2", "co", "nox", "hc", "pm25"):
         combined[pollutant] = (
@@ -480,6 +490,7 @@ def get_emission_scalers(profile: VehicleProfile) -> Dict[str, float]:
             * class_scaler[pollutant]
             * disp
             * degrad
+            * demo_mult
         )
     return combined
 

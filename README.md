@@ -25,6 +25,56 @@ Credit Tokens redeemable through an on-chain marketplace.
 > [docs/PRIVACY_DPDP.md](docs/PRIVACY_DPDP.md), and the
 > **Limitations and Non-Goals** section below.
 
+### System Architecture
+
+```
++---------------------------+        +------------------------------------------+
+|   NODE 1: OBD-II Device   |        |   NODE 2: Testing Station Backend        |
+|   (ELM327 Dongle +        |  OBD   |   (FastAPI / Python 3.10+)               |
+|    Companion App)          | data   |                                          |
+|                            +------->+  +----------------+  +-----------------+ |
+|  - SAE J1979 PID decode    |        |  | Emission Engine|  | Fraud Detector  | |
+|  - ECDSA telemetry signing |        |  | (BSVI 5-poll.) |  | (3-comp. ML)    | |
++---------------------------+        |  +----------------+  +-----------------+ |
+                                      |  +----------------+  +-----------------+ |
+                                      |  | LSTM Predictor |  | VSP Model       | |
+                                      |  | (25s forecast) |  | (EPA MOVES3)    | |
+                                      |  +----------------+  +-----------------+ |
+                                      |  +--------------------------------------+|
+                                      |  | Blockchain Connector (Web3.py)       ||
+                                      |  +------------------+-------------------+|
+                                      +------+--------------+-------------------+
+                                             |              |
+                              +--------------+              |
+                              | on-chain TX                 | persist
+                              v                             v
++-----------------------------------------------------+  +------------------+
+|   NODE 3: Blockchain Layer (Ethereum / Polygon)      |  | SQLite           |
+|                                                      |  | (rate limits,    |
+|  +------------------+  +-------------------+         |  |  notifications,  |
+|  | EmissionRegistry |  | PUCCertificate    |         |  |  Merkle batches) |
+|  | (on-chain CES,   |->| (ERC-721 NFT,     |         |  +------------------+
+|  |  nonce replay,   |  |  IPFS tokenURI)   |         |
+|  |  ECDSA verify)   |  +-------------------+         |
+|  +------------------+           |                     |
+|                                 v                     |
+|  +------------------+  +-------------------+         |
+|  | MultiSigAdmin    |  | GreenToken        |         |
+|  | (2-of-3 planned) |  | (ERC-20, burn-to- |         |
+|  +------------------+  |  redeem market)   |         |
+|                         +-------------------+         |
++-----------------------------------------------------+
+         ^                                      |
+         | direct chain read                    | API responses
+         |                                      v
++-----------------------------------------------------+
+|   Frontend Dashboard (12 pages)                      |
+|   index, authority, verify, analytics, fleet, rto,   |
+|   marketplace, compare, explorer, leaderboard, twin, |
+|   cpcb  |  Web3.js + Chart.js + MetaMask             |
++-----------------------------------------------------+
+```
+
 ### Paper target venue
 
 This artefact accompanies a manuscript being prepared for submission to
@@ -185,7 +235,7 @@ Starts 5 services with full healthchecks:
 | `deploy-contracts` | -- | One-shot: deploys all 3 contracts |
 | `station` | 5000 | Testing Station FastAPI (uvicorn) |
 | `obd-device` | -- | OBD Device simulator |
-| `frontend` | 3000 | Static file server for all 7 pages |
+| `frontend` | 3000 | Static file server for all 12 pages |
 
 ### Option C: Manual Setup
 
@@ -223,6 +273,11 @@ python -m obd_node.obd_device --count 50 --interval 3
 | 5 | **Fleet Management** | `localhost:3000/fleet.html` | Fleet vehicle table, compliance alerts, bulk certificate operations, comparison charts |
 | 6 | **RTO Portal** | `localhost:3000/rto.html` | Compliance checking, flagged vehicle list, enforcement heatmap, regulatory reporting |
 | 7 | **Marketplace** | `localhost:3000/marketplace.html` | Token balance display, reward catalog (4 types), redemption interface, token transfer |
+| 8 | **Compare** | `localhost:3000/compare.html` | Vehicle-to-Vehicle Emission Comparison (side-by-side analysis of two vehicles) |
+| 9 | **CPCB Dashboard** | `localhost:3000/cpcb.html` | CPCB Compliance Dashboard (Central Pollution Control Board regional view) |
+| 10 | **Blockchain Explorer** | `localhost:3000/explorer.html` | Blockchain Transaction Explorer (on-chain emission record browser) |
+| 11 | **Leaderboard** | `localhost:3000/leaderboard.html` | Vehicle Compliance Leaderboard (ranked by CES scores) |
+| 12 | **Digital Twin** | `localhost:3000/twin.html` | Digital Twin Simulation (virtual vehicle emission modeling) |
 
 ---
 
@@ -529,7 +584,7 @@ Smart_PUC/
 | **Backend** | PyJWT 2.8 | JWT token authentication |
 | **Backend** | scikit-learn 1.4 | Isolation Forest fraud detection |
 | **Backend** | NumPy 1.26 | Numerical computation for emission models |
-| **Frontend** | HTML5 / CSS3 / JS | 7-page dashboard application |
+| **Frontend** | HTML5 / CSS3 / JS | 12-page dashboard application |
 | **Frontend** | Web3.js | Browser-side blockchain interaction via MetaMask |
 | **Frontend** | Chart.js | Analytics visualizations and trend charts |
 | **Hardware** | python-obd | ELM327 OBD-II adapter communication |
@@ -551,6 +606,14 @@ Smart_PUC/
 | PM2.5 | 0.0045 | 8% |
 
 **Composite Emission Score:** `CES = sum(pollutant_i / threshold_i * weight_i)`. Vehicle passes if `CES < 1.0`.
+
+---
+
+## Target Publication
+
+- **Target venue:** IEEE International Conference on Blockchain (IEEE Blockchain 2026) or IEEE Access
+- **Working paper title:** "SmartPUC: A Blockchain-Anchored Multi-Pollutant Compliance Framework with ML-Based Fraud Detection for Continuous Vehicle Emission Monitoring"
+- **Research context:** Simulation-based feasibility study for the Indian BSVI regulatory framework. All emission data is generated via physics-based models (EPA MOVES3 VSP bins, WLTC Class 3b driving cycle) and ML-assisted fraud detection; no real-world vehicle data is used. The prototype demonstrates end-to-end architectural viability, gas cost projections at national scale, and fraud-detection accuracy on synthetic adversarial datasets.
 
 ---
 

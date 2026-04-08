@@ -434,6 +434,289 @@ class ReportGenerator:
         )
 
 
+    # ─── PUC Certificate HTML ──────────────────────────────────────────
+
+    @staticmethod
+    def generate_puc_certificate_html(
+        vehicle_id: str,
+        emission_data: dict[str, Any],
+        certificate_data: dict[str, Any],
+    ) -> str:
+        """Generate a printable HTML PUC certificate.
+
+        Parameters
+        ----------
+        vehicle_id : str
+            Vehicle registration number.
+        emission_data : dict
+            Must contain a ``reading`` dict with pollutant values
+            (``co2_gkm``, ``nox_ppm``, ``co_ppm``, ``hc_ppm``,
+            ``pm25_ugm3``) and ``ces_score``.  Optionally ``observed_at``.
+        certificate_data : dict
+            Certificate metadata: ``make_model``, ``fuel_type``,
+            ``issue_date``, ``expiry_date``, ``tx_hash``,
+            ``block_number``, ``overall_pass``, ``thresholds`` (dict
+            mapping pollutant keys to numeric limits).
+
+        Returns
+        -------
+        str
+            Self-contained HTML document suitable for print-to-PDF.
+        """
+        esc = _html.escape
+
+        reading = emission_data.get("reading", emission_data)
+        ces = reading.get("ces_score", emission_data.get("ces_score"))
+        thresholds = certificate_data.get("thresholds", {
+            "co2_gkm": 120.0, "nox_ppm": 0.06, "co_ppm": 1.0,
+            "hc_ppm": 0.1, "pm25_ugm3": 0.0045,
+        })
+
+        # Per-pollutant rows
+        pollutants = [
+            ("CO2", "co2_gkm", "g/km"),
+            ("NOx", "nox_ppm", "ppm"),
+            ("CO", "co_ppm", "ppm"),
+            ("HC", "hc_ppm", "ppm"),
+            ("PM2.5", "pm25_ugm3", "ug/m3"),
+        ]
+
+        rows_html = ""
+        all_pass = True
+        for label, key, unit in pollutants:
+            measured = reading.get(key)
+            threshold = thresholds.get(key)
+            if measured is not None and threshold is not None:
+                passed = float(measured) <= float(threshold)
+            else:
+                passed = True  # unknown = assume pass
+            if not passed:
+                all_pass = False
+            status_text = "PASS" if passed else "FAIL"
+            status_color = "#27ae60" if passed else "#e74c3c"
+            rows_html += (
+                f"<tr>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #ddd;font-weight:600;'>{label}</td>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #ddd;text-align:center;'>"
+                f"{_fmt_float(measured, 4)} {unit}</td>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #ddd;text-align:center;'>"
+                f"{_fmt_float(threshold, 4)} {unit}</td>"
+                f"<td style='padding:8px 12px;border-bottom:1px solid #ddd;text-align:center;"
+                f"font-weight:700;color:{status_color};'>{status_text}</td>"
+                f"</tr>"
+            )
+
+        overall = certificate_data.get("overall_pass", all_pass)
+        overall_text = "PASS" if overall else "FAIL"
+        overall_color = "#27ae60" if overall else "#e74c3c"
+
+        # CES colour
+        ces_val = float(ces) if ces is not None else 0
+        if ces_val >= 70:
+            ces_color = "#27ae60"
+            ces_label = "Good"
+        elif ces_val >= 40:
+            ces_color = "#f39c12"
+            ces_label = "Moderate"
+        else:
+            ces_color = "#e74c3c"
+            ces_label = "Poor"
+
+        make_model = certificate_data.get("make_model", "N/A")
+        fuel_type = certificate_data.get("fuel_type", "N/A")
+        issue_date = certificate_data.get("issue_date", datetime.date.today().isoformat())
+        expiry_date = certificate_data.get("expiry_date",
+            (datetime.date.today() + datetime.timedelta(days=180)).isoformat())
+        tx_hash = certificate_data.get("tx_hash", "0x" + "0" * 64)
+        block_number = certificate_data.get("block_number", "--")
+        verify_url = certificate_data.get("verify_url", "https://smartpuc.example.com/verify")
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PUC Certificate -- {esc(vehicle_id)}</title>
+<style>
+  @page {{ size: A4; margin: 18mm 15mm; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11pt; color: #222; line-height: 1.5;
+    max-width: 210mm; margin: 0 auto; padding: 24px;
+    background: #fff;
+  }}
+  .cert-border {{
+    border: 3px solid #1a365d; border-radius: 12px; padding: 32px;
+    position: relative;
+  }}
+  .cert-border::before {{
+    content: ''; position: absolute; inset: 4px;
+    border: 1px solid #2c5282; border-radius: 9px; pointer-events: none;
+  }}
+  .header {{ text-align: center; margin-bottom: 24px; }}
+  .header h1 {{
+    font-size: 20pt; color: #1a365d; margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }}
+  .header .subtitle {{
+    font-size: 10pt; color: #4a5568; letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 8px;
+  }}
+  .header .divider {{
+    width: 120px; height: 3px; background: linear-gradient(90deg, #1a365d, #2b6cb0, #1a365d);
+    margin: 8px auto 0;
+  }}
+  .details-grid {{
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 32px;
+    margin-bottom: 20px; font-size: 10pt;
+  }}
+  .details-grid dt {{ font-weight: 600; color: #4a5568; }}
+  .details-grid dd {{ margin: 0; color: #1a202c; font-weight: 500; }}
+  .results-table {{
+    width: 100%; border-collapse: collapse; margin-bottom: 20px;
+    font-size: 10pt;
+  }}
+  .results-table th {{
+    background: #1a365d; color: #fff; padding: 8px 12px;
+    text-align: center; font-size: 9pt; text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }}
+  .results-table th:first-child {{ text-align: left; border-radius: 6px 0 0 0; }}
+  .results-table th:last-child {{ border-radius: 0 6px 0 0; }}
+  .ces-box {{
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px; margin-bottom: 20px; padding: 12px;
+    background: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;
+  }}
+  .ces-score {{
+    font-size: 28pt; font-weight: 800; line-height: 1;
+  }}
+  .ces-bar-track {{
+    width: 200px; height: 12px; background: #e2e8f0;
+    border-radius: 6px; overflow: hidden;
+  }}
+  .ces-bar-fill {{
+    height: 100%; border-radius: 6px;
+    transition: width 0.3s;
+  }}
+  .overall-status {{
+    text-align: center; margin-bottom: 20px;
+  }}
+  .overall-badge {{
+    display: inline-block; font-size: 22pt; font-weight: 800;
+    padding: 6px 40px; border-radius: 8px; color: #fff;
+    letter-spacing: 2px;
+  }}
+  .blockchain-box {{
+    background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px 16px; font-size: 9pt; margin-bottom: 16px;
+    display: flex; gap: 24px; flex-wrap: wrap;
+  }}
+  .blockchain-box dt {{ font-weight: 600; color: #4a5568; }}
+  .blockchain-box dd {{ margin: 0; font-family: 'Consolas', 'Courier New', monospace; color: #2d3748; word-break: break-all; }}
+  .qr-section {{
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px; margin-bottom: 16px;
+  }}
+  #qr-code {{
+    width: 100px; height: 100px; border: 1px dashed #cbd5e0;
+    border-radius: 6px; display: flex; align-items: center;
+    justify-content: center; color: #a0aec0; font-size: 8pt;
+  }}
+  .footer {{
+    text-align: center; font-size: 8pt; color: #718096;
+    border-top: 1px solid #e2e8f0; padding-top: 10px;
+    margin-top: 8px;
+  }}
+  @media print {{
+    body {{ padding: 0; }}
+    .no-print {{ display: none; }}
+  }}
+</style>
+</head>
+<body>
+<div class="cert-border">
+
+  <div class="header">
+    <h1>Pollution Under Control (PUC) Certificate</h1>
+    <div class="subtitle">SmartPUC &mdash; Blockchain Verified</div>
+    <div class="divider"></div>
+  </div>
+
+  <h3 style="font-size:11pt;color:#1a365d;margin-bottom:8px;">Vehicle Details</h3>
+  <dl class="details-grid">
+    <dt>Registration No.</dt><dd>{esc(vehicle_id)}</dd>
+    <dt>Make / Model</dt><dd>{esc(str(make_model))}</dd>
+    <dt>Fuel Type</dt><dd>{esc(str(fuel_type))}</dd>
+    <dt>Test Date</dt><dd>{esc(str(issue_date))}</dd>
+  </dl>
+
+  <h3 style="font-size:11pt;color:#1a365d;margin-bottom:8px;">Emission Test Results</h3>
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Pollutant</th>
+        <th>Measured Value</th>
+        <th>BS-VI Threshold</th>
+        <th>Result</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows_html}
+    </tbody>
+  </table>
+
+  <h3 style="font-size:11pt;color:#1a365d;margin-bottom:8px;">Composite Emission Score (CES)</h3>
+  <div class="ces-box">
+    <div>
+      <span class="ces-score" style="color:{ces_color};">{_fmt_float(ces, 2)}</span>
+      <div style="font-size:9pt;color:#718096;text-align:center;">{ces_label}</div>
+    </div>
+    <div>
+      <div class="ces-bar-track">
+        <div class="ces-bar-fill" style="width:{min(ces_val, 100):.0f}%;background:{ces_color};"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#a0aec0;margin-top:2px;">
+        <span>0</span><span>40</span><span>70</span><span>100</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="overall-status">
+    <div style="font-size:9pt;color:#4a5568;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Compliance Status</div>
+    <div class="overall-badge" style="background:{overall_color};">{overall_text}</div>
+  </div>
+
+  <h3 style="font-size:11pt;color:#1a365d;margin-bottom:8px;">Certificate Validity</h3>
+  <dl class="details-grid" style="margin-bottom:16px;">
+    <dt>Issue Date</dt><dd>{esc(str(issue_date))}</dd>
+    <dt>Expiry Date</dt><dd>{esc(str(expiry_date))}</dd>
+  </dl>
+
+  <h3 style="font-size:11pt;color:#1a365d;margin-bottom:8px;">Blockchain Proof</h3>
+  <div class="blockchain-box">
+    <div><dt>Transaction Hash</dt><dd>{esc(str(tx_hash))}</dd></div>
+    <div><dt>Block Number</dt><dd>{esc(str(block_number))}</dd></div>
+  </div>
+
+  <div class="qr-section">
+    <div id="qr-code">QR Code</div>
+    <div style="font-size:8pt;color:#718096;">Scan to verify this<br>certificate on-chain</div>
+  </div>
+
+  <div class="footer">
+    This certificate is anchored on Ethereum blockchain and can be verified at
+    <a href="{esc(verify_url)}" style="color:#2b6cb0;">{esc(verify_url)}</a><br>
+    Generated by Smart PUC Emission Monitoring System &mdash;
+    {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
+  </div>
+
+</div>
+</body>
+</html>"""
+
+
 # ─── Module-level helpers ───────────────────────────────────────────────
 
 def _fmt_float(val: Any, decimals: int = 2) -> str:

@@ -170,6 +170,13 @@ CREATE TABLE IF NOT EXISTS data_retention_log (
     records_purged INTEGER NOT NULL DEFAULT 0,
     retention_days INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS reading_hashes (
+    vehicle_id   TEXT NOT NULL,
+    reading_hash TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    PRIMARY KEY (vehicle_id, reading_hash)
+);
 """
 
 
@@ -339,6 +346,16 @@ class PersistenceStore:
                     d["reading"] = {}
                 out.append(d)
             return out
+
+    def telemetry_vehicle_ids(self) -> list[str]:
+        """Return distinct vehicle IDs that have telemetry records."""
+        if not self.enabled:
+            return []
+        with self._lock, self._conn() as con:
+            rows = con.execute(
+                "SELECT DISTINCT vehicle_id FROM telemetry ORDER BY vehicle_id"
+            ).fetchall()
+            return [r["vehicle_id"] for r in rows]
 
     # ─── Merkle batches ──────────────────────────────────────────────
 
@@ -717,6 +734,38 @@ class PersistenceStore:
                     "FROM erasure_requests ORDER BY id DESC",
                 ).fetchall()
             return [dict(r) for r in rows]
+
+    # ─── Reading deduplication (replay protection) ───────────────────
+
+    def check_reading_duplicate(self, vehicle_id: str, reading_hash: str) -> bool:
+        """Return ``True`` if *reading_hash* was already recorded for
+        *vehicle_id*.  Also auto-purges hashes older than 24 hours to
+        prevent unbounded table growth.
+        """
+        if not self.enabled:
+            return False
+        cutoff = time.time() - 86400  # 24 hours
+        with self._lock, self._conn() as con:
+            con.execute(
+                "DELETE FROM reading_hashes WHERE created_at < ?", (cutoff,)
+            )
+            row = con.execute(
+                "SELECT 1 FROM reading_hashes "
+                "WHERE vehicle_id = ? AND reading_hash = ?",
+                (vehicle_id, reading_hash),
+            ).fetchone()
+            return row is not None
+
+    def store_reading_hash(self, vehicle_id: str, reading_hash: str) -> None:
+        """Persist *reading_hash* so future duplicates are rejected."""
+        if not self.enabled:
+            return
+        with self._lock, self._conn() as con:
+            con.execute(
+                "INSERT OR IGNORE INTO reading_hashes"
+                "(vehicle_id, reading_hash, created_at) VALUES (?, ?, ?)",
+                (vehicle_id, reading_hash, time.time()),
+            )
 
     def purge_old_data(self, retention_days: int = 365) -> dict:
         """Auto-purge telemetry records older than the retention period.

@@ -206,6 +206,32 @@ async function main() {
     console.warn("  Could not write DEPLOYED_ADDRESSES.json:", err.message);
   }
 
+  // ── Step 5b: Auto-sync .env with new REGISTRY_ADDRESS ──────────────
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const envPath = path.join(__dirname, "..", ".env");
+    if (fs.existsSync(envPath)) {
+      let envContent = fs.readFileSync(envPath, "utf8");
+      // Replace existing REGISTRY_ADDRESS line (whether empty or populated)
+      if (/^REGISTRY_ADDRESS=.*$/m.test(envContent)) {
+        envContent = envContent.replace(
+          /^REGISTRY_ADDRESS=.*$/m,
+          `REGISTRY_ADDRESS=${registryAddress}`
+        );
+      } else {
+        // If the key doesn't exist at all, append it
+        envContent = envContent.trimEnd() + `\nREGISTRY_ADDRESS=${registryAddress}\n`;
+      }
+      fs.writeFileSync(envPath, envContent);
+      console.log("  \u2713 .env updated with new contract addresses");
+    } else {
+      console.log("  .env file not found — skipping auto-sync (copy .env.example to .env)");
+    }
+  } catch (err) {
+    console.warn("  Could not update .env:", err.message);
+  }
+
   // ── Optional Step 6: MultiSigAdmin handoff (USE_MULTISIG=1) ────────
   const useMultisig = ["1", "true", "yes", "on"].includes(
     String(process.env.USE_MULTISIG || "").toLowerCase()

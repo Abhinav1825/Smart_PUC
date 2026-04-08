@@ -181,7 +181,19 @@
     setCachedAccount(accounts[0]);
     setCachedChain(chainId);
     _notifyUI(accounts[0], chainId);
+    // Auto-fund wallet with test ETH on local dev chain
+    _autoFundWallet(accounts[0]);
     return { account: accounts[0], chainId };
+  }
+
+  /** Request test ETH from the backend faucet (local dev only). */
+  function _autoFundWallet(address) {
+    const api = window.SMART_PUC_API || 'http://127.0.0.1:5000';
+    fetch(api + '/api/faucet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: address }),
+    }).catch(function() { /* faucet is optional */ });
   }
 
   /** Silent restore on page load — uses already-authorised accounts from
@@ -200,6 +212,7 @@
       setCachedAccount(accounts[0]);
       setCachedChain(chainId);
       _notifyUI(accounts[0], chainId);
+      _autoFundWallet(accounts[0]);
       return { account: accounts[0], chainId };
     } catch (err) {
       console.warn('restoreWallet:', err);

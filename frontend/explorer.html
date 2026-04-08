@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Blockchain Explorer</title>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -329,13 +329,14 @@
 
                 setHealthStatus('healthBackend', true, 'Online');
 
-                const chainOk = data.blockchain_connected || data.chain_id;
+                const chainOk = data.connected || data.blockchain_connected || data.blockNumber > 0;
                 setHealthStatus('healthBlockchain', chainOk, chainOk ? 'Connected' : 'Disconnected');
 
-                const fraudOk = data.fraud_detector !== false;
+                const mods = data.modules || {};
+                const fraudOk = mods.fraud_detector !== false && mods.fraud_detector !== undefined;
                 setHealthStatus('healthFraud', fraudOk, fraudOk ? 'Active' : 'Unavailable');
 
-                const lstmOk = data.lstm_predictor !== false;
+                const lstmOk = mods.lstm_predictor !== false && mods.lstm_predictor !== undefined;
                 setHealthStatus('healthLSTM', lstmOk, lstmOk ? 'Active' : 'Unavailable');
 
                 // Contract addresses

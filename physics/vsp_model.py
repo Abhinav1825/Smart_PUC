@@ -179,7 +179,8 @@ def get_operating_mode_bin(vsp: float, speed_mps: float) -> int:
         22    6 ≤ VSP < 9
         23    9 ≤ VSP < 12
         24    12 ≤ VSP < 18
-        25    18 ≤ VSP < 24
+        25    18 ≤ VSP < 21
+        26    21 ≤ VSP < 24
         27    24 ≤ VSP < 30
         28    VSP ≥ 30
         ====  ============================================
@@ -207,8 +208,10 @@ def get_operating_mode_bin(vsp: float, speed_mps: float) -> int:
         return 23
     if vsp < 18.0:
         return 24
-    if vsp < 24.0:
+    if vsp < 21.0:
         return 25
+    if vsp < 24.0:
+        return 26
     if vsp < 30.0:
         return 27
 
@@ -299,4 +302,8 @@ def estimate_fuel_rate(vsp: float, speed_mps: float) -> float:
     #         = fuel_mL_per_s / speed_m_per_s * 100  (units simplify)
     fuel_l_per_100km: float = (fuel_ml_per_s / speed_mps) * 100.0
 
-    return fuel_l_per_100km
+    # Cap at 20 L/100km — at very low speeds (< 5 km/h) the formula
+    # produces unrealistically large values (e.g. 54 L/100km at 2 km/h)
+    # because the vehicle covers almost no distance.  Real-world fuel
+    # consumption during creeping/parking manoeuvres is bounded.
+    return min(fuel_l_per_100km, 20.0)

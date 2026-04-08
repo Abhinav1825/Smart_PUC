@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate pre-recorded simulation cache for 10 demo vehicles."""
+"""Generate pre-recorded simulation cache for 4 demo vehicle profiles."""
 import json
 import random
 import os
@@ -45,125 +45,59 @@ def rpm_from_speed(speed, max_speed, idle_rpm=800, redline=6000):
 
 
 vehicles = {
+    # 1. Clean vehicle — all readings PASS, CES 0.4-0.7
     "MH12AB1234": {
         "display_name": "Maruti Ciaz (Sedan)",
         "vehicle_class": "SEDAN",
         "fuel_type": "petrol",
         "max_speed": 130,
-        "ces_range": (0.5, 0.9),
-        "co2_base": 120, "co_base": 0.45, "nox_base": 0.035,
-        "hc_base": 0.06, "pm25_base": 0.003,
-        "fail_prob": 0.05,
-        "fraud_range": (0.05, 0.20),
+        "ces_range": (0.4, 0.7),
+        "co2_base": 90, "co_base": 0.30, "nox_base": 0.025,
+        "hc_base": 0.04, "pm25_base": 0.002,
+        "fail_prob": 0.0,
+        "fraud_range": (0.03, 0.15),
         "idle_rpm": 750, "redline": 6500,
     },
+    # 2. Degraded vehicle — some readings FAIL, CES 0.8-1.2, mix of PASS/FAIL
     "MH01CD5678": {
         "display_name": "Maruti WagonR (Hatchback)",
         "vehicle_class": "HATCHBACK",
         "fuel_type": "petrol",
         "max_speed": 120,
-        "ces_range": (0.4, 0.7),
-        "co2_base": 95, "co_base": 0.35, "nox_base": 0.028,
-        "hc_base": 0.045, "pm25_base": 0.002,
-        "fail_prob": 0.0,
-        "fraud_range": (0.03, 0.15),
+        "ces_range": (0.8, 1.2),
+        "co2_base": 135, "co_base": 0.70, "nox_base": 0.055,
+        "hc_base": 0.08, "pm25_base": 0.004,
+        "fail_prob": 0.35,
+        "fraud_range": (0.05, 0.20),
         "idle_rpm": 800, "redline": 6200,
     },
+    # 3. Near-threshold diesel — CES hovering around 0.9-1.05
     "MH04EF9012": {
-        "display_name": "Hyundai Creta (SUV)",
+        "display_name": "Tata Nexon (Diesel)",
         "vehicle_class": "SUV",
         "fuel_type": "diesel",
         "max_speed": 130,
-        "ces_range": (0.7, 1.1),
-        "co2_base": 155, "co_base": 0.30, "nox_base": 0.12,
-        "hc_base": 0.04, "pm25_base": 0.008,
-        "fail_prob": 0.15,
-        "fraud_range": (0.08, 0.25),
+        "ces_range": (0.9, 1.05),
+        "co2_base": 145, "co_base": 0.35, "nox_base": 0.058,
+        "hc_base": 0.045, "pm25_base": 0.0042,
+        "fail_prob": 0.25,
+        "fraud_range": (0.06, 0.22),
         "idle_rpm": 800, "redline": 4500,
     },
+    # 4. Fraud alert vehicle — 2-3 readings with elevated fraud scores (>0.5)
     "MH02GH3456": {
-        "display_name": "Bajaj RE (Auto-rickshaw)",
-        "vehicle_class": "AUTO_RICKSHAW",
-        "fuel_type": "cng",
-        "max_speed": 70,
-        "ces_range": (0.3, 0.6),
-        "co2_base": 65, "co_base": 0.55, "nox_base": 0.02,
-        "hc_base": 0.08, "pm25_base": 0.001,
-        "fail_prob": 0.0,
-        "fraud_range": (0.04, 0.18),
-        "idle_rpm": 900, "redline": 5500,
-    },
-    "MH14JK7890": {
-        "display_name": "Tata LPT 1613 (Truck)",
-        "vehicle_class": "TRUCK",
-        "fuel_type": "diesel",
-        "max_speed": 90,
-        "ces_range": (0.9, 1.5),
-        "co2_base": 320, "co_base": 0.80, "nox_base": 0.35,
-        "hc_base": 0.10, "pm25_base": 0.025,
-        "fail_prob": 0.45,
-        "fraud_range": (0.10, 0.35),
-        "idle_rpm": 700, "redline": 3200,
-    },
-    "MH03LM2345": {
-        "display_name": "Honda Activa (Two-wheeler)",
-        "vehicle_class": "TWO_WHEELER",
+        "display_name": "Hyundai i20 (Hatchback)",
+        "vehicle_class": "HATCHBACK",
         "fuel_type": "petrol",
-        "max_speed": 85,
-        "ces_range": (0.3, 0.5),
-        "co2_base": 42, "co_base": 0.60, "nox_base": 0.015,
-        "hc_base": 0.10, "pm25_base": 0.001,
-        "fail_prob": 0.0,
-        "fraud_range": (0.02, 0.12),
-        "idle_rpm": 1400, "redline": 9000,
-    },
-    "MH09NP6789": {
-        "display_name": "Ashok Leyland Viking (Bus)",
-        "vehicle_class": "BUS",
-        "fuel_type": "diesel",
-        "max_speed": 90,
-        "ces_range": (1.0, 1.8),
-        "co2_base": 480, "co_base": 1.10, "nox_base": 0.55,
-        "hc_base": 0.14, "pm25_base": 0.035,
-        "fail_prob": 0.60,
-        "fraud_range": (0.12, 0.40),
-        "idle_rpm": 650, "redline": 2800,
-    },
-    "MH05QR0123": {
-        "display_name": "Toyota Hyryder (Hybrid)",
-        "vehicle_class": "SUV",
-        "fuel_type": "hybrid_petrol",
-        "max_speed": 130,
-        "ces_range": (0.2, 0.4),
-        "co2_base": 68, "co_base": 0.15, "nox_base": 0.012,
-        "hc_base": 0.02, "pm25_base": 0.001,
-        "fail_prob": 0.0,
-        "fraud_range": (0.02, 0.10),
-        "idle_rpm": 0, "redline": 5500,
-    },
-    "MH06ST4567": {
-        "display_name": "Maruti Ertiga (MPV - CNG)",
-        "vehicle_class": "SEDAN",
-        "fuel_type": "cng",
-        "max_speed": 120,
-        "ces_range": (0.4, 0.65),
-        "co2_base": 85, "co_base": 0.30, "nox_base": 0.025,
-        "hc_base": 0.05, "pm25_base": 0.001,
-        "fail_prob": 0.0,
-        "fraud_range": (0.03, 0.14),
-        "idle_rpm": 750, "redline": 6000,
-    },
-    "MH07UV8901": {
-        "display_name": "Tata Nexon (LPG Retro)",
-        "vehicle_class": "SUV",
-        "fuel_type": "lpg",
         "max_speed": 125,
-        "ces_range": (0.5, 0.8),
-        "co2_base": 105, "co_base": 0.40, "nox_base": 0.030,
+        "ces_range": (0.5, 0.85),
+        "co2_base": 105, "co_base": 0.40, "nox_base": 0.032,
         "hc_base": 0.055, "pm25_base": 0.002,
-        "fail_prob": 0.08,
+        "fail_prob": 0.04,
         "fraud_range": (0.05, 0.18),
-        "idle_rpm": 800, "redline": 6000,
+        "fraud_spike_count": 3,           # number of readings with elevated fraud
+        "fraud_spike_range": (0.55, 0.85),  # fraud score range for spikes
+        "idle_rpm": 800, "redline": 6500,
     },
 }
 
@@ -171,15 +105,25 @@ base_ts = 1712500000  # ~ April 2024
 
 result = {
     "generated_at": "2026-04-07",
-    "description": "Pre-computed emission histories for 10 demo vehicles "
+    "description": "Pre-computed emission histories for 4 demo vehicle profiles "
                    "following realistic WLTC driving patterns.",
     "vehicles": {},
 }
 
+READINGS_PER_VEHICLE = 50
+
 for vid, cfg in vehicles.items():
     readings = []
     ts = base_ts
-    for i in range(50):
+
+    # Determine which reading indices get elevated fraud scores
+    fraud_spike_indices = set()
+    if cfg.get("fraud_spike_count"):
+        fraud_spike_indices = set(
+            random.sample(range(READINGS_PER_VEHICLE), cfg["fraud_spike_count"])
+        )
+
+    for i in range(READINGS_PER_VEHICLE):
         phase = pick_phase()
         speed = speed_for_phase(phase, cfg["max_speed"])
         rpm = rpm_from_speed(
@@ -222,11 +166,16 @@ for vid, cfg in vehicles.items():
         else:
             status = "PASS"
 
-        fraud = round(random.uniform(*cfg["fraud_range"]), 2)
+        # Fraud score — elevated for spike indices
+        if i in fraud_spike_indices:
+            fraud = round(random.uniform(*cfg["fraud_spike_range"]), 2)
+        else:
+            fraud = round(random.uniform(*cfg["fraud_range"]), 2)
 
         readings.append(
             {
                 "timestamp": ts,
+                "vehicle_id": vid,
                 "speed": speed,
                 "rpm": rpm,
                 "fuel_rate": fuel_rate,
@@ -259,13 +208,17 @@ out_path = os.path.normpath(out_path)
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(result, f, indent=2, ensure_ascii=False)
 
-print(f"Generated {len(result['vehicles'])} vehicles, 50 readings each")
+total = sum(len(v["readings"]) for v in result["vehicles"].values())
+print(f"Generated {len(result['vehicles'])} vehicles, {READINGS_PER_VEHICLE} readings each ({total} total)")
 print(f"Output: {out_path}")
 for vid, v in result["vehicles"].items():
     ces_vals = [r["ces_score"] for r in v["readings"]]
     statuses = [r["status"] for r in v["readings"]]
+    fraud_vals = [r["fraud_score"] for r in v["readings"]]
     fails = statuses.count("FAIL")
+    high_fraud = sum(1 for f in fraud_vals if f > 0.5)
     print(
         f"  {vid}: CES {min(ces_vals):.2f}-{max(ces_vals):.2f}, "
-        f"FAIL={fails}/50, {v['display_name']}"
+        f"FAIL={fails}/{READINGS_PER_VEHICLE}, fraud>0.5={high_fraud}, "
+        f"{v['display_name']}"
     )

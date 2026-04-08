@@ -1,475 +1,221 @@
 {
   "dataset": "D:\\OneDrive\\Desktop\\Smart_PUC\\data\\fraud_labelled_dataset.json",
-  "total_readings": 100,
-  "genuine_count": 70,
-  "fraud_count": 30,
+  "total_readings": 1000,
+  "genuine_count": 700,
+  "fraud_count": 300,
+  "train_size": 699,
+  "test_size": 301,
+  "train_genuine": 489,
+  "train_fraud": 210,
+  "test_genuine": 211,
+  "test_fraud": 90,
   "metrics": {
-    "accuracy": 0.66,
-    "precision": 0.4,
-    "recall": 0.2667,
-    "f1": 0.32,
-    "true_positives": 8,
-    "false_positives": 12,
-    "false_negatives": 22,
-    "true_negatives": 58
+    "accuracy": 0.9568,
+    "precision": 1.0,
+    "recall": 0.8556,
+    "f1": 0.9222,
+    "true_positives": 77,
+    "false_positives": 0,
+    "false_negatives": 13,
+    "true_negatives": 211
   },
   "confusion_matrix": {
     "genuine": {
-      "genuine": 58,
-      "fraud": 12
+      "genuine": 211,
+      "fraud": 0
     },
     "fraud": {
-      "genuine": 22,
-      "fraud": 8
+      "genuine": 13,
+      "fraud": 77
     }
   },
   "per_attack_type": {
-    "genuine": {
-      "total": 70,
-      "correctly_classified": 58,
-      "detection_rate": 0.8286
-    },
-    "physics_violation": {
-      "total": 8,
-      "correctly_classified": 7,
-      "detection_rate": 0.875
-    },
-    "replay_attack": {
-      "total": 7,
-      "correctly_classified": 0,
-      "detection_rate": 0.0
-    },
-    "sensor_tampering": {
-      "total": 5,
-      "correctly_classified": 0,
-      "detection_rate": 0.0
+    "coordinated_attack": {
+      "total": 15,
+      "correctly_classified": 14,
+      "detection_rate": 0.9333
     },
     "drift_manipulation": {
-      "total": 5,
-      "correctly_classified": 0,
-      "detection_rate": 0.0
+      "total": 15,
+      "correctly_classified": 15,
+      "detection_rate": 1.0
+    },
+    "genuine": {
+      "total": 211,
+      "correctly_classified": 211,
+      "detection_rate": 1.0
+    },
+    "physics_violation": {
+      "total": 15,
+      "correctly_classified": 15,
+      "detection_rate": 1.0
+    },
+    "replay_attack": {
+      "total": 15,
+      "correctly_classified": 5,
+      "detection_rate": 0.3333
     },
     "station_fraud": {
-      "total": 5,
-      "correctly_classified": 1,
-      "detection_rate": 0.2
+      "total": 15,
+      "correctly_classified": 15,
+      "detection_rate": 1.0
+    },
+    "sensor_tampering": {
+      "total": 15,
+      "correctly_classified": 13,
+      "detection_rate": 0.8667
     }
   },
+  "misclassified_count": 13,
   "misclassified": [
     {
-      "index": 11,
-      "vehicle_id": "MH04GH4001",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_RPM_JUMP",
-        "TEMPORAL_FUEL_JUMP"
-      ]
-    },
-    {
-      "index": 12,
-      "vehicle_id": "MH04GH4002",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP"
-      ]
-    },
-    {
-      "index": 13,
-      "vehicle_id": "MH04GH4003",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP"
-      ]
-    },
-    {
-      "index": 16,
-      "vehicle_id": "MH06KL6001",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_ZERO_SPEED_NONZERO",
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP"
-      ]
-    },
-    {
-      "index": 26,
-      "vehicle_id": "MH04GH4004",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP",
-        "TEMPORAL_RPM_JUMP"
-      ]
-    },
-    {
-      "index": 27,
-      "vehicle_id": "MH04GH4005",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP"
-      ]
-    },
-    {
-      "index": 30,
-      "vehicle_id": "MH06KL6002",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_ZERO_SPEED_NONZERO",
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 40,
-      "vehicle_id": "MH04GH4006",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_RPM_JUMP",
-        "DRIFT_DOWNWARD_CES"
-      ]
-    },
-    {
-      "index": 52,
-      "vehicle_id": "MH06KL6003",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_ZERO_SPEED_NONZERO",
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_DOWNWARD_CES"
-      ]
-    },
-    {
-      "index": 55,
-      "vehicle_id": "MH04GH4008",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_DOWNWARD_CES"
-      ]
-    },
-    {
-      "index": 62,
-      "vehicle_id": "MH04GH4009",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "DRIFT_DOWNWARD_CES"
-      ]
-    },
-    {
-      "index": 66,
-      "vehicle_id": "MH09QR9003",
-      "true_label": "genuine",
-      "predicted_label": "fraud",
-      "fraud_score": 0.55,
-      "attack_type": null,
-      "reason_codes": [
-        "PHYSICS_RPM_SPEED_BOUNDS_VIOLATION",
-        "TEMPORAL_RPM_JUMP",
-        "DRIFT_DOWNWARD_CES"
-      ]
-    },
-    {
-      "index": 77,
-      "vehicle_id": "FRAUD_PHYS_08",
+      "index": 6047,
+      "vehicle_id": "MH01CA0045",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1375,
-      "attack_type": "physics_violation",
+      "fraud_score": 0.0,
+      "attack_type": "coordinated_attack",
       "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_DOWNWARD_CES"
+        "NONE"
       ]
     },
     {
-      "index": 78,
-      "vehicle_id": "FRAUD_REPLAY_01",
+      "index": 2030,
+      "vehicle_id": "MH01RP0006",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1375,
+      "fraud_score": 0.0,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
+        "NONE"
       ]
     },
     {
-      "index": 79,
-      "vehicle_id": "FRAUD_REPLAY_01",
+      "index": 2031,
+      "vehicle_id": "MH01RP0006",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1,
+      "fraud_score": 0.0,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "DRIFT_UPWARD_CES"
+        "NONE"
       ]
     },
     {
-      "index": 80,
-      "vehicle_id": "FRAUD_REPLAY_01",
+      "index": 2032,
+      "vehicle_id": "MH01RP0006",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1375,
+      "fraud_score": 0.0375,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "TEMPORAL_REPLAY_STREAK",
-        "DRIFT_UPWARD_CES"
+        "TEMPORAL_REPLAY_STREAK"
       ]
     },
     {
-      "index": 81,
-      "vehicle_id": "FRAUD_REPLAY_02",
+      "index": 2033,
+      "vehicle_id": "MH01RP0006",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1375,
+      "fraud_score": 0.0375,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
+        "TEMPORAL_REPLAY_STREAK"
       ]
     },
     {
-      "index": 82,
-      "vehicle_id": "FRAUD_REPLAY_02",
+      "index": 2034,
+      "vehicle_id": "MH01RP0006",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1,
+      "fraud_score": 0.0375,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "DRIFT_UPWARD_CES"
+        "TEMPORAL_REPLAY_STREAK"
       ]
     },
     {
-      "index": 83,
-      "vehicle_id": "FRAUD_REPLAY_03",
+      "index": 2040,
+      "vehicle_id": "MH01RP0008",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1375,
+      "fraud_score": 0.0,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
+        "NONE"
       ]
     },
     {
-      "index": 84,
-      "vehicle_id": "FRAUD_REPLAY_03",
+      "index": 2041,
+      "vehicle_id": "MH01RP0008",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1,
+      "fraud_score": 0.0,
       "attack_type": "replay_attack",
       "reason_codes": [
-        "DRIFT_UPWARD_CES"
+        "NONE"
       ]
     },
     {
-      "index": 85,
-      "vehicle_id": "FRAUD_TAMPER_01",
+      "index": 2042,
+      "vehicle_id": "MH01RP0008",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1375,
+      "fraud_score": 0.0375,
+      "attack_type": "replay_attack",
+      "reason_codes": [
+        "TEMPORAL_REPLAY_STREAK"
+      ]
+    },
+    {
+      "index": 2043,
+      "vehicle_id": "MH01RP0008",
+      "true_label": "fraud",
+      "predicted_label": "genuine",
+      "fraud_score": 0.0375,
+      "attack_type": "replay_attack",
+      "reason_codes": [
+        "TEMPORAL_REPLAY_STREAK"
+      ]
+    },
+    {
+      "index": 2044,
+      "vehicle_id": "MH01RP0008",
+      "true_label": "fraud",
+      "predicted_label": "genuine",
+      "fraud_score": 0.0375,
+      "attack_type": "replay_attack",
+      "reason_codes": [
+        "TEMPORAL_REPLAY_STREAK"
+      ]
+    },
+    {
+      "index": 3044,
+      "vehicle_id": "MH01ST0044",
+      "true_label": "fraud",
+      "predicted_label": "genuine",
+      "fraud_score": 0.0033,
       "attack_type": "sensor_tampering",
       "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
+        "NONE"
       ]
     },
     {
-      "index": 86,
-      "vehicle_id": "FRAUD_TAMPER_02",
+      "index": 3047,
+      "vehicle_id": "MH01ST0047",
       "true_label": "fraud",
       "predicted_label": "genuine",
-      "fraud_score": 0.1414,
+      "fraud_score": 0.0,
       "attack_type": "sensor_tampering",
       "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 87,
-      "vehicle_id": "FRAUD_TAMPER_03",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1039,
-      "attack_type": "sensor_tampering",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 88,
-      "vehicle_id": "FRAUD_TAMPER_04",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1375,
-      "attack_type": "sensor_tampering",
-      "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 89,
-      "vehicle_id": "FRAUD_TAMPER_05",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1375,
-      "attack_type": "sensor_tampering",
-      "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 90,
-      "vehicle_id": "FRAUD_DRIFT_01",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1,
-      "attack_type": "drift_manipulation",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 91,
-      "vehicle_id": "FRAUD_DRIFT_01",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1,
-      "attack_type": "drift_manipulation",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 92,
-      "vehicle_id": "FRAUD_DRIFT_01",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1,
-      "attack_type": "drift_manipulation",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 93,
-      "vehicle_id": "FRAUD_DRIFT_02",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1,
-      "attack_type": "drift_manipulation",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 94,
-      "vehicle_id": "FRAUD_DRIFT_02",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1,
-      "attack_type": "drift_manipulation",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 95,
-      "vehicle_id": "FRAUD_STATION_01",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1,
-      "attack_type": "station_fraud",
-      "reason_codes": [
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 96,
-      "vehicle_id": "FRAUD_STATION_02",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1375,
-      "attack_type": "station_fraud",
-      "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 98,
-      "vehicle_id": "FRAUD_STATION_04",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1375,
-      "attack_type": "station_fraud",
-      "reason_codes": [
-        "TEMPORAL_RPM_JUMP",
-        "DRIFT_UPWARD_CES"
-      ]
-    },
-    {
-      "index": 99,
-      "vehicle_id": "FRAUD_STATION_05",
-      "true_label": "fraud",
-      "predicted_label": "genuine",
-      "fraud_score": 0.1375,
-      "attack_type": "station_fraud",
-      "reason_codes": [
-        "TEMPORAL_SPEED_JUMP",
-        "DRIFT_DOWNWARD_CES"
+        "NONE"
       ]
     }
   ],
   "notes": [
-    "IsolationForest fitted on genuine readings from the same dataset",
-    "VSP not available in labelled dataset (defaulted to 0.0)",
-    "Temporal checks rely on sequential ordering of dataset entries",
-    "Replay attack detection requires consecutive identical readings",
-    "Station fraud detection depends on cross-vehicle CES similarity (may not be fully captured by single-reading analysis)"
+    "IsolationForest fitted on genuine training data only (70/30 split)",
+    "Temporal checks process readings grouped by vehicle_id",
+    "Replay attack detection uses 60-reading temporal window",
+    "Per-vehicle fresh temporal state for proper sequential analysis"
   ]
 }

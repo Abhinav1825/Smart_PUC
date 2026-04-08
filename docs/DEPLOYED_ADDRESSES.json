@@ -2,7 +2,7 @@
   "31337": {
     "network": "localhost",
     "chainId": 31337,
-    "deployedAt": "2026-04-06T17:48:52.766Z",
+    "deployedAt": "2026-04-08T18:38:52.325Z",
     "contracts": {
       "GreenToken": "0x2Ed6De230a57C50ac32306A19773a76a0a981438",
       "EmissionRegistry": "0xaA2431f952077580FFbfeB40821B7eed053598dC",

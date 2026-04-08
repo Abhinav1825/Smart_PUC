@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Smart PUC — Green Credit Token Marketplace. Redeem GCT for toll discounts, parking waivers, tax credits, and more.">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — GCT Marketplace</title>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -514,6 +514,15 @@ async function redeemReward(rewardType) {
                 btn.disabled = false; btn.textContent = prevText; return;
             }
         }
+        // Fund wallet with test ETH for gas fees (local dev only)
+        try {
+            await fetch((window.SMART_PUC_API || 'http://127.0.0.1:5000') + '/api/faucet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: connectedAddress }),
+            });
+        } catch (_) { /* faucet optional */ }
+
         const redeemABI = [ "function redeem(uint8 _rewardType)" ];
         const tokenContract = new ethers.Contract(greenTokenAddress, redeemABI, signer);
         const tx = await tokenContract.redeem(rewardType);
@@ -563,6 +572,15 @@ async function transferGCT() {
             btn.disabled = false;
             return;
         }
+
+        // Fund wallet with test ETH for gas fees (local dev only)
+        try {
+            await fetch((window.SMART_PUC_API || 'http://127.0.0.1:5000') + '/api/faucet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: connectedAddress }),
+            });
+        } catch (_) { /* faucet optional */ }
 
         const transferABI = [
             "function transfer(address to, uint256 amount) returns (bool)"

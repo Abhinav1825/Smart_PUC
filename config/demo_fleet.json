@@ -54,7 +54,10 @@
       "owner_name": "Priya Sharma",
       "registration_date": "2023-06-22",
       "insurance_valid_until": "2028-06-21",
-      "fitness_valid_until": "2038-06-21"
+      "fitness_valid_until": "2038-06-21",
+      "emission_multiplier": 2.5,
+      "mileage_km": 185000,
+      "manufacture_year": 2018
     },
     {
       "registration_no": "MH04EF9012",
@@ -108,7 +111,8 @@
       "owner_name": "Suresh Yadav",
       "registration_date": "2019-08-05",
       "insurance_valid_until": "2026-08-04",
-      "fitness_valid_until": "2027-08-04"
+      "fitness_valid_until": "2027-08-04",
+      "demo_fraud_vehicle": true
     },
     {
       "registration_no": "MH14JK7890",

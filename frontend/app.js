@@ -20,6 +20,25 @@ function escapeHtml(str) {
 // === Configuration ===
 const API_BASE = window.SMART_PUC_API || 'http://127.0.0.1:5000';
 
+// === Auth Helper ===
+// wallet.js monkey-patches window.fetch to auto-attach JWT tokens for
+// all requests to API_BASE. For authenticated POST endpoints, use
+// authFetch() which also sets Content-Type.
+function authFetch(url, options = {}) {
+    // wallet.js handles Authorization header via monkey-patched fetch.
+    // We just ensure Content-Type is set for JSON POSTs.
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    return fetch(url, { ...options, headers }).then(function(res) {
+        if (!res.ok) {
+            console.warn('[SmartPUC] ' + (options.method || 'GET') + ' ' + url + ' → ' + res.status);
+        }
+        return res;
+    }).catch(function(e) {
+        console.error('[SmartPUC] Network error: ' + url, e.message);
+        throw e;
+    });
+}
+
 // Contract ABIs — EmissionRegistry (3-node version)
 const REGISTRY_ABI = [
     "function getAllRecords(string memory _vehicleId) view returns (tuple(string vehicleId, uint256 co2, uint256 co, uint256 nox, uint256 hc, uint256 pm25, uint256 cesScore, uint256 fraudScore, uint256 vspValue, uint8 wltcPhase, uint256 timestamp, bool status, address deviceAddress, address stationAddress)[])",
@@ -222,8 +241,9 @@ function initMap() {
 
 // === Route Simulation ===
 async function toggleRouteSimulation() {
+    console.log('[SmartPUC] toggleRouteSimulation() called');
     const btn = document.getElementById('startRouteBtn');
-    if (!btn) return;
+    if (!btn) { console.warn('[SmartPUC] startRouteBtn not found'); return; }
 
     if (autoSimInterval) {
         clearInterval(autoSimInterval);
@@ -244,15 +264,23 @@ async function toggleRouteSimulation() {
     await loadRoute(route.start, route.end);
 
     currentPointIndex = 0;
+    routeFinished = false;
+    // Reset simulator cycle on backend
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    fetch(API_BASE + '/api/simulate/reset?vehicle_id=' + encodeURIComponent(vehicleId)).catch(() => {});
+    // Run first step immediately, then every 500ms for fast demo
+    runSimulationStep();
+    moveCarAlongRoute();
     autoSimInterval = setInterval(async () => {
         await runSimulationStep();
         moveCarAlongRoute();
-    }, 3000);
+    }, 500);
 }
 
 async function loadRoute(start, end) {
     try {
         const url = `https://router.project-osrm.org/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?geometries=geojson&overview=full`;
+        console.log('[SmartPUC] Loading route from OSRM...');
         const res = await fetch(url);
         const data = await res.json();
         if (data.routes && data.routes.length > 0) {
@@ -262,30 +290,68 @@ async function loadRoute(start, end) {
             routePolyline = L.polyline(coords, { color: '#007AFF', weight: 4, opacity: 0.8 }).addTo(map);
             map.fitBounds(routePolyline.getBounds(), { padding: [30, 30] });
             carMarker.setLatLng(coords[0]);
+            console.log('[SmartPUC] Route loaded:', coords.length, 'points');
+            return;
         }
-    } catch (e) { console.warn('Route loading failed:', e.message); }
+    } catch (e) { console.warn('[SmartPUC] OSRM route failed, using straight line:', e.message); }
+
+    // Fallback: straight line between start and end (10 interpolated points)
+    console.log('[SmartPUC] Using fallback straight-line route');
+    const steps = 30;
+    routeCoordinates = [];
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        routeCoordinates.push([
+            start[1] + t * (end[1] - start[1]),
+            start[0] + t * (end[0] - start[0])
+        ]);
+    }
+    if (routePolyline) map.removeLayer(routePolyline);
+    routePolyline = L.polyline(routeCoordinates, { color: '#007AFF', weight: 4, opacity: 0.8, dashArray: '10 6' }).addTo(map);
+    map.fitBounds(routePolyline.getBounds(), { padding: [30, 30] });
+    carMarker.setLatLng(routeCoordinates[0]);
 }
+
+let routeFinished = false;
 
 function moveCarAlongRoute() {
     if (routeCoordinates.length === 0) return;
-    currentPointIndex = (currentPointIndex + 1) % routeCoordinates.length;
+    currentPointIndex += 3; // skip points for faster car movement
+    if (currentPointIndex >= routeCoordinates.length) {
+        // Route completed — stop simulation automatically
+        routeFinished = true;
+        clearInterval(autoSimInterval);
+        autoSimInterval = null;
+        const btn = document.getElementById('startRouteBtn');
+        if (btn) { btn.textContent = 'Start Route'; btn.classList.remove('btn-danger'); btn.classList.add('btn-accent'); }
+        showAlert('Route completed! Check your certificate eligibility below.', 'success');
+        currentPointIndex = routeCoordinates.length - 1; // stay at end
+        // Load history for the completed route
+        loadHistory();
+        return;
+    }
     carMarker.setLatLng(routeCoordinates[currentPointIndex]);
 }
 
 // === Simulation Step ===
 async function runSimulationStep() {
-    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
+    if (routeFinished) return; // route already completed
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    console.log('[SmartPUC] runSimulationStep() vehicle=' + vehicleId);
 
     try {
-        const res = await fetch(API_BASE + '/api/record', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vehicle_id: vehicleId })
-        });
+        // Use /api/simulate (no auth required) for frontend demo.
+        // This generates a realistic reading without writing to blockchain.
+        const url = API_BASE + '/api/simulate?vehicle_id=' + encodeURIComponent(vehicleId);
+        console.log('[SmartPUC] Fetching:', url);
+        const res = await fetch(url);
+        if (!res.ok) { console.warn('[SmartPUC] simulate HTTP', res.status); return; }
         const data = await res.json();
-        if (!data.success) return;
+        console.log('[SmartPUC] simulate response:', JSON.stringify(data).substring(0, 200));
+        if (!data.success) { console.warn('[SmartPUC] simulate success=false:', data.error); return; }
 
-        const d = data.data;
+        const d = data.data || data;
+        console.log('[SmartPUC] Updating UI — CES:', d.ces_score, 'status:', d.status, 'speed:', d.speed);
         updateLiveMetrics(d);
         updateCESGauge(d.ces_score);
         updateComplianceBadge(d.status);
@@ -295,7 +361,7 @@ async function runSimulationStep() {
         updatePredictionChart(d.predictions);
         updateVehicleStats(d.vehicle_stats);
         checkCertificateEligibility(d.certificate_eligible);
-    } catch (e) { console.warn('Simulation step failed:', e.message); }
+    } catch (e) { console.error('[SmartPUC] Simulation step FAILED:', e.message, e); }
 }
 
 // === UI Update Functions ===
@@ -446,13 +512,25 @@ async function loadCertificateStatus() {
 
 async function requestCertificate() {
     const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
+
+    // Try to get signer from MetaMask if not already set (wallet.js may
+    // have connected without setting app.js's signer variable)
+    if (!signer && typeof window.ethereum !== 'undefined') {
+        try {
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            if (accounts && accounts.length > 0) {
+                provider = new ethers.BrowserProvider(window.ethereum);
+                signer = await provider.getSigner();
+            }
+        } catch (e) { /* ignore */ }
+    }
     if (!signer) { showAlert('Connect MetaMask first', 'warning'); return; }
 
     const ownerAddress = await signer.getAddress();
+
     try {
-        const res = await fetch(`${API_BASE}/api/certificate/issue`, {
+        const res = await authFetch(`${API_BASE}/api/certificate/issue`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ vehicle_id: vehicleId, vehicle_owner: ownerAddress })
         });
         const data = await res.json();
@@ -468,9 +546,11 @@ async function requestCertificate() {
 
 // === History Loading ===
 async function loadHistory() {
-    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || '';
+    console.log('[SmartPUC] loadHistory() called');
+    const vehicleId = document.getElementById('vehicleIdInput')?.value?.trim()?.toUpperCase() || 'MH12AB1234';
+    console.log('[SmartPUC] Loading history for:', vehicleId);
     const tbody = document.getElementById('historyTableBody');
-    if (!tbody) return;
+    if (!tbody) { console.warn('[SmartPUC] historyTableBody element not found'); return; }
 
     tbody.innerHTML = '<tr><td colspan="10" class="text-center"><div class="spinner"></div></td></tr>';
 

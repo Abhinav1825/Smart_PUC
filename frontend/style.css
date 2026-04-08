@@ -76,6 +76,7 @@ html {
     font-size: 16px;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
 }
 
 body {
@@ -111,14 +112,15 @@ body::before {
 /* ── Header / Navbar ───────────────────────────────────────────────── */
 .navbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
     padding: var(--space-md) var(--space-lg);
-    margin-bottom: var(--space-2xl);
+    margin-bottom: var(--space-lg);
     background: var(--clr-surface);
     border: 1px solid var(--clr-border);
     border-radius: var(--radius-xl);
     backdrop-filter: blur(16px);
+    gap: var(--space-sm);
 }
 
 .navbar-brand {
@@ -127,57 +129,80 @@ body::before {
     gap: var(--space-sm);
     text-decoration: none;
     color: var(--clr-text);
+    flex-shrink: 0;
 }
 
 .navbar-brand .logo {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     background: linear-gradient(135deg, var(--clr-primary), var(--clr-accent));
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 800;
     color: #fff;
 }
 
 .navbar-brand h1 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 700;
     letter-spacing: -0.02em;
+    white-space: nowrap;
 }
 
 .navbar-brand span {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     font-weight: 500;
     color: var(--clr-text-muted);
-    display: block;
-    margin-top: -2px;
+    display: none; /* Hidden — 12 nav links need the space */
 }
 
 .navbar-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 2px;
+    flex-wrap: wrap;
+    flex: 1;
+    justify-content: flex-end;
 }
 
 .nav-link {
     display: inline-flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: var(--space-sm) var(--space-md);
+    padding: 0.35rem 0.6rem;
     color: var(--clr-text-muted);
     text-decoration: none;
-    font-size: 0.875rem;
+    font-size: 0.78rem;
     font-weight: 500;
     border-radius: var(--radius-sm);
     transition: var(--transition);
+    white-space: nowrap;
 }
 
 .nav-link:hover, .nav-link.active {
     color: var(--clr-text);
     background: var(--clr-surface-2);
+}
+
+/* ── Vehicle Controls Grid ─────────────────────────────────────────── */
+.vehicle-controls-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1.2fr auto auto;
+    gap: var(--space-md);
+    align-items: end;
+}
+@media (max-width: 1200px) {
+    .vehicle-controls-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+}
+@media (max-width: 768px) {
+    .vehicle-controls-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ── Buttons ───────────────────────────────────────────────────────── */
@@ -673,37 +698,95 @@ td .mono {
         flex-direction: column;
         gap: var(--space-sm);
         padding: var(--space-sm);
+        /* Reduce expensive glassmorphism blur on mobile for performance */
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        background: rgba(17, 24, 39, 0.92);
     }
+    /* Hide subtitle on small screens */
+    .navbar-brand span[data-i18n="brand_subtitle"] { display: none; }
     .navbar-actions {
         flex-wrap: wrap;
         justify-content: center;
         gap: var(--space-xs);
     }
-    .nav-link { font-size: 0.75rem; padding: 0.25rem 0.5rem; }
+    /* Smaller nav action buttons */
+    .navbar-actions .btn,
+    .navbar-actions .lang-selector-btn,
+    .navbar-actions .notif-bell-btn,
+    .navbar-actions button {
+        font-size: 0.75rem;
+        padding: 0.3rem 0.5rem;
+    }
+    .nav-link { font-size: 0.75rem; padding: 0.25rem 0.5rem; min-height: 44px; display: inline-flex; align-items: center; }
+    /* Vehicle selector: stack vertically */
+    .card > div[style*="display: flex"][style*="flex-wrap: wrap"],
+    .card > div[style*="display:flex"][style*="flex-wrap"] {
+        flex-direction: column !important;
+    }
+    .card > div[style*="display: flex"] > .form-group {
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+        width: 100%;
+    }
+    .form-input, .form-select {
+        font-size: 0.875rem;
+        width: 100%;
+        min-height: 44px;
+    }
+    /* Vehicle specs grid: 2 columns on mobile */
+    .vehicle-specs-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    /* Live metrics grid */
     .metrics-grid { grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
     .metric-value { font-size: 1.5rem; }
-    .metric-card { padding: var(--space-md); }
-    .card { padding: var(--space-md); }
-    .ces-gauge { width: 160px; }
+    .metric-card { padding: var(--space-sm) var(--space-md); }
+    .metric-label { font-size: 0.7rem; }
+    .metric-unit { font-size: 0.75rem; }
+    .card { padding: var(--space-md); border-radius: var(--radius-md); }
+    .ces-gauge { width: 160px; max-width: 100%; }
+    .ces-gauge-svg { max-width: 100%; height: auto; }
     .status-badge-large { font-size: 1.125rem; padding: 0.5rem 1.25rem; }
     .fraud-banner-content { flex-direction: column; text-align: center; }
     .fraud-score-display { margin-left: 0; }
-    table { font-size: 0.75rem; }
+    /* Map full width with minimum height */
+    .map-responsive { width: 100%; min-height: 250px; border-radius: var(--radius-md); }
+    #map { min-height: 250px; }
+    /* Ensure tables scroll horizontally on mobile */
+    .table-container, .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { font-size: 0.75rem; min-width: 600px; }
     th, td { padding: var(--space-sm); }
     .wallet-status { font-size: 0.7rem; }
-    .btn { padding: 0.5rem 0.875rem; font-size: 0.8rem; }
-    .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
-    /* Hide less important nav links on mobile */
-    .form-input, .form-select { font-size: 0.875rem; }
+    /* Touch-friendly tap targets */
+    .btn { padding: 0.5rem 0.875rem; font-size: 0.8rem; min-height: 44px; }
+    .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; min-height: 44px; }
+    a, button { min-height: 44px; }
+    /* Minimum readable font size on mobile */
+    body { font-size: 0.875rem; line-height: 1.6; }
 }
 
 @media (max-width: 480px) {
+    /* Single column metrics */
     .metrics-grid { grid-template-columns: 1fr; }
     .cert-grid { grid-template-columns: 1fr 1fr; }
     .navbar-brand h1 { font-size: 1rem; }
-    .ces-gauge { width: 140px; }
+    .ces-gauge { width: 140px; max-width: 100%; }
     .table-container { margin: 0 calc(-1 * var(--space-sm)); }
+    /* Vehicle specs: single column on very small screens */
+    .vehicle-specs-grid {
+        grid-template-columns: 1fr !important;
+    }
+    /* Stack cards with reduced padding */
+    .metric-card { padding: var(--space-sm); }
+    .card { padding: var(--space-sm); border-radius: var(--radius-sm); }
+    /* Ensure body text stays readable */
+    body { font-size: 0.875rem; }
+    .metric-value { font-size: 1.25rem; }
+    .metric-label { font-size: 0.65rem; }
+    /* Map minimum height */
+    .map-responsive, #map { min-height: 250px; }
 }
 
 /* Print styles */
@@ -1002,7 +1085,7 @@ td .mono {
 
 /* ── Responsive Map ───────────────────────────────────────────────── */
 .map-responsive {
-    height: clamp(250px, 50vh, 500px);
+    height: 320px;
     width: 100%;
     border-radius: var(--radius-lg);
     background-color: var(--clr-surface-2);

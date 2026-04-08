@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Vehicle Comparison</title>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -346,6 +346,112 @@
                     <tbody id="summaryBody"></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- CES vs CO2-Only Detection Comparison -->
+    <div class="card" style="margin-bottom: 1.5rem;" id="cesComparisonSection">
+        <div class="card-header">
+            <div class="card-title"><span class="icon">&#128269;</span> CES vs CO&#8322;-Only Detection Comparison</div>
+            <span class="text-muted text-mono" id="cesCompStatus">Static data</span>
+        </div>
+
+        <!-- Large number cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
+            <div style="background:rgba(0,122,255,0.08);border:1px solid rgba(0,122,255,0.25);border-radius:14px;padding:1.5rem;text-align:center;">
+                <div style="font-size:0.75rem;color:#8892b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">CES Detects</div>
+                <div id="cesRate" style="font-size:2.8rem;font-weight:800;color:#007AFF;line-height:1;">42.4%</div>
+                <div style="font-size:0.8rem;color:#8892b0;margin-top:0.3rem;">of all violations</div>
+            </div>
+            <div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.25);border-radius:14px;padding:1.5rem;text-align:center;">
+                <div style="font-size:0.75rem;color:#8892b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">CO&#8322;-Only Detects</div>
+                <div id="co2Rate" style="font-size:2.8rem;font-weight:800;color:#FF9800;line-height:1;">29.8%</div>
+                <div style="font-size:0.8rem;color:#8892b0;margin-top:0.3rem;">of all violations</div>
+            </div>
+        </div>
+
+        <!-- Horizontal bar comparison -->
+        <div style="margin-bottom:1.5rem;">
+            <div style="margin-bottom:0.75rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:0.85rem;font-weight:600;color:#e6f1ff;">CES (Multi-pollutant)</span>
+                    <span class="mono" style="color:#007AFF;font-weight:700;" id="cesBarLabel">42.4%</span>
+                </div>
+                <div style="width:100%;height:28px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;">
+                    <div id="cesBar" style="height:100%;width:42.4%;background:linear-gradient(90deg,#007AFF,#3395ff);border-radius:6px;transition:width 0.6s ease;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:0.85rem;font-weight:600;color:#e6f1ff;">CO&#8322;-Only</span>
+                    <span class="mono" style="color:#FF9800;font-weight:700;" id="co2BarLabel">29.8%</span>
+                </div>
+                <div style="width:100%;height:28px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;">
+                    <div id="co2Bar" style="height:100%;width:29.8%;background:linear-gradient(90deg,#FF9800,#ffb74d);border-radius:6px;transition:width 0.6s ease;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Callout box -->
+        <div id="cesCallout" style="background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.3);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.75rem;">
+            <span style="font-size:1.5rem;">&#9989;</span>
+            <div>
+                <div style="font-size:1rem;font-weight:700;color:#4CAF50;">CES catches 42.3% more violations than CO&#8322;-only monitoring</div>
+                <div style="font-size:0.82rem;color:#8892b0;margin-top:2px;">CO&#8322;-only missed 15,007 violation-seconds that CES detected</div>
+            </div>
+        </div>
+
+        <!-- Per-pollutant breakdown table -->
+        <h4 style="font-size:0.9rem;color:#e6f1ff;margin-bottom:0.75rem;font-weight:600;">Per-Pollutant Detection Breakdown</h4>
+        <div style="overflow-x:auto;">
+            <table class="summary-table" id="pollutantBreakdownTable">
+                <thead>
+                    <tr>
+                        <th>Pollutant</th>
+                        <th>CES Detection Rate</th>
+                        <th>CO&#8322;-Only Rate</th>
+                        <th>Additional Catches</th>
+                        <th>Impact</th>
+                    </tr>
+                </thead>
+                <tbody id="pollutantBreakdownBody">
+                    <tr>
+                        <td style="font-weight:600;color:#e6f1ff;">NOx</td>
+                        <td class="mono" style="color:#007AFF;">38.2%</td>
+                        <td class="mono" style="color:#FF9800;">29.8%</td>
+                        <td class="mono" style="color:#4CAF50;">+8.4 pp</td>
+                        <td><span style="background:rgba(244,67,54,0.15);color:#F44336;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Highest</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:600;color:#e6f1ff;">PM2.5</td>
+                        <td class="mono" style="color:#007AFF;">35.1%</td>
+                        <td class="mono" style="color:#FF9800;">29.8%</td>
+                        <td class="mono" style="color:#4CAF50;">+5.3 pp</td>
+                        <td><span style="background:rgba(255,152,0,0.15);color:#FF9800;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">High</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:600;color:#e6f1ff;">CO</td>
+                        <td class="mono" style="color:#007AFF;">33.6%</td>
+                        <td class="mono" style="color:#FF9800;">29.8%</td>
+                        <td class="mono" style="color:#4CAF50;">+3.8 pp</td>
+                        <td><span style="background:rgba(255,152,0,0.15);color:#FF9800;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">High</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:600;color:#e6f1ff;">HC</td>
+                        <td class="mono" style="color:#007AFF;">31.4%</td>
+                        <td class="mono" style="color:#FF9800;">29.8%</td>
+                        <td class="mono" style="color:#4CAF50;">+1.6 pp</td>
+                        <td><span style="background:rgba(76,175,80,0.15);color:#4CAF50;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Moderate</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:600;color:#e6f1ff;">CO&#8322;</td>
+                        <td class="mono" style="color:#007AFF;">29.8%</td>
+                        <td class="mono" style="color:#FF9800;">29.8%</td>
+                        <td class="mono" style="color:#8892b0;">+0.0 pp</td>
+                        <td><span style="background:rgba(255,255,255,0.05);color:#8892b0;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Baseline</span></td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -785,9 +891,46 @@ function renderSummaryStats(statsResults) {
     }).join('');
 }
 
+// ── CES vs CO2 Comparison loader ──
+async function loadCESComparison() {
+    // Default static data
+    let cesRate = 42.4, co2Rate = 29.8, gap = 12.6, missedSeconds = 15007;
+    let pollutantData = null;
+
+    try {
+        const res = await fetch(`${API}/api/analytics/ces-comparison`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.ces_detection_rate != null) cesRate = data.ces_detection_rate;
+            if (data.co2_only_detection_rate != null) co2Rate = data.co2_only_detection_rate;
+            if (data.gap != null) gap = data.gap;
+            if (data.missed_violation_seconds != null) missedSeconds = data.missed_violation_seconds;
+            if (data.per_pollutant) pollutantData = data.per_pollutant;
+            document.getElementById('cesCompStatus').textContent = 'Live data';
+        }
+    } catch (_e) {
+        // fall through to static defaults
+    }
+
+    gap = Math.abs(cesRate - co2Rate);
+    const improvement = co2Rate > 0 ? (((cesRate - co2Rate) / co2Rate) * 100).toFixed(1) : '0';
+
+    document.getElementById('cesRate').textContent = cesRate.toFixed(1) + '%';
+    document.getElementById('co2Rate').textContent = co2Rate.toFixed(1) + '%';
+    document.getElementById('cesBar').style.width = cesRate + '%';
+    document.getElementById('cesBarLabel').textContent = cesRate.toFixed(1) + '%';
+    document.getElementById('co2Bar').style.width = co2Rate + '%';
+    document.getElementById('co2BarLabel').textContent = co2Rate.toFixed(1) + '%';
+    document.getElementById('cesCallout').querySelector('div > div:first-child').textContent =
+        `CES catches ${improvement}% more violations than CO\u2082-only monitoring`;
+    document.getElementById('cesCallout').querySelector('div > div:last-child').textContent =
+        `CO\u2082-only missed ${missedSeconds.toLocaleString()} violation-seconds that CES detected`;
+}
+
 // ── Initialize ──
 document.addEventListener('DOMContentLoaded', function() {
     loadFleet();
+    loadCESComparison();
     // Hamburger menu
     var hBtn = document.getElementById('hamburgerBtn');
     var hNav = document.getElementById('navbarActions');

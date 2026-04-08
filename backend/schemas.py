@@ -114,6 +114,21 @@ class RTOEnforceRequest(BaseModel):
 
 # ─────────────────────────── notifications ───────────────────────────────
 
+# ─────────────────────────── DPDP privacy ───────────────────────────────
+
+class ConsentRequest(BaseModel):
+    vehicle_id: str = Field(..., min_length=1, max_length=128)
+    consent_type: str = Field(..., min_length=1, max_length=128)
+    granted: bool
+
+
+class ErasureRequest(BaseModel):
+    vehicle_id: str = Field(..., min_length=1, max_length=128)
+    reason: str = Field("", max_length=1024)
+
+
+# ─────────────────────────── notifications ───────────────────────────────
+
 class NotificationOut(BaseModel):
     timestamp: int
     type: str

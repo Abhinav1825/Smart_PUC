@@ -1,0 +1,1307 @@
+{
+  "experiment": "CES vs CO2-only compliance detection",
+  "timestamp": "2026-04-07T22:53:00",
+  "ces_weights": {
+    "co2": 0.35,
+    "co": 0.15,
+    "nox": 0.3,
+    "hc": 0.12,
+    "pm25": 0.08
+  },
+  "bsvi_thresholds_petrol": {
+    "co2": 120.0,
+    "co": 1.0,
+    "nox": 0.06,
+    "hc": 0.1,
+    "pm25": 0.0045
+  },
+  "bsvi_thresholds_diesel": {
+    "co2": 120.0,
+    "co": 0.5,
+    "nox": 0.08,
+    "hc": 0.09,
+    "pm25": 0.0045
+  },
+  "cold_start_duration_s": 180,
+  "ambient_temperatures_degC": [
+    15.0,
+    25.0,
+    35.0,
+    45.0
+  ],
+  "vehicle_profiles": [
+    {
+      "name": "Clean Petrol (new BS-VI)",
+      "fuel_type": "petrol",
+      "mass_kg": 1100.0,
+      "scalers": {
+        "co2": 0.85,
+        "co": 0.7,
+        "nox": 0.65,
+        "hc": 0.7,
+        "pm25": 0.6
+      },
+      "description": "A brand-new BS-VI petrol hatchback with fully functional catalytic converter and OBD-II within spec."
+    },
+    {
+      "name": "Normal Petrol (2-year-old)",
+      "fuel_type": "petrol",
+      "mass_kg": 1200.0,
+      "scalers": {
+        "co2": 1.0,
+        "co": 1.0,
+        "nox": 1.0,
+        "hc": 1.0,
+        "pm25": 1.0
+      },
+      "description": "Baseline BS-VI petrol sedan with average wear. Represents the calibration reference vehicle."
+    },
+    {
+      "name": "Degraded Petrol (ageing catalyst)",
+      "fuel_type": "petrol",
+      "mass_kg": 1250.0,
+      "scalers": {
+        "co2": 1.1,
+        "co": 2.2,
+        "nox": 2.5,
+        "hc": 2.0,
+        "pm25": 1.8
+      },
+      "description": "5-year-old petrol vehicle with catalyst degradation. CO2 stays near-normal but CO/NOx/HC spike — the critical case where CO2-only monitoring fails to catch real violations."
+    },
+    {
+      "name": "Cold-Start Petrol",
+      "fuel_type": "petrol",
+      "mass_kg": 1200.0,
+      "scalers": {
+        "co2": 1.05,
+        "co": 1.8,
+        "nox": 1.3,
+        "hc": 1.5,
+        "pm25": 1.2
+      },
+      "description": "Normal petrol car during cold-start phase (first 180 s). Catalyst light-off delay causes elevated CO and HC."
+    },
+    {
+      "name": "Diesel Sedan (BS-VI DPF-equipped)",
+      "fuel_type": "diesel",
+      "mass_kg": 1350.0,
+      "scalers": {
+        "co2": 0.95,
+        "co": 0.6,
+        "nox": 1.8,
+        "hc": 0.7,
+        "pm25": 1.5
+      },
+      "description": "BS-VI diesel sedan with DPF. Lower CO2 and CO than petrol but higher NOx — another case where CO2-only misses failures."
+    },
+    {
+      "name": "High-Mileage Diesel (DPF clogged)",
+      "fuel_type": "diesel",
+      "mass_kg": 1400.0,
+      "scalers": {
+        "co2": 1.05,
+        "co": 0.8,
+        "nox": 2.8,
+        "hc": 1.2,
+        "pm25": 3.5
+      },
+      "description": "Older diesel with partially clogged DPF. PM2.5 and NOx are dramatically elevated while CO2 remains near-threshold."
+    }
+  ],
+  "cycle_results": {
+    "WLTC": {
+      "Clean Petrol (new BS-VI)": {
+        "15.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 189,
+          "co2_only_fail_count": 292,
+          "per_pollutant_fail_count": 610,
+          "ces_fail_co2_pass": 58,
+          "co2_fail_ces_pass": 161,
+          "pollutant_violations": {
+            "co2": 292,
+            "co": 395,
+            "nox": 35,
+            "hc": 373,
+            "pm25": 35
+          },
+          "ces_detection_rate_pct": 10.5,
+          "co2_detection_rate_pct": 16.22,
+          "per_pollutant_detection_rate_pct": 33.89,
+          "ces_mean": 0.5708,
+          "ces_median": 0.4187,
+          "ces_p95": 1.5227,
+          "ces_max": 4.9847,
+          "co2_mean_gpkm": 93.27,
+          "co2_max_gpkm": 993.53
+        },
+        "25.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 194,
+          "co2_only_fail_count": 292,
+          "per_pollutant_fail_count": 635,
+          "ces_fail_co2_pass": 58,
+          "co2_fail_ces_pass": 156,
+          "pollutant_violations": {
+            "co2": 292,
+            "co": 395,
+            "nox": 392,
+            "hc": 373,
+            "pm25": 35
+          },
+          "ces_detection_rate_pct": 10.78,
+          "co2_detection_rate_pct": 16.22,
+          "per_pollutant_detection_rate_pct": 35.28,
+          "ces_mean": 0.6241,
+          "ces_median": 0.459,
+          "ces_p95": 1.5783,
+          "ces_max": 5.2784,
+          "co2_mean_gpkm": 93.27,
+          "co2_max_gpkm": 993.53
+        },
+        "35.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 476,
+          "co2_only_fail_count": 292,
+          "per_pollutant_fail_count": 684,
+          "ces_fail_co2_pass": 333,
+          "co2_fail_ces_pass": 149,
+          "pollutant_violations": {
+            "co2": 292,
+            "co": 395,
+            "nox": 476,
+            "hc": 373,
+            "pm25": 35
+          },
+          "ces_detection_rate_pct": 26.44,
+          "co2_detection_rate_pct": 16.22,
+          "per_pollutant_detection_rate_pct": 38.0,
+          "ces_mean": 0.698,
+          "ces_median": 0.5129,
+          "ces_p95": 1.671,
+          "ces_max": 5.6852,
+          "co2_mean_gpkm": 93.27,
+          "co2_max_gpkm": 993.53
+        },
+        "45.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 525,
+          "co2_only_fail_count": 292,
+          "per_pollutant_fail_count": 843,
+          "ces_fail_co2_pass": 359,
+          "co2_fail_ces_pass": 126,
+          "pollutant_violations": {
+            "co2": 292,
+            "co": 395,
+            "nox": 691,
+            "hc": 373,
+            "pm25": 35
+          },
+          "ces_detection_rate_pct": 29.17,
+          "co2_detection_rate_pct": 16.22,
+          "per_pollutant_detection_rate_pct": 46.83,
+          "ces_mean": 0.7981,
+          "ces_median": 0.5921,
+          "ces_p95": 1.8396,
+          "ces_max": 6.2363,
+          "co2_mean_gpkm": 93.27,
+          "co2_max_gpkm": 993.53
+        }
+      },
+      "Normal Petrol (2-year-old)": {
+        "15.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 513,
+          "co2_only_fail_count": 394,
+          "per_pollutant_fail_count": 739,
+          "ces_fail_co2_pass": 329,
+          "co2_fail_ces_pass": 210,
+          "pollutant_violations": {
+            "co2": 394,
+            "co": 462,
+            "nox": 394,
+            "hc": 420,
+            "pm25": 403
+          },
+          "ces_detection_rate_pct": 28.5,
+          "co2_detection_rate_pct": 21.89,
+          "per_pollutant_detection_rate_pct": 41.06,
+          "ces_mean": 0.793,
+          "ces_median": 0.578,
+          "ces_p95": 2.0224,
+          "ces_max": 6.8012,
+          "co2_mean_gpkm": 119.38,
+          "co2_max_gpkm": 1275.12
+        },
+        "25.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 561,
+          "co2_only_fail_count": 394,
+          "per_pollutant_fail_count": 788,
+          "ces_fail_co2_pass": 358,
+          "co2_fail_ces_pass": 191,
+          "pollutant_violations": {
+            "co2": 394,
+            "co": 462,
+            "nox": 489,
+            "hc": 420,
+            "pm25": 403
+          },
+          "ces_detection_rate_pct": 31.17,
+          "co2_detection_rate_pct": 21.89,
+          "per_pollutant_detection_rate_pct": 43.78,
+          "ces_mean": 0.8751,
+          "ces_median": 0.6402,
+          "ces_p95": 2.1072,
+          "ces_max": 7.2529,
+          "co2_mean_gpkm": 119.38,
+          "co2_max_gpkm": 1275.12
+        },
+        "35.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 630,
+          "co2_only_fail_count": 394,
+          "per_pollutant_fail_count": 976,
+          "ces_fail_co2_pass": 389,
+          "co2_fail_ces_pass": 153,
+          "pollutant_violations": {
+            "co2": 394,
+            "co": 462,
+            "nox": 788,
+            "hc": 420,
+            "pm25": 403
+          },
+          "ces_detection_rate_pct": 35.0,
+          "co2_detection_rate_pct": 21.89,
+          "per_pollutant_detection_rate_pct": 54.22,
+          "ces_mean": 0.9887,
+          "ces_median": 0.7296,
+          "ces_p95": 2.2994,
+          "ces_max": 7.8789,
+          "co2_mean_gpkm": 119.38,
+          "co2_max_gpkm": 1275.12
+        },
+        "45.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 734,
+          "co2_only_fail_count": 394,
+          "per_pollutant_fail_count": 1203,
+          "ces_fail_co2_pass": 451,
+          "co2_fail_ces_pass": 111,
+          "pollutant_violations": {
+            "co2": 394,
+            "co": 462,
+            "nox": 1084,
+            "hc": 420,
+            "pm25": 403
+          },
+          "ces_detection_rate_pct": 40.78,
+          "co2_detection_rate_pct": 21.89,
+          "per_pollutant_detection_rate_pct": 66.83,
+          "ces_mean": 1.1427,
+          "ces_median": 0.8447,
+          "ces_p95": 2.5622,
+          "ces_max": 8.7266,
+          "co2_mean_gpkm": 119.38,
+          "co2_max_gpkm": 1275.12
+        }
+      },
+      "Degraded Petrol (ageing catalyst)": {
+        "15.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 869,
+          "co2_only_fail_count": 515,
+          "per_pollutant_fail_count": 1119,
+          "ces_fail_co2_pass": 445,
+          "co2_fail_ces_pass": 91,
+          "pollutant_violations": {
+            "co2": 515,
+            "co": 906,
+            "nox": 891,
+            "hc": 778,
+            "pm25": 610
+          },
+          "ces_detection_rate_pct": 48.28,
+          "co2_detection_rate_pct": 28.61,
+          "per_pollutant_detection_rate_pct": 62.17,
+          "ces_mean": 1.3905,
+          "ces_median": 0.9756,
+          "ces_p95": 3.387,
+          "ces_max": 11.0658,
+          "co2_mean_gpkm": 136.63,
+          "co2_max_gpkm": 1460.82
+        },
+        "25.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 1050,
+          "co2_only_fail_count": 515,
+          "per_pollutant_fail_count": 1285,
+          "ces_fail_co2_pass": 601,
+          "co2_fail_ces_pass": 66,
+          "pollutant_violations": {
+            "co2": 515,
+            "co": 906,
+            "nox": 1177,
+            "hc": 778,
+            "pm25": 610
+          },
+          "ces_detection_rate_pct": 58.33,
+          "co2_detection_rate_pct": 28.61,
+          "per_pollutant_detection_rate_pct": 71.39,
+          "ces_mean": 1.5956,
+          "ces_median": 1.1273,
+          "ces_p95": 3.8388,
+          "ces_max": 12.1951,
+          "co2_mean_gpkm": 136.63,
+          "co2_max_gpkm": 1460.82
+        },
+        "35.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 1166,
+          "co2_only_fail_count": 515,
+          "per_pollutant_fail_count": 1386,
+          "ces_fail_co2_pass": 707,
+          "co2_fail_ces_pass": 56,
+          "pollutant_violations": {
+            "co2": 515,
+            "co": 906,
+            "nox": 1312,
+            "hc": 778,
+            "pm25": 610
+          },
+          "ces_detection_rate_pct": 64.78,
+          "co2_detection_rate_pct": 28.61,
+          "per_pollutant_detection_rate_pct": 77.0,
+          "ces_mean": 1.8798,
+          "ces_median": 1.3374,
+          "ces_p95": 4.4647,
+          "ces_max": 13.76,
+          "co2_mean_gpkm": 136.63,
+          "co2_max_gpkm": 1460.82
+        },
+        "45.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 1239,
+          "co2_only_fail_count": 515,
+          "per_pollutant_fail_count": 1478,
+          "ces_fail_co2_pass": 770,
+          "co2_fail_ces_pass": 46,
+          "pollutant_violations": {
+            "co2": 515,
+            "co": 906,
+            "nox": 1446,
+            "hc": 778,
+            "pm25": 610
+          },
+          "ces_detection_rate_pct": 68.83,
+          "co2_detection_rate_pct": 28.61,
+          "per_pollutant_detection_rate_pct": 82.11,
+          "ces_mean": 2.2646,
+          "ces_median": 1.645,
+          "ces_p95": 5.3125,
+          "ces_max": 15.8795,
+          "co2_mean_gpkm": 136.63,
+          "co2_max_gpkm": 1460.82
+        }
+      },
+      "Cold-Start Petrol": {
+        "15.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 633,
+          "co2_only_fail_count": 429,
+          "per_pollutant_fail_count": 873,
+          "ces_fail_co2_pass": 375,
+          "co2_fail_ces_pass": 171,
+          "pollutant_violations": {
+            "co2": 429,
+            "co": 732,
+            "nox": 460,
+            "hc": 568,
+            "pm25": 455
+          },
+          "ces_detection_rate_pct": 35.17,
+          "co2_detection_rate_pct": 23.83,
+          "per_pollutant_detection_rate_pct": 48.5,
+          "ces_mean": 1.0315,
+          "ces_median": 0.7238,
+          "ces_p95": 2.4437,
+          "ces_max": 8.6362,
+          "co2_mean_gpkm": 125.35,
+          "co2_max_gpkm": 1338.88
+        },
+        "25.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 695,
+          "co2_only_fail_count": 429,
+          "per_pollutant_fail_count": 934,
+          "ces_fail_co2_pass": 395,
+          "co2_fail_ces_pass": 129,
+          "pollutant_violations": {
+            "co2": 429,
+            "co": 732,
+            "nox": 652,
+            "hc": 568,
+            "pm25": 455
+          },
+          "ces_detection_rate_pct": 38.61,
+          "co2_detection_rate_pct": 23.83,
+          "per_pollutant_detection_rate_pct": 51.89,
+          "ces_mean": 1.1381,
+          "ces_median": 0.8018,
+          "ces_p95": 2.6766,
+          "ces_max": 9.2235,
+          "co2_mean_gpkm": 125.35,
+          "co2_max_gpkm": 1338.88
+        },
+        "35.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 814,
+          "co2_only_fail_count": 429,
+          "per_pollutant_fail_count": 1167,
+          "ces_fail_co2_pass": 475,
+          "co2_fail_ces_pass": 90,
+          "pollutant_violations": {
+            "co2": 429,
+            "co": 732,
+            "nox": 1001,
+            "hc": 568,
+            "pm25": 455
+          },
+          "ces_detection_rate_pct": 45.22,
+          "co2_detection_rate_pct": 23.83,
+          "per_pollutant_detection_rate_pct": 64.83,
+          "ces_mean": 1.2859,
+          "ces_median": 0.9167,
+          "ces_p95": 3.0022,
+          "ces_max": 10.0372,
+          "co2_mean_gpkm": 125.35,
+          "co2_max_gpkm": 1338.88
+        },
+        "45.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 982,
+          "co2_only_fail_count": 429,
+          "per_pollutant_fail_count": 1279,
+          "ces_fail_co2_pass": 622,
+          "co2_fail_ces_pass": 69,
+          "pollutant_violations": {
+            "co2": 429,
+            "co": 732,
+            "nox": 1192,
+            "hc": 568,
+            "pm25": 455
+          },
+          "ces_detection_rate_pct": 54.56,
+          "co2_detection_rate_pct": 23.83,
+          "per_pollutant_detection_rate_pct": 71.06,
+          "ces_mean": 1.486,
+          "ces_median": 1.0621,
+          "ces_p95": 3.443,
+          "ces_max": 11.1393,
+          "co2_mean_gpkm": 125.35,
+          "co2_max_gpkm": 1338.88
+        }
+      },
+      "Diesel Sedan (BS-VI DPF-equipped)": {
+        "15.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 636,
+          "co2_only_fail_count": 593,
+          "per_pollutant_fail_count": 924,
+          "ces_fail_co2_pass": 331,
+          "co2_fail_ces_pass": 288,
+          "pollutant_violations": {
+            "co2": 593,
+            "co": 517,
+            "nox": 469,
+            "hc": 382,
+            "pm25": 497
+          },
+          "ces_detection_rate_pct": 35.33,
+          "co2_detection_rate_pct": 32.94,
+          "per_pollutant_detection_rate_pct": 51.33,
+          "ces_mean": 0.9629,
+          "ces_median": 0.7126,
+          "ces_p95": 2.4859,
+          "ces_max": 8.2198,
+          "co2_mean_gpkm": 147.01,
+          "co2_max_gpkm": 1580.81
+        },
+        "25.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 695,
+          "co2_only_fail_count": 593,
+          "per_pollutant_fail_count": 995,
+          "ces_fail_co2_pass": 331,
+          "co2_fail_ces_pass": 229,
+          "pollutant_violations": {
+            "co2": 593,
+            "co": 517,
+            "nox": 686,
+            "hc": 382,
+            "pm25": 497
+          },
+          "ces_detection_rate_pct": 38.61,
+          "co2_detection_rate_pct": 32.94,
+          "per_pollutant_detection_rate_pct": 55.28,
+          "ces_mean": 1.0736,
+          "ces_median": 0.796,
+          "ces_p95": 2.6029,
+          "ces_max": 8.8296,
+          "co2_mean_gpkm": 147.01,
+          "co2_max_gpkm": 1580.81
+        },
+        "35.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 812,
+          "co2_only_fail_count": 593,
+          "per_pollutant_fail_count": 1202,
+          "ces_fail_co2_pass": 370,
+          "co2_fail_ces_pass": 151,
+          "pollutant_violations": {
+            "co2": 593,
+            "co": 517,
+            "nox": 1037,
+            "hc": 382,
+            "pm25": 497
+          },
+          "ces_detection_rate_pct": 45.11,
+          "co2_detection_rate_pct": 32.94,
+          "per_pollutant_detection_rate_pct": 66.78,
+          "ces_mean": 1.2271,
+          "ces_median": 0.9136,
+          "ces_p95": 2.862,
+          "ces_max": 9.6746,
+          "co2_mean_gpkm": 147.01,
+          "co2_max_gpkm": 1580.81
+        },
+        "45.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 989,
+          "co2_only_fail_count": 593,
+          "per_pollutant_fail_count": 1316,
+          "ces_fail_co2_pass": 492,
+          "co2_fail_ces_pass": 96,
+          "pollutant_violations": {
+            "co2": 593,
+            "co": 517,
+            "nox": 1205,
+            "hc": 382,
+            "pm25": 497
+          },
+          "ces_detection_rate_pct": 54.94,
+          "co2_detection_rate_pct": 32.94,
+          "per_pollutant_detection_rate_pct": 73.11,
+          "ces_mean": 1.4349,
+          "ces_median": 1.069,
+          "ces_p95": 3.2178,
+          "ces_max": 10.8191,
+          "co2_mean_gpkm": 147.01,
+          "co2_max_gpkm": 1580.81
+        }
+      },
+      "High-Mileage Diesel (DPF clogged)": {
+        "15.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 882,
+          "co2_only_fail_count": 713,
+          "per_pollutant_fail_count": 1314,
+          "ces_fail_co2_pass": 353,
+          "co2_fail_ces_pass": 184,
+          "pollutant_violations": {
+            "co2": 713,
+            "co": 660,
+            "nox": 716,
+            "hc": 515,
+            "pm25": 1165
+          },
+          "ces_detection_rate_pct": 49.0,
+          "co2_detection_rate_pct": 39.61,
+          "per_pollutant_detection_rate_pct": 73.0,
+          "ces_mean": 1.3451,
+          "ces_median": 0.9809,
+          "ces_p95": 3.1724,
+          "ces_max": 10.9616,
+          "co2_mean_gpkm": 168.36,
+          "co2_max_gpkm": 1811.93
+        },
+        "25.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 1033,
+          "co2_only_fail_count": 713,
+          "per_pollutant_fail_count": 1314,
+          "ces_fail_co2_pass": 441,
+          "co2_fail_ces_pass": 121,
+          "pollutant_violations": {
+            "co2": 713,
+            "co": 660,
+            "nox": 1088,
+            "hc": 515,
+            "pm25": 1165
+          },
+          "ces_detection_rate_pct": 57.39,
+          "co2_detection_rate_pct": 39.61,
+          "per_pollutant_detection_rate_pct": 73.0,
+          "ces_mean": 1.5173,
+          "ces_median": 1.1179,
+          "ces_p95": 3.4636,
+          "ces_max": 11.9102,
+          "co2_mean_gpkm": 168.36,
+          "co2_max_gpkm": 1811.93
+        },
+        "35.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 1143,
+          "co2_only_fail_count": 713,
+          "per_pollutant_fail_count": 1371,
+          "ces_fail_co2_pass": 521,
+          "co2_fail_ces_pass": 91,
+          "pollutant_violations": {
+            "co2": 713,
+            "co": 660,
+            "nox": 1245,
+            "hc": 515,
+            "pm25": 1165
+          },
+          "ces_detection_rate_pct": 63.5,
+          "co2_detection_rate_pct": 39.61,
+          "per_pollutant_detection_rate_pct": 76.17,
+          "ces_mean": 1.756,
+          "ces_median": 1.2914,
+          "ces_p95": 3.8744,
+          "ces_max": 13.2247,
+          "co2_mean_gpkm": 168.36,
+          "co2_max_gpkm": 1811.93
+        },
+        "45.0C": {
+          "total_seconds": 1800,
+          "ces_fail_count": 1236,
+          "co2_only_fail_count": 713,
+          "per_pollutant_fail_count": 1475,
+          "ces_fail_co2_pass": 600,
+          "co2_fail_ces_pass": 77,
+          "pollutant_violations": {
+            "co2": 713,
+            "co": 660,
+            "nox": 1385,
+            "hc": 515,
+            "pm25": 1165
+          },
+          "ces_detection_rate_pct": 68.67,
+          "co2_detection_rate_pct": 39.61,
+          "per_pollutant_detection_rate_pct": 81.94,
+          "ces_mean": 2.0793,
+          "ces_median": 1.5346,
+          "ces_p95": 4.4073,
+          "ces_max": 15.0051,
+          "co2_mean_gpkm": 168.36,
+          "co2_max_gpkm": 1811.93
+        }
+      }
+    },
+    "MIDC": {
+      "Clean Petrol (new BS-VI)": {
+        "15.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 165,
+          "co2_only_fail_count": 271,
+          "per_pollutant_fail_count": 447,
+          "ces_fail_co2_pass": 59,
+          "co2_fail_ces_pass": 165,
+          "pollutant_violations": {
+            "co2": 271,
+            "co": 239,
+            "nox": 20,
+            "hc": 218,
+            "pm25": 20
+          },
+          "ces_detection_rate_pct": 13.98,
+          "co2_detection_rate_pct": 22.97,
+          "per_pollutant_detection_rate_pct": 37.88,
+          "ces_mean": 0.5899,
+          "ces_median": 0.4046,
+          "ces_p95": 1.5452,
+          "ces_max": 4.7036,
+          "co2_mean_gpkm": 104.21,
+          "co2_max_gpkm": 971.93
+        },
+        "25.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 169,
+          "co2_only_fail_count": 271,
+          "per_pollutant_fail_count": 447,
+          "ces_fail_co2_pass": 59,
+          "co2_fail_ces_pass": 161,
+          "pollutant_violations": {
+            "co2": 271,
+            "co": 239,
+            "nox": 212,
+            "hc": 218,
+            "pm25": 20
+          },
+          "ces_detection_rate_pct": 14.32,
+          "co2_detection_rate_pct": 22.97,
+          "per_pollutant_detection_rate_pct": 37.88,
+          "ces_mean": 0.6382,
+          "ces_median": 0.4397,
+          "ces_p95": 1.5931,
+          "ces_max": 4.9776,
+          "co2_mean_gpkm": 104.21,
+          "co2_max_gpkm": 971.93
+        },
+        "35.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 305,
+          "co2_only_fail_count": 271,
+          "per_pollutant_fail_count": 447,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 142,
+          "pollutant_violations": {
+            "co2": 271,
+            "co": 239,
+            "nox": 254,
+            "hc": 218,
+            "pm25": 20
+          },
+          "ces_detection_rate_pct": 25.85,
+          "co2_detection_rate_pct": 22.97,
+          "per_pollutant_detection_rate_pct": 37.88,
+          "ces_mean": 0.7051,
+          "ces_median": 0.4864,
+          "ces_p95": 1.7029,
+          "ces_max": 5.3574,
+          "co2_mean_gpkm": 104.21,
+          "co2_max_gpkm": 971.93
+        },
+        "45.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 321,
+          "co2_only_fail_count": 271,
+          "per_pollutant_fail_count": 481,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 126,
+          "pollutant_violations": {
+            "co2": 271,
+            "co": 239,
+            "nox": 345,
+            "hc": 218,
+            "pm25": 20
+          },
+          "ces_detection_rate_pct": 27.2,
+          "co2_detection_rate_pct": 22.97,
+          "per_pollutant_detection_rate_pct": 40.76,
+          "ces_mean": 0.7957,
+          "ces_median": 0.5597,
+          "ces_p95": 1.864,
+          "ces_max": 5.8717,
+          "co2_mean_gpkm": 104.21,
+          "co2_max_gpkm": 971.93
+        }
+      },
+      "Normal Petrol (2-year-old)": {
+        "15.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 337,
+          "co2_only_fail_count": 346,
+          "per_pollutant_fail_count": 522,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 185,
+          "pollutant_violations": {
+            "co2": 346,
+            "co": 298,
+            "nox": 212,
+            "hc": 261,
+            "pm25": 219
+          },
+          "ces_detection_rate_pct": 28.56,
+          "co2_detection_rate_pct": 29.32,
+          "per_pollutant_detection_rate_pct": 44.24,
+          "ces_mean": 0.8142,
+          "ces_median": 0.5529,
+          "ces_p95": 2.0586,
+          "ces_max": 6.4138,
+          "co2_mean_gpkm": 133.48,
+          "co2_max_gpkm": 1247.4
+        },
+        "25.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 352,
+          "co2_only_fail_count": 346,
+          "per_pollutant_fail_count": 522,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 170,
+          "pollutant_violations": {
+            "co2": 346,
+            "co": 298,
+            "nox": 263,
+            "hc": 261,
+            "pm25": 219
+          },
+          "ces_detection_rate_pct": 29.83,
+          "co2_detection_rate_pct": 29.32,
+          "per_pollutant_detection_rate_pct": 44.24,
+          "ces_mean": 0.8884,
+          "ces_median": 0.6103,
+          "ces_p95": 2.1451,
+          "ces_max": 6.8354,
+          "co2_mean_gpkm": 133.48,
+          "co2_max_gpkm": 1247.4
+        },
+        "35.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 394,
+          "co2_only_fail_count": 346,
+          "per_pollutant_fail_count": 559,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 128,
+          "pollutant_violations": {
+            "co2": 346,
+            "co": 298,
+            "nox": 403,
+            "hc": 261,
+            "pm25": 219
+          },
+          "ces_detection_rate_pct": 33.39,
+          "co2_detection_rate_pct": 29.32,
+          "per_pollutant_detection_rate_pct": 47.37,
+          "ces_mean": 0.9914,
+          "ces_median": 0.6867,
+          "ces_p95": 2.351,
+          "ces_max": 7.4196,
+          "co2_mean_gpkm": 133.48,
+          "co2_max_gpkm": 1247.4
+        },
+        "45.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 446,
+          "co2_only_fail_count": 346,
+          "per_pollutant_fail_count": 735,
+          "ces_fail_co2_pass": 181,
+          "co2_fail_ces_pass": 81,
+          "pollutant_violations": {
+            "co2": 346,
+            "co": 298,
+            "nox": 656,
+            "hc": 261,
+            "pm25": 219
+          },
+          "ces_detection_rate_pct": 37.8,
+          "co2_detection_rate_pct": 29.32,
+          "per_pollutant_detection_rate_pct": 62.29,
+          "ces_mean": 1.1307,
+          "ces_median": 0.7926,
+          "ces_p95": 2.5935,
+          "ces_max": 8.2109,
+          "co2_mean_gpkm": 133.48,
+          "co2_max_gpkm": 1247.4
+        }
+      },
+      "Degraded Petrol (ageing catalyst)": {
+        "15.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 534,
+          "co2_only_fail_count": 410,
+          "per_pollutant_fail_count": 659,
+          "ces_fail_co2_pass": 196,
+          "co2_fail_ces_pass": 72,
+          "pollutant_violations": {
+            "co2": 410,
+            "co": 563,
+            "nox": 475,
+            "hc": 458,
+            "pm25": 319
+          },
+          "ces_detection_rate_pct": 45.25,
+          "co2_detection_rate_pct": 34.75,
+          "per_pollutant_detection_rate_pct": 55.85,
+          "ces_mean": 1.3911,
+          "ces_median": 0.9234,
+          "ces_p95": 3.387,
+          "ces_max": 10.4039,
+          "co2_mean_gpkm": 152.81,
+          "co2_max_gpkm": 1429.32
+        },
+        "25.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 612,
+          "co2_only_fail_count": 410,
+          "per_pollutant_fail_count": 786,
+          "ces_fail_co2_pass": 248,
+          "co2_fail_ces_pass": 46,
+          "pollutant_violations": {
+            "co2": 410,
+            "co": 563,
+            "nox": 695,
+            "hc": 458,
+            "pm25": 319
+          },
+          "ces_detection_rate_pct": 51.86,
+          "co2_detection_rate_pct": 34.75,
+          "per_pollutant_detection_rate_pct": 66.61,
+          "ces_mean": 1.5768,
+          "ces_median": 1.0489,
+          "ces_p95": 3.8388,
+          "ces_max": 11.4579,
+          "co2_mean_gpkm": 152.81,
+          "co2_max_gpkm": 1429.32
+        },
+        "35.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 695,
+          "co2_only_fail_count": 410,
+          "per_pollutant_fail_count": 977,
+          "ces_fail_co2_pass": 316,
+          "co2_fail_ces_pass": 31,
+          "pollutant_violations": {
+            "co2": 410,
+            "co": 563,
+            "nox": 933,
+            "hc": 458,
+            "pm25": 319
+          },
+          "ces_detection_rate_pct": 58.9,
+          "co2_detection_rate_pct": 34.75,
+          "per_pollutant_detection_rate_pct": 82.8,
+          "ces_mean": 1.834,
+          "ces_median": 1.2225,
+          "ces_p95": 4.4647,
+          "ces_max": 12.9185,
+          "co2_mean_gpkm": 152.81,
+          "co2_max_gpkm": 1429.32
+        },
+        "45.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 813,
+          "co2_only_fail_count": 410,
+          "per_pollutant_fail_count": 1041,
+          "ces_fail_co2_pass": 429,
+          "co2_fail_ces_pass": 26,
+          "pollutant_violations": {
+            "co2": 410,
+            "co": 563,
+            "nox": 1021,
+            "hc": 458,
+            "pm25": 319
+          },
+          "ces_detection_rate_pct": 68.9,
+          "co2_detection_rate_pct": 34.75,
+          "per_pollutant_detection_rate_pct": 88.22,
+          "ces_mean": 2.1825,
+          "ces_median": 1.4614,
+          "ces_p95": 5.3125,
+          "ces_max": 14.8966,
+          "co2_mean_gpkm": 152.81,
+          "co2_max_gpkm": 1429.32
+        }
+      },
+      "Cold-Start Petrol": {
+        "15.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 401,
+          "co2_only_fail_count": 362,
+          "per_pollutant_fail_count": 559,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 137,
+          "pollutant_violations": {
+            "co2": 362,
+            "co": 457,
+            "nox": 246,
+            "hc": 358,
+            "pm25": 246
+          },
+          "ces_detection_rate_pct": 33.98,
+          "co2_detection_rate_pct": 30.68,
+          "per_pollutant_detection_rate_pct": 47.37,
+          "ces_mean": 1.0492,
+          "ces_median": 0.682,
+          "ces_p95": 2.4803,
+          "ces_max": 8.1298,
+          "co2_mean_gpkm": 140.15,
+          "co2_max_gpkm": 1309.77
+        },
+        "25.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 446,
+          "co2_only_fail_count": 362,
+          "per_pollutant_fail_count": 559,
+          "ces_fail_co2_pass": 181,
+          "co2_fail_ces_pass": 97,
+          "pollutant_violations": {
+            "co2": 362,
+            "co": 457,
+            "nox": 330,
+            "hc": 358,
+            "pm25": 246
+          },
+          "ces_detection_rate_pct": 37.8,
+          "co2_detection_rate_pct": 30.68,
+          "per_pollutant_detection_rate_pct": 47.37,
+          "ces_mean": 1.1458,
+          "ces_median": 0.7577,
+          "ces_p95": 2.6766,
+          "ces_max": 8.6779,
+          "co2_mean_gpkm": 140.15,
+          "co2_max_gpkm": 1309.77
+        },
+        "35.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 496,
+          "co2_only_fail_count": 362,
+          "per_pollutant_fail_count": 684,
+          "ces_fail_co2_pass": 198,
+          "co2_fail_ces_pass": 64,
+          "pollutant_violations": {
+            "co2": 362,
+            "co": 457,
+            "nox": 578,
+            "hc": 358,
+            "pm25": 246
+          },
+          "ces_detection_rate_pct": 42.03,
+          "co2_detection_rate_pct": 30.68,
+          "per_pollutant_detection_rate_pct": 57.97,
+          "ces_mean": 1.2796,
+          "ces_median": 0.865,
+          "ces_p95": 3.0022,
+          "ces_max": 9.4374,
+          "co2_mean_gpkm": 140.15,
+          "co2_max_gpkm": 1309.77
+        },
+        "45.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 588,
+          "co2_only_fail_count": 362,
+          "per_pollutant_fail_count": 831,
+          "ces_fail_co2_pass": 272,
+          "co2_fail_ces_pass": 46,
+          "pollutant_violations": {
+            "co2": 362,
+            "co": 457,
+            "nox": 763,
+            "hc": 358,
+            "pm25": 246
+          },
+          "ces_detection_rate_pct": 49.83,
+          "co2_detection_rate_pct": 30.68,
+          "per_pollutant_detection_rate_pct": 70.42,
+          "ces_mean": 1.4608,
+          "ces_median": 0.9866,
+          "ces_p95": 3.443,
+          "ces_max": 10.466,
+          "co2_mean_gpkm": 140.15,
+          "co2_max_gpkm": 1309.77
+        }
+      },
+      "Diesel Sedan (BS-VI DPF-equipped)": {
+        "15.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 422,
+          "co2_only_fail_count": 468,
+          "per_pollutant_fail_count": 644,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 222,
+          "pollutant_violations": {
+            "co2": 468,
+            "co": 338,
+            "nox": 248,
+            "hc": 230,
+            "pm25": 278
+          },
+          "ces_detection_rate_pct": 35.76,
+          "co2_detection_rate_pct": 39.66,
+          "per_pollutant_detection_rate_pct": 54.58,
+          "ces_mean": 0.9874,
+          "ces_median": 0.682,
+          "ces_p95": 2.5072,
+          "ces_max": 7.7542,
+          "co2_mean_gpkm": 164.64,
+          "co2_max_gpkm": 1546.69
+        },
+        "25.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 447,
+          "co2_only_fail_count": 468,
+          "per_pollutant_fail_count": 646,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 197,
+          "pollutant_violations": {
+            "co2": 468,
+            "co": 338,
+            "nox": 339,
+            "hc": 230,
+            "pm25": 278
+          },
+          "ces_detection_rate_pct": 37.88,
+          "co2_detection_rate_pct": 39.66,
+          "per_pollutant_detection_rate_pct": 54.75,
+          "ces_mean": 1.0877,
+          "ces_median": 0.7545,
+          "ces_p95": 2.6494,
+          "ces_max": 8.3233,
+          "co2_mean_gpkm": 164.64,
+          "co2_max_gpkm": 1546.69
+        },
+        "35.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 500,
+          "co2_only_fail_count": 468,
+          "per_pollutant_fail_count": 721,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 144,
+          "pollutant_violations": {
+            "co2": 468,
+            "co": 338,
+            "nox": 596,
+            "hc": 230,
+            "pm25": 278
+          },
+          "ces_detection_rate_pct": 42.37,
+          "co2_detection_rate_pct": 39.66,
+          "per_pollutant_detection_rate_pct": 61.1,
+          "ces_mean": 1.2266,
+          "ces_median": 0.8619,
+          "ces_p95": 2.9154,
+          "ces_max": 9.1121,
+          "co2_mean_gpkm": 164.64,
+          "co2_max_gpkm": 1546.69
+        },
+        "45.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 588,
+          "co2_only_fail_count": 468,
+          "per_pollutant_fail_count": 865,
+          "ces_fail_co2_pass": 202,
+          "co2_fail_ces_pass": 82,
+          "pollutant_violations": {
+            "co2": 468,
+            "co": 338,
+            "nox": 791,
+            "hc": 230,
+            "pm25": 278
+          },
+          "ces_detection_rate_pct": 49.83,
+          "co2_detection_rate_pct": 39.66,
+          "per_pollutant_detection_rate_pct": 73.31,
+          "ces_mean": 1.4148,
+          "ces_median": 0.9951,
+          "ces_p95": 3.2569,
+          "ces_max": 10.1803,
+          "co2_mean_gpkm": 164.64,
+          "co2_max_gpkm": 1546.69
+        }
+      },
+      "High-Mileage Diesel (DPF clogged)": {
+        "15.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 549,
+          "co2_only_fail_count": 537,
+          "per_pollutant_fail_count": 830,
+          "ces_fail_co2_pass": 176,
+          "co2_fail_ces_pass": 164,
+          "pollutant_violations": {
+            "co2": 537,
+            "co": 416,
+            "nox": 373,
+            "hc": 318,
+            "pm25": 692
+          },
+          "ces_detection_rate_pct": 46.53,
+          "co2_detection_rate_pct": 45.51,
+          "per_pollutant_detection_rate_pct": 70.34,
+          "ces_mean": 1.3572,
+          "ces_median": 0.928,
+          "ces_p95": 3.2396,
+          "ces_max": 10.3246,
+          "co2_mean_gpkm": 188.58,
+          "co2_max_gpkm": 1772.82
+        },
+        "25.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 617,
+          "co2_only_fail_count": 537,
+          "per_pollutant_fail_count": 830,
+          "ces_fail_co2_pass": 199,
+          "co2_fail_ces_pass": 119,
+          "pollutant_violations": {
+            "co2": 537,
+            "co": 416,
+            "nox": 657,
+            "hc": 318,
+            "pm25": 692
+          },
+          "ces_detection_rate_pct": 52.29,
+          "co2_detection_rate_pct": 45.51,
+          "per_pollutant_detection_rate_pct": 70.34,
+          "ces_mean": 1.5131,
+          "ces_median": 1.0587,
+          "ces_p95": 3.5092,
+          "ces_max": 11.21,
+          "co2_mean_gpkm": 188.58,
+          "co2_max_gpkm": 1772.82
+        },
+        "35.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 690,
+          "co2_only_fail_count": 537,
+          "per_pollutant_fail_count": 915,
+          "ces_fail_co2_pass": 239,
+          "co2_fail_ces_pass": 86,
+          "pollutant_violations": {
+            "co2": 537,
+            "co": 416,
+            "nox": 806,
+            "hc": 318,
+            "pm25": 692
+          },
+          "ces_detection_rate_pct": 58.47,
+          "co2_detection_rate_pct": 45.51,
+          "per_pollutant_detection_rate_pct": 77.54,
+          "ces_mean": 1.7293,
+          "ces_median": 1.2036,
+          "ces_p95": 3.9196,
+          "ces_max": 12.4369,
+          "co2_mean_gpkm": 188.58,
+          "co2_max_gpkm": 1772.82
+        },
+        "45.0C": {
+          "total_seconds": 1180,
+          "ces_fail_count": 769,
+          "co2_only_fail_count": 537,
+          "per_pollutant_fail_count": 1054,
+          "ces_fail_co2_pass": 304,
+          "co2_fail_ces_pass": 72,
+          "pollutant_violations": {
+            "co2": 537,
+            "co": 416,
+            "nox": 994,
+            "hc": 318,
+            "pm25": 692
+          },
+          "ces_detection_rate_pct": 65.17,
+          "co2_detection_rate_pct": 45.51,
+          "per_pollutant_detection_rate_pct": 89.32,
+          "ces_mean": 2.022,
+          "ces_median": 1.4103,
+          "ces_p95": 4.4697,
+          "ces_max": 14.0985,
+          "co2_mean_gpkm": 188.58,
+          "co2_max_gpkm": 1772.82
+        }
+      }
+    }
+  },
+  "summary": {
+    "total_seconds_analysed": 71520,
+    "total_ces_fail": 30352,
+    "total_co2_only_fail": 21320,
+    "total_per_pollutant_fail": 42671,
+    "total_ces_fail_but_co2_pass": 15007,
+    "total_co2_fail_but_ces_pass": 5975,
+    "ces_detection_rate_pct": 42.44,
+    "co2_only_detection_rate_pct": 29.81,
+    "per_pollutant_detection_rate_pct": 59.66,
+    "additional_violations_caught_by_ces": 15007,
+    "additional_violations_caught_pct": 20.98
+  }
+}

@@ -53,6 +53,13 @@ The magnitude ranges are informed by published MOVES3 data (EPA-420-B-20-052,
 **"representative rates calibrated to BSVI certification ranges"**, not as
 "EPA MOVES3 emission rates".
 
+**Important:** These rates are **simulation-grade estimates suitable for
+demonstrating the algorithmic framework** of the SmartPUC system.  They should
+**not** be cited as validated emission measurements.  No calibration against
+real OBD-II telemetry or chassis dynamometer data has been performed.  Any
+published results derived from these rates must be framed as illustrative of
+system behaviour, not as empirical emission measurements.
+
 Source code: `backend/emission_engine.py`, module-level `DISCLOSURES` §2.
 
 ---
@@ -117,6 +124,45 @@ benchmarks" rather than "experimental results measured by our system".
 
 Gas cost measurements in `scripts/measure_gas.js` ARE real measurements from
 actual Hardhat transactions.
+
+---
+
+## Simulation-Based Feasibility Study Disclosure
+
+This section must be read and understood before citing any results from the
+SmartPUC codebase in an academic publication.
+
+1. **This project is a simulation-based feasibility study, NOT validated
+   empirical research.**  The system demonstrates a proposed architecture
+   and algorithmic approach for blockchain-anchored, multi-pollutant vehicle
+   emission compliance.  It does not claim measured real-world performance.
+
+2. **No component has been validated against real-world OBD-II data.**
+   The emission engine, fraud detector, LSTM predictor, and CES scoring
+   pipeline all operate on synthetic inputs or calibrated constants.  No
+   chassis dynamometer, portable emissions measurement system (PEMS), or
+   on-road OBD-II data from actual vehicles was used in development or
+   testing.
+
+3. **All numerical results are derived from synthetic data or calibrated
+   constants.**  This includes emission values (g/km), fraud detection
+   metrics (precision, recall, F1), CES scores, and blockchain gas costs.
+   The only exception is Hardhat-measured gas costs, which are real
+   EVM-execution measurements (though on a local devnet, not mainnet).
+
+4. **For an IEEE paper, results must be framed as demonstrating the system's
+   architecture and algorithmic approach, not as measured real-world
+   performance.**  Recommended phrasing: "The simulation results demonstrate
+   the feasibility of the proposed framework" rather than "The system
+   achieves X g/km accuracy" or "The detector achieves 98% precision on
+   real emissions data."
+
+5. **Future work includes validation with real OBD-II data from Indian
+   vehicles.**  A rigorous evaluation would require partnership with ARAI
+   or an authorized test agency, access to a BSVI-certified chassis
+   dynamometer facility, and OBD-II telemetry from a representative sample
+   of the Indian in-use fleet across multiple vehicle classes, fuel types,
+   and degradation states.
 
 ---
 
