@@ -25,54 +25,17 @@
     ">
     <title>Smart PUC — Vehicle Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <style>
     /* ================================================================
        Demo-Enhancing Features — Inline Styles
        ================================================================ */
 
-    /* --- Light Theme --- */
-    [data-theme="light"] {
-        --bg-primary: #f8fafc; --bg-surface: #ffffff; --bg-card: #f1f5f9;
-        --text-primary: #0f172a; --text-secondary: #475569;
-        --border-color: #e2e8f0;
-        --clr-bg: #f8fafc; --clr-surface: #ffffff; --clr-surface-2: #f1f5f9;
-        --clr-surface-3: #e2e8f0; --clr-text: #0f172a; --clr-text-muted: #475569;
-        --clr-border: #e2e8f0;
-    }
-    [data-theme="light"] .navbar { background: #ffffff; border-bottom-color: #e2e8f0; }
-    [data-theme="light"] .card, [data-theme="light"] .metric-card,
-    [data-theme="light"] .compliance-panel, [data-theme="light"] .ces-gauge-card {
-        background: #ffffff; border-color: #e2e8f0; color: #0f172a;
-    }
-    [data-theme="light"] .form-select, [data-theme="light"] .form-input {
-        background: #f1f5f9; color: #0f172a; border-color: #e2e8f0;
-    }
-    [data-theme="light"] .metric-label, [data-theme="light"] .metric-unit,
-    [data-theme="light"] .text-muted, [data-theme="light"] .spec-label,
-    [data-theme="light"] .cert-label, [data-theme="light"] .ces-label-text {
-        color: #475569 !important;
-    }
-    [data-theme="light"] .metric-value, [data-theme="light"] .spec-value,
-    [data-theme="light"] .cert-value, [data-theme="light"] .ces-value-text,
-    [data-theme="light"] .card-title { color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; }
-    [data-theme="light"] .footer { color: #475569; border-top-color: #e2e8f0; }
-    [data-theme="light"] .vehicle-specs-card { background: #ffffff; border-color: #e2e8f0; }
-    [data-theme="light"] .fleet-quick-card { background: #f1f5f9; border-color: #e2e8f0; }
-    [data-theme="light"] .fleet-quick-card:hover { background: #e2e8f0; }
-    [data-theme="light"] .table-container th { background: #f1f5f9; color: #0f172a; }
-    [data-theme="light"] .table-container td { color: #334155; border-color: #e2e8f0; }
-    [data-theme="light"] .btn-outline { color: #334155; border-color: #cbd5e1; }
-    [data-theme="light"] .metric-bar { background: #e2e8f0; }
-    [data-theme="light"] .threshold-info, [data-theme="light"] .ces-threshold-info { color: #64748b; }
-    [data-theme="light"] .wallet-status { color: #475569; }
+    /* Light theme rules live in style.css (shared across all pages) */
 
-    .theme-toggle-btn, .tour-btn {
-        background: transparent; border: 1px solid var(--clr-border, #2a3550);
-        color: var(--clr-text, #e2e8f0); border-radius: 6px; padding: 4px 10px;
-        cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
-    }
-    .theme-toggle-btn:hover, .tour-btn:hover { background: rgba(255,255,255,0.08); }
+    /* theme-toggle-btn / tour-btn styled in main stylesheet */
 
     /* --- Tour Overlay --- */
     .tour-overlay {
@@ -87,32 +50,33 @@
     }
     .tour-tooltip {
         position: absolute; z-index: 10002;
-        background: #1e293b; color: #f1f5f9; border: 1px solid #3b82f6;
-        border-radius: 10px; padding: 16px 20px; max-width: 320px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4); font-size: 0.9rem; line-height: 1.5;
+        background: var(--clr-surface-elev); color: var(--clr-white);
+        border: 1px solid var(--clr-purple);
+        border-radius: var(--radius-md); padding: 1rem 1.25rem; max-width: 320px;
+        box-shadow: var(--shadow-lg); font-size: var(--fs-sm); line-height: 1.5;
     }
-    .tour-tooltip-step { color: #3b82f6; font-weight: 600; font-size: 0.75rem; margin-bottom: 6px; }
-    .tour-tooltip-text { margin-bottom: 14px; }
-    .tour-tooltip-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .tour-tooltip-step { color: var(--clr-lime); font-weight: 700; font-size: 0.7rem; margin-bottom: 0.375rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .tour-tooltip-text { margin-bottom: 0.875rem; color: var(--clr-text-muted); }
+    .tour-tooltip-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
     .tour-tooltip-actions button {
-        padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer;
-        font-size: 0.8rem; font-weight: 600;
+        padding: 0.375rem 0.875rem; border-radius: var(--radius-sm); border: none; cursor: pointer;
+        font-size: var(--fs-xs); font-weight: 600; transition: var(--transition);
     }
-    .tour-btn-next { background: #3b82f6; color: #fff; }
-    .tour-btn-next:hover { background: #2563eb; }
-    .tour-btn-skip { background: transparent; color: #94a3b8; border: 1px solid #475569; }
-    .tour-btn-skip:hover { background: rgba(255,255,255,0.05); }
+    .tour-btn-next { background: var(--clr-purple); color: var(--clr-white); }
+    .tour-btn-next:hover { background: var(--clr-primary-hover); }
+    .tour-btn-skip { background: transparent; color: var(--clr-text-muted); border: 1px solid var(--clr-border); }
+    .tour-btn-skip:hover { background: var(--clr-surface-2); color: var(--clr-white); }
 
     /* --- Demo Mode --- */
     .demo-mode-btn {
-        background: transparent; border: 1px solid #8b5cf6; color: #8b5cf6;
+        background: transparent; border: 1px solid #7D39EB; color: #7D39EB;
         border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 0.8rem;
         font-weight: 600; transition: all 0.25s;
     }
-    .demo-mode-btn.active { background: #8b5cf6; color: #fff; }
-    .demo-mode-btn:hover { background: rgba(139,92,246,0.15); }
+    .demo-mode-btn.active { background: #7D39EB; color: var(--clr-text); }
+    .demo-mode-btn:hover { background: rgba(125,57,235,0.15); }
     .demo-countdown {
-        font-size: 0.75rem; color: #a78bfa; font-weight: 500;
+        font-size: 0.75rem; color: #7D39EB; font-weight: 500;
         margin-left: 8px; display: none;
     }
     .demo-countdown.visible { display: inline; }
@@ -120,18 +84,18 @@
     /* --- FAIL Flash --- */
     @keyframes failFlash {
         0%, 100% { box-shadow: none; }
-        50% { box-shadow: inset 0 0 60px rgba(239,68,68,0.35); }
+        50% { box-shadow: inset 0 0 60px rgba(125,57,235,0.35); }
     }
     .fail-flash { animation: failFlash 0.6s ease 2; }
 
     /* --- Loading Skeletons --- */
     .skeleton {
-        background: linear-gradient(90deg, #1a2236 25%, #232d42 50%, #1a2236 75%);
+        background: linear-gradient(90deg, #000000 25%, #000000 50%, #000000 75%);
         background-size: 200% 100%; animation: shimmer 1.5s infinite;
         border-radius: 8px;
     }
     [data-theme="light"] .skeleton {
-        background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+        background: linear-gradient(90deg, #FFFFFF 25%, #FFFFFF 50%, #FFFFFF 75%);
         background-size: 200% 100%;
     }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
@@ -140,48 +104,50 @@
     .skeleton-row { height: 36px; margin-bottom: 6px; }
     .skeleton-text { height: 16px; width: 60%; margin: 4px 0; }
 
-    /* --- Notification Bell --- */
+    /* --- Notification Bell (dropdown/panel specifics; button in main stylesheet) --- */
     .notif-bell-container { position: relative; display: inline-block; }
-    .notif-bell-btn {
-        background: transparent; border: 1px solid var(--clr-border, #2a3550);
-        color: var(--clr-text, #e2e8f0); border-radius: 6px; padding: 4px 10px;
-        cursor: pointer; font-size: 1.1rem; position: relative; transition: all 0.2s;
-    }
-    .notif-bell-btn:hover { background: rgba(255,255,255,0.08); }
     .notif-badge {
-        position: absolute; top: -4px; right: -4px;
-        background: #ef4444; color: #fff; font-size: 0.65rem; font-weight: 700;
-        min-width: 16px; height: 16px; border-radius: 8px;
+        position: absolute; top: -2px; right: -2px;
+        background: var(--clr-purple); color: var(--clr-white);
+        font-size: 0.625rem; font-weight: 700;
+        min-width: 16px; height: 16px; border-radius: 999px;
         display: flex; align-items: center; justify-content: center;
         padding: 0 4px; line-height: 1;
+        border: 2px solid var(--clr-black);
     }
     .notif-badge.hidden { display: none; }
     .notif-dropdown {
-        position: absolute; top: 100%; right: 0; margin-top: 8px;
-        width: 320px; max-height: 380px; overflow-y: auto;
-        background: var(--clr-surface, #141b2d); border: 1px solid var(--clr-border, #2a3550);
-        border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        position: absolute; top: calc(100% + 8px); right: 0;
+        width: min(340px, 90vw); max-height: 420px; overflow-y: auto;
+        background: #0a0a0d;
+        border: 1px solid rgba(125, 57, 235, 0.4);
+        border-radius: var(--radius-md);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.4), 0 16px 48px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255,255,255,0.04);
         z-index: 9000; display: none;
     }
-    .notif-dropdown.open { display: block; }
     .notif-dropdown-header {
-        padding: 10px 14px; font-weight: 600; font-size: 0.85rem;
-        border-bottom: 1px solid var(--clr-border, #2a3550);
-        color: var(--clr-text, #e2e8f0);
+        background: rgba(125, 57, 235, 0.06);
+    }
+    .notif-dropdown.open { display: block; animation: slideInDown 0.2s var(--ease-out); }
+    .notif-dropdown-header {
+        padding: 0.75rem 1rem; font-weight: 600; font-size: var(--fs-sm);
+        border-bottom: 1px solid var(--clr-border);
+        color: var(--clr-white);
     }
     .notif-item {
-        padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
-        display: flex; gap: 10px; align-items: flex-start; font-size: 0.82rem;
-        color: var(--clr-text-muted, #8892b0); transition: background 0.15s;
+        padding: 0.75rem 1rem; border-bottom: 1px solid var(--clr-border);
+        display: flex; gap: 0.625rem; align-items: flex-start; font-size: var(--fs-xs);
+        color: var(--clr-text-muted); transition: background 0.15s;
     }
-    .notif-item:hover { background: rgba(255,255,255,0.03); }
-    .notif-item-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+    .notif-item:hover { background: var(--clr-surface-2); }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item-icon { font-size: 1rem; flex-shrink: 0; }
     .notif-item-msg { flex: 1; line-height: 1.4; }
-    .notif-item-time { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
-    .notif-empty { padding: 24px; text-align: center; color: #64748b; font-size: 0.85rem; }
-    [data-theme="light"] .notif-dropdown { background: #ffffff; border-color: #e2e8f0; }
-    [data-theme="light"] .notif-item { color: #334155; border-bottom-color: #f1f5f9; }
-    [data-theme="light"] .notif-dropdown-header { border-bottom-color: #e2e8f0; color: #0f172a; }
+    .notif-item-time { font-size: 0.65rem; color: var(--clr-text-dim); margin-top: 2px; }
+    .notif-empty { padding: 2rem 1rem; text-align: center; color: var(--clr-text-dim); font-size: var(--fs-xs); }
+    [data-theme="light"] .notif-dropdown { background: #FFFFFF; border-color: rgba(0,0,0,0.12); }
+    [data-theme="light"] .notif-item { color: #000000; border-bottom-color: rgba(0,0,0,0.08); }
+    [data-theme="light"] .notif-dropdown-header { color: #000000; border-bottom-color: rgba(0,0,0,0.08); }
 
     /* --- Toast --- */
     .toast-container {
@@ -189,34 +155,32 @@
         display: flex; flex-direction: column-reverse; gap: 8px;
     }
     .toast {
-        background: #1e293b; color: #f1f5f9; border: 1px solid #334155;
-        border-radius: 8px; padding: 10px 16px; font-size: 0.85rem;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.3); animation: toastIn 0.3s ease;
-        max-width: 340px;
+        background: var(--clr-surface-elev); color: var(--clr-white);
+        border: 1px solid var(--clr-border);
+        border-radius: var(--radius-md); padding: 0.75rem 1rem; font-size: var(--fs-sm);
+        box-shadow: var(--shadow-lg); animation: toastIn 0.3s var(--ease-out);
+        max-width: 340px; line-height: 1.45;
     }
-    .toast.toast-info { border-left: 3px solid #3b82f6; }
-    .toast.toast-warning { border-left: 3px solid #f59e0b; }
-    .toast.toast-error { border-left: 3px solid #ef4444; }
-    [data-theme="light"] .toast { background: #ffffff; color: #0f172a; border-color: #e2e8f0; }
+    .toast.toast-info { border-left: 3px solid var(--clr-purple); }
+    .toast.toast-warning { border-left: 3px solid var(--clr-lime); }
+    .toast.toast-error { border-left: 3px solid var(--clr-purple); }
+    [data-theme="light"] .toast { background: #FFFFFF; color: #000000; border-color: rgba(0,0,0,0.12); }
     @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
-    <div class="app-container">
-
-        <!-- Navbar -->
-        <nav class="navbar" id="navbar">
-            <div class="navbar-top-row">
-                <a href="index.html" class="navbar-brand">
-                    <div class="logo">&#9889;</div>
-                    <div>
-                        <h1 data-i18n="brand_title">Smart PUC</h1>
-                        <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
-                    </div>
-                </a>
-                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
-            </div>
-            <div class="navbar-actions" id="navbarActions">
+    <div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
+            </a>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
                 <a href="index.html" class="nav-link active" data-i18n="nav_vehicle">Vehicle</a>
                 <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
                 <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
@@ -229,36 +193,35 @@
                 <a href="twin.html" class="nav-link">Twin</a>
                 <a href="leaderboard.html" class="nav-link">Leaderboard</a>
                 <a href="explorer.html" class="nav-link">Explorer</a>
-                <!-- Language Selector -->
-                <div class="lang-selector" id="langSelector">
-                    <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
-                    <div class="lang-dropdown" id="langDropdown">
-                        <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                        <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                        <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
-                    </div>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
-                <!-- Tour Button -->
-                <button class="tour-btn" onclick="startTour()" title="Start guided tour">&#9432; Tour</button>
-                <!-- Notification Bell -->
-                <div class="notif-bell-container" id="notifBellContainer">
-                    <button class="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
-                    <div class="notif-dropdown" id="notifDropdown">
-                        <div class="notif-dropdown-header">Notifications</div>
-                        <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
-                    </div>
-                </div>
-                <!-- Theme Toggle -->
-                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle light/dark theme">&#127769;</button>
-                <div class="wallet-status" id="walletStatus">
-                    <span class="wallet-dot" id="walletDot"></span>
-                    <span id="walletAddress">Not Connected</span>
-                </div>
-                <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
-                    Connect Wallet
-                </button>
             </div>
-        </nav>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
+        </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
+    </nav>
 
         <!-- Alerts Container -->
         <div id="alertsContainer"></div>
@@ -317,7 +280,7 @@
         <!-- Vehicle Specs Card (hidden until vehicle selected) -->
         <div class="vehicle-specs-card mb-lg" id="vehicleSpecsCard" style="display:none;">
             <div class="vehicle-specs-header">
-                <div class="vehicle-specs-icon" id="vehicleSpecsIcon">&#128663;</div>
+                <div class="vehicle-specs-icon" id="vehicleSpecsIcon">&#128202;</div>
                 <div>
                     <div class="vehicle-specs-title" id="vehicleSpecsTitle">--</div>
                     <div class="vehicle-specs-subtitle" id="vehicleSpecsSubtitle">--</div>
@@ -493,7 +456,7 @@
                     <div class="card-title"><span class="icon">&#9939;</span> Latest Transaction</div>
                 </div>
                 <div id="latestTx" class="empty-state">
-                    <div class="icon">&#128225;</div>
+                    <div class="icon">&#128202;</div>
                     <p>No transaction yet.<br>Click <strong>Start Route</strong> to begin.</p>
                 </div>
             </div>
@@ -543,22 +506,22 @@
             <!-- Green Credit Tokens -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">&#127793;</span> Green Credit Tokens (GCT)</div>
+                    <div class="card-title"><span class="icon">&#127795;</span> Green Credit Tokens (GCT)</div>
                 </div>
                 <div style="text-align:center; padding:1.5rem 0;">
-                    <div style="font-size:2.5rem;font-weight:700;color:#4CAF50;" id="gctBalance">0</div>
-                    <div style="color:#8892b0;font-size:0.85rem;margin-top:0.3rem;">GCT Balance</div>
+                    <div style="font-size:2.5rem;font-weight:700;color:#C6FF33;" id="gctBalance">0</div>
+                    <div style="color:rgba(255,255,255,0.65);font-size:0.85rem;margin-top:0.3rem;">GCT Balance</div>
                     <div style="margin-top:1rem;display:flex;gap:1rem;justify-content:center;">
                         <div style="text-align:center;">
                             <div style="font-size:1.2rem;font-weight:600;" id="gctEarned">0</div>
-                            <div style="color:#8892b0;font-size:0.75rem;">Total Earned</div>
+                            <div style="color:rgba(255,255,255,0.65);font-size:0.75rem;">Total Earned</div>
                         </div>
                         <div style="text-align:center;">
                             <div style="font-size:1.2rem;font-weight:600;" id="gctPerCert">100</div>
-                            <div style="color:#8892b0;font-size:0.75rem;">Per Certificate</div>
+                            <div style="color:rgba(255,255,255,0.65);font-size:0.75rem;">Per Certificate</div>
                         </div>
                     </div>
-                    <p style="color:#8892b0;font-size:0.8rem;margin-top:1rem;">
+                    <p style="color:rgba(255,255,255,0.65);font-size:0.8rem;margin-top:1rem;">
                         Earn GCT tokens by maintaining emission compliance. Tokens can be redeemed for toll discounts, parking waivers, and tax credits.
                     </p>
                 </div>
@@ -573,11 +536,11 @@
             </div>
             <div class="metric-card">
                 <div class="metric-label">Violations</div>
-                <div class="metric-value" id="statViolations" style="-webkit-text-fill-color:var(--clr-fail)">0</div>
+                <div class="metric-value" id="statViolations">0</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Fraud Alerts</div>
-                <div class="metric-value" id="statFraudAlerts" style="-webkit-text-fill-color:var(--clr-warn)">0</div>
+                <div class="metric-value" id="statFraudAlerts">0</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Avg CES</div>
@@ -614,7 +577,7 @@
         <!-- Fleet Quick-Switch -->
         <div class="card mb-lg" id="fleetQuickSwitchCard" style="display:none;">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#128666;</span> <span data-i18n="title_quick_switch">Quick Vehicle Switch</span></div>
+                <div class="card-title"><span class="icon">&#128202;</span> <span data-i18n="title_quick_switch">Quick Vehicle Switch</span></div>
             </div>
             <div class="fleet-quick-switch" id="fleetQuickSwitch"></div>
         </div>
@@ -895,15 +858,15 @@
                     mEl.textContent = months;
                     // Color code: green >12, yellow 6-12, red <6
                     if (months > 12) {
-                        mEl.style.cssText = '-webkit-text-fill-color:#10b981;color:#10b981;';
+                        mEl.style.cssText = '-webkit-text-fill-color:#C6FF33;color:#C6FF33;';
                     } else if (months >= 6) {
-                        mEl.style.cssText = '-webkit-text-fill-color:#f59e0b;color:#f59e0b;';
+                        mEl.style.cssText = '-webkit-text-fill-color:#C6FF33;color:#C6FF33;';
                     } else {
-                        mEl.style.cssText = '-webkit-text-fill-color:#ef4444;color:#ef4444;';
+                        mEl.style.cssText = '-webkit-text-fill-color:#7D39EB;color:#7D39EB;';
                     }
                 } else {
                     mEl.textContent = '\u221E';
-                    mEl.style.cssText = '-webkit-text-fill-color:#10b981;color:#10b981;';
+                    mEl.style.cssText = '-webkit-text-fill-color:#C6FF33;color:#C6FF33;';
                 }
 
                 // Catalyst health
@@ -920,9 +883,9 @@
                     var prefix = rate > 0 ? '+' : '';
                     rEl.textContent = prefix + rate.toFixed(4);
                     if (rate > 0) {
-                        rEl.style.cssText = '-webkit-text-fill-color:#ef4444;color:#ef4444;';
+                        rEl.style.cssText = '-webkit-text-fill-color:#7D39EB;color:#7D39EB;';
                     } else {
-                        rEl.style.cssText = '-webkit-text-fill-color:#10b981;color:#10b981;';
+                        rEl.style.cssText = '-webkit-text-fill-color:#C6FF33;color:#C6FF33;';
                     }
                 } else {
                     rEl.textContent = '--';
@@ -934,17 +897,17 @@
                     recEl.textContent = rec;
                     recEl.style.display = '';
                     if (rec.indexOf('Immediate') !== -1) {
-                        recEl.style.background = 'rgba(239,68,68,0.12)';
-                        recEl.style.color = '#ef4444';
-                        recEl.style.border = '1px solid rgba(239,68,68,0.3)';
+                        recEl.style.background = 'rgba(125,57,235,0.12)';
+                        recEl.style.color = '#7D39EB';
+                        recEl.style.border = '1px solid rgba(125,57,235,0.3)';
                     } else if (rec.indexOf('Schedule') !== -1) {
-                        recEl.style.background = 'rgba(245,158,11,0.12)';
-                        recEl.style.color = '#f59e0b';
-                        recEl.style.border = '1px solid rgba(245,158,11,0.3)';
+                        recEl.style.background = 'rgba(198,255,51,0.12)';
+                        recEl.style.color = '#C6FF33';
+                        recEl.style.border = '1px solid rgba(198,255,51,0.3)';
                     } else {
-                        recEl.style.background = 'rgba(16,185,129,0.12)';
-                        recEl.style.color = '#10b981';
-                        recEl.style.border = '1px solid rgba(16,185,129,0.3)';
+                        recEl.style.background = 'rgba(198,255,51,0.12)';
+                        recEl.style.color = '#C6FF33';
+                        recEl.style.border = '1px solid rgba(198,255,51,0.3)';
                     }
                 } else {
                     recEl.style.display = 'none';
@@ -1209,27 +1172,7 @@
     // Demo-Enhancing Features
     // ══════════════════════════════════════════════════════════════
 
-    /* --- 7. Dark/Light Theme Toggle --- */
-    (function() {
-        var saved = localStorage.getItem('smartpuc_theme') || 'dark';
-        if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
-        updateThemeIcon(saved);
-    })();
-    function updateThemeIcon(theme) {
-        var btn = document.getElementById('themeToggleBtn');
-        if (btn) btn.innerHTML = theme === 'light' ? '&#9728;' : '&#127769;';
-    }
-    function toggleTheme() {
-        var current = document.documentElement.getAttribute('data-theme');
-        var next = current === 'light' ? 'dark' : 'light';
-        if (next === 'light') {
-            document.documentElement.setAttribute('data-theme', 'light');
-        } else {
-            document.documentElement.removeAttribute('data-theme');
-        }
-        localStorage.setItem('smartpuc_theme', next);
-        updateThemeIcon(next);
-    }
+    /* Theme toggle provided by shared theme.js */
 
     /* --- 1. Demo Walkthrough Tour --- */
     var _tourSteps = [
@@ -1477,10 +1420,10 @@
         window._heatmapSegments = [];
 
         function getHeatmapColor(ces) {
-            if (ces < 0.5) return '#10b981';
-            if (ces < 0.75) return '#f59e0b';
-            if (ces < 1.0) return '#f97316';
-            return '#ef4444';
+            if (ces < 0.5) return '#C6FF33';
+            if (ces < 0.75) return '#C6FF33';
+            if (ces < 1.0) return '#C6FF33';
+            return '#7D39EB';
         }
 
         // Patch moveCarAlongRoute + runSimulationStep to draw colored segments
@@ -1570,7 +1513,7 @@
             list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
             return;
         }
-        var typeIcons = { fraud: '&#9888;', fail: '&#10060;', pass: '&#9989;', info: '&#8505;', cert: '&#128196;', gct: '&#127793;' };
+        var typeIcons = { fraud: '&#9888;', fail: '&#10060;', pass: '&#9989;', info: '&#8505;', cert: '&#128202;', gct: '&#128202;' };
         list.innerHTML = _notifications.slice(0, 20).map(function(n) {
             var icon = typeIcons[n.type] || '&#8505;';
             var time = n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : '';
@@ -1683,5 +1626,28 @@
         connectWebSocket();
     })();
     </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

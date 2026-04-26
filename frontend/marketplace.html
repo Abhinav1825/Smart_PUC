@@ -7,24 +7,26 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — GCT Marketplace</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         /* ── Marketplace-specific styles ── */
         .balance-hero {
             text-align: center;
             padding: 2.5rem 1.5rem;
-            background: linear-gradient(135deg, rgba(76,175,80,0.08) 0%, rgba(0,188,212,0.06) 100%);
-            border: 1px solid rgba(76,175,80,0.2);
+            background: linear-gradient(135deg, rgba(198,255,51,0.08) 0%, rgba(125,57,235,0.06) 100%);
+            border: 1px solid rgba(198,255,51,0.2);
             border-radius: var(--radius-lg, 16px);
             margin-bottom: 1.5rem;
         }
         .balance-hero .gct-big {
             font-size: 3.5rem;
             font-weight: 800;
-            color: #4CAF50;
+            color: #C6FF33;
             line-height: 1;
         }
         .balance-hero .gct-label {
-            color: #8892b0;
+            color: var(--clr-text-muted);
             font-size: 0.9rem;
             margin-top: 0.4rem;
         }
@@ -43,11 +45,11 @@
         }
         .balance-stats .stat-lbl {
             font-size: 0.75rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             margin-top: 0.15rem;
         }
-        .balance-stats .stat-earned .stat-val { color: #4CAF50; }
-        .balance-stats .stat-redeemed .stat-val { color: #FF9800; }
+        .balance-stats .stat-earned .stat-val { color: #C6FF33; }
+        .balance-stats .stat-redeemed .stat-val { color: #C6FF33; }
 
         /* Reward catalog grid */
         .reward-grid {
@@ -57,8 +59,8 @@
             margin-bottom: 1.5rem;
         }
         .reward-card {
-            background: var(--clr-surface-2, #111834);
-            border: 1px solid var(--clr-border, #1e2a4a);
+            background: var(--clr-surface-2, #000000);
+            border: 1px solid var(--clr-border, #000000);
             border-radius: var(--radius-lg, 16px);
             padding: 1.5rem;
             display: flex;
@@ -66,8 +68,8 @@
             transition: border-color 0.2s, box-shadow 0.2s;
         }
         .reward-card:hover {
-            border-color: rgba(76,175,80,0.4);
-            box-shadow: 0 4px 20px rgba(76,175,80,0.08);
+            border-color: rgba(198,255,51,0.4);
+            box-shadow: 0 4px 20px rgba(198,255,51,0.08);
         }
         .reward-icon {
             font-size: 2.2rem;
@@ -80,14 +82,14 @@
         }
         .reward-desc {
             font-size: 0.82rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             flex: 1;
             margin-bottom: 0.8rem;
         }
         .reward-cost {
             font-size: 1rem;
             font-weight: 700;
-            color: #4CAF50;
+            color: #C6FF33;
             margin-bottom: 0.8rem;
         }
         .reward-card .btn-redeem {
@@ -95,14 +97,14 @@
             padding: 0.6rem;
             border: none;
             border-radius: 10px;
-            background: #4CAF50;
-            color: #fff;
+            background: #C6FF33;
+            color: var(--clr-text);
             font-weight: 600;
             font-size: 0.9rem;
             cursor: pointer;
             transition: background 0.2s;
         }
-        .reward-card .btn-redeem:hover { background: #43a047; }
+        .reward-card .btn-redeem:hover { background: #C6FF33; }
         .reward-card .btn-redeem:disabled {
             opacity: 0.4;
             cursor: not-allowed;
@@ -137,8 +139,8 @@
             flex: 1;
             text-align: center;
             padding: 1.2rem;
-            background: var(--clr-surface-2, #111834);
-            border: 1px solid var(--clr-border, #1e2a4a);
+            background: var(--clr-surface-2, #000000);
+            border: 1px solid var(--clr-border, #000000);
             border-radius: var(--radius-lg, 16px);
         }
         .market-stat-card .ms-val {
@@ -147,7 +149,7 @@
         }
         .market-stat-card .ms-lbl {
             font-size: 0.75rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             margin-top: 0.2rem;
         }
 
@@ -166,7 +168,7 @@
             display: inline-block;
             width: 16px; height: 16px;
             border: 2px solid rgba(255,255,255,0.15);
-            border-top-color: #4CAF50;
+            border-top-color: #C6FF33;
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
         }
@@ -182,42 +184,58 @@
     </style>
 </head>
 <body>
-<div class="app-container">
-
-    <!-- Navbar -->
-    <nav class="navbar">
+<div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>GCT Marketplace</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link active" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link active" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect Wallet</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <!-- Alerts -->
@@ -237,7 +255,7 @@
                 <div class="stat-lbl">Total Redeemed</div>
             </div>
         </div>
-        <div style="color:#8892b0; font-size:0.8rem; margin-top:1rem;" id="balanceNote">
+        <div style="color:rgba(255,255,255,0.65); font-size:0.8rem; margin-top:1rem;" id="balanceNote">
             Connect your wallet to view balance.
         </div>
     </div>
@@ -259,7 +277,7 @@
     </div>
 
     <!-- 2. Reward Catalog -->
-    <div class="section-title"><span>&#127793;</span> Reward Catalog</div>
+    <div class="section-title"><span>&#128202;</span> Reward Catalog</div>
     <div class="reward-grid" id="rewardGrid">
         <!-- Cards injected by JS -->
     </div>
@@ -267,7 +285,7 @@
     <!-- 4. Token Transfer -->
     <div class="card mb-lg">
         <div class="card-header">
-            <div class="card-title"><span class="icon">&#128296;</span> Transfer GCT</div>
+            <div class="card-title"><span class="icon">&#128176;</span> Transfer GCT</div>
         </div>
         <div class="transfer-section">
             <div class="form-group">
@@ -289,7 +307,7 @@
     <!-- 3. Redemption History -->
     <div class="card mb-lg">
         <div class="card-header">
-            <div class="card-title"><span class="icon">&#128203;</span> Redemption History</div>
+            <div class="card-title"><span class="icon">&#128179;</span> Redemption History</div>
             <span class="text-muted text-mono" id="historyCount">0 records</span>
         </div>
         <div class="table-container">
@@ -471,7 +489,7 @@ async function loadRedemptionHistory() {
                 return `<tr>
                     <td class="mono">${esc(String(r.id != null ? r.id : r.redemption_id))}</td>
                     <td>${esc(rewardTypeName(r.reward_type != null ? r.reward_type : r.type))}</td>
-                    <td class="mono" style="color:#FF9800;">${parseFloat(r.amount || 0).toFixed(0)}</td>
+                    <td class="mono" style="color:#C6FF33;">${parseFloat(r.amount || 0).toFixed(0)}</td>
                     <td class="text-muted">${esc(formatDate(r.timestamp || r.date))}</td>
                 </tr>`;
             }).join('');
@@ -561,7 +579,7 @@ async function transferGCT() {
 
     const btn = document.getElementById('transferBtn');
     btn.disabled = true;
-    resultDiv.innerHTML = '<span style="color:#007AFF;">Preparing transaction...</span>';
+    resultDiv.innerHTML = '<span style="color:#7D39EB;">Preparing transaction...</span>';
 
     try {
         if (!greenTokenAddress) {
@@ -589,10 +607,10 @@ async function transferGCT() {
         const tokenContract = new ethers.Contract(greenTokenAddress, transferABI, signer);
         const amountWei = ethers.parseUnits(String(amount), 18);
 
-        resultDiv.innerHTML = '<span style="color:#007AFF;">Confirm in MetaMask...</span>';
+        resultDiv.innerHTML = '<span style="color:#7D39EB;">Confirm in MetaMask...</span>';
         const tx = await tokenContract.transfer(toAddr, amountWei);
 
-        resultDiv.innerHTML = '<span style="color:#007AFF;">Transaction sent. Waiting for confirmation...</span>';
+        resultDiv.innerHTML = '<span style="color:#7D39EB;">Transaction sent. Waiting for confirmation...</span>';
         await tx.wait();
 
         resultDiv.innerHTML = '<span class="text-pass">Transfer successful! TX: ' + esc(tx.hash.slice(0, 16)) + '...</span>';
@@ -661,5 +679,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

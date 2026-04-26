@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Vehicle Comparison</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         /* Vehicle selector grid */
         .vehicle-selector-grid {
@@ -15,7 +17,7 @@
             margin-bottom: 1.5rem;
         }
         .vehicle-card {
-            background: var(--bg-card, #111834);
+            background: var(--bg-card, #000000);
             border-radius: 14px;
             padding: 1.2rem;
             border: 2px solid rgba(255,255,255,0.06);
@@ -24,39 +26,39 @@
             user-select: none;
         }
         .vehicle-card:hover {
-            border-color: rgba(0,122,255,0.4);
+            border-color: rgba(125,57,235,0.4);
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         }
         .vehicle-card.selected {
-            border-color: #007AFF;
-            background: rgba(0,122,255,0.08);
-            box-shadow: 0 0 0 1px #007AFF, 0 8px 24px rgba(0,122,255,0.15);
+            border-color: #7D39EB;
+            background: rgba(125,57,235,0.08);
+            box-shadow: 0 0 0 1px #7D39EB, 0 8px 24px rgba(125,57,235,0.15);
         }
         .vehicle-card .vc-id {
             font-size: 1rem;
             font-weight: 700;
-            color: #e6f1ff;
+            color: var(--clr-text);
             margin-bottom: 0.3rem;
         }
         .vehicle-card .vc-meta {
             font-size: 0.78rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             line-height: 1.5;
         }
         .vehicle-card .vc-check {
             float: right;
             width: 22px; height: 22px;
             border-radius: 6px;
-            border: 2px solid #2a3158;
+            border: 2px solid var(--clr-border);
             display: flex; align-items: center; justify-content: center;
             font-size: 0.8rem;
             transition: all 0.2s;
         }
         .vehicle-card.selected .vc-check {
-            background: #007AFF;
-            border-color: #007AFF;
-            color: #fff;
+            background: #7D39EB;
+            border-color: #7D39EB;
+            color: var(--clr-text);
         }
 
         /* Compare controls */
@@ -69,10 +71,10 @@
         }
         .selected-count {
             font-size: 0.9rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
         }
         .selected-count strong {
-            color: #007AFF;
+            color: #7D39EB;
         }
 
         /* Results layout */
@@ -95,14 +97,14 @@
         .specs-table th {
             text-align: left;
             font-size: 0.72rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             text-transform: uppercase;
             letter-spacing: 0.8px;
             padding: 0.7rem 0.8rem;
             border-bottom: 1px solid rgba(255,255,255,0.08);
             position: sticky;
             top: 0;
-            background: var(--bg-card, #111834);
+            background: var(--bg-card, #000000);
         }
         .specs-table td {
             padding: 0.65rem 0.8rem;
@@ -121,7 +123,7 @@
         .summary-table th {
             text-align: left;
             font-size: 0.72rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             text-transform: uppercase;
             letter-spacing: 0.8px;
             padding: 0.7rem 0.8rem;
@@ -146,7 +148,7 @@
             min-width: 120px;
             font-size: 0.85rem;
             font-weight: 600;
-            color: #e6f1ff;
+            color: var(--clr-text);
         }
         .timeline-bar-container {
             flex: 1;
@@ -163,11 +165,11 @@
             justify-content: center;
             font-size: 0.7rem;
             font-weight: 600;
-            color: #fff;
+            color: var(--clr-text);
             min-width: 2px;
         }
-        .timeline-segment.pass { background: rgba(76,175,80,0.7); }
-        .timeline-segment.fail { background: rgba(244,67,54,0.7); }
+        .timeline-segment.pass { background: rgba(198,255,51,0.7); }
+        .timeline-segment.fail { background: rgba(125,57,235,0.7); }
 
         /* Chart containers */
         .chart-container {
@@ -183,13 +185,13 @@
             align-items: center;
             justify-content: center;
             min-height: 280px;
-            color: #8892b0;
+            color: var(--clr-text-muted);
             font-size: 0.9rem;
         }
         .chart-loading .spinner {
             width: 28px; height: 28px;
-            border: 3px solid rgba(0,122,255,0.2);
-            border-top-color: #007AFF;
+            border: 3px solid rgba(125,57,235,0.2);
+            border-top-color: #7D39EB;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin-right: 0.75rem;
@@ -211,7 +213,7 @@
         .empty-state {
             text-align: center;
             padding: 3rem 1rem;
-            color: #8892b0;
+            color: var(--clr-text-muted);
         }
         .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
         .empty-state p { font-size: 0.95rem; }
@@ -227,42 +229,58 @@
     </style>
 </head>
 <body>
-<div class="app-container">
-
-    <!-- Navbar -->
-    <nav class="navbar">
+<div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>Vehicle Comparison</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link active" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link active" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div id="alertsContainer"></div>
@@ -270,7 +288,7 @@
     <!-- Vehicle Selector -->
     <div class="card" style="margin-bottom: 1.5rem;">
         <div class="card-header">
-            <div class="card-title"><span class="icon">&#128663;</span> Select Vehicles to Compare (2-5)</div>
+            <div class="card-title"><span class="icon">&#9878;</span> Select Vehicles to Compare (2-5)</div>
             <span class="text-muted text-mono" id="selectorStatus">Loading fleet...</span>
         </div>
         <div class="vehicle-selector-grid" id="vehicleSelectorGrid">
@@ -281,7 +299,7 @@
         <div class="compare-controls">
             <span class="selected-count">Selected: <strong id="selectedCount">0</strong> / 5</span>
             <button class="btn btn-accent" id="compareBtn" onclick="runComparison()" disabled>Compare Selected</button>
-            <button class="btn" onclick="clearSelection()" style="border:1px solid #2a3158;">Clear Selection</button>
+            <button class="btn btn-outline" onclick="clearSelection()">Clear Selection</button>
         </div>
     </div>
 
@@ -291,7 +309,7 @@
         <!-- Vehicle Specs Comparison Table -->
         <div class="card compare-full" style="margin-bottom: 1.5rem;">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#128203;</span> Vehicle Specs Comparison</div>
+                <div class="card-title"><span class="icon">&#128295;</span> Vehicle Specs Comparison</div>
             </div>
             <div style="overflow-x:auto;">
                 <table class="specs-table" id="specsTable">
@@ -317,7 +335,7 @@
             <!-- Pollutant Breakdown Radar Chart -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">&#128161;</span> Pollutant Radar (Latest vs Threshold)</div>
+                    <div class="card-title"><span class="icon">&#128225;</span> Pollutant Radar (Latest vs Threshold)</div>
                     <span class="text-muted text-mono" id="radarStatus">Loading...</span>
                 </div>
                 <div class="chart-container">
@@ -338,7 +356,7 @@
         <!-- Summary Stats Table -->
         <div class="card" style="margin-bottom: 1.5rem;">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#128202;</span> Summary Statistics</div>
+                <div class="card-title"><span class="icon">&#128209;</span> Summary Statistics</div>
             </div>
             <div style="overflow-x:auto;">
                 <table class="summary-table" id="summaryTable">
@@ -352,21 +370,21 @@
     <!-- CES vs CO2-Only Detection Comparison -->
     <div class="card" style="margin-bottom: 1.5rem;" id="cesComparisonSection">
         <div class="card-header">
-            <div class="card-title"><span class="icon">&#128269;</span> CES vs CO&#8322;-Only Detection Comparison</div>
+            <div class="card-title"><span class="icon">&#128202;</span> CES vs CO&#8322;-Only Detection Comparison</div>
             <span class="text-muted text-mono" id="cesCompStatus">Static data</span>
         </div>
 
         <!-- Large number cards -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
-            <div style="background:rgba(0,122,255,0.08);border:1px solid rgba(0,122,255,0.25);border-radius:14px;padding:1.5rem;text-align:center;">
-                <div style="font-size:0.75rem;color:#8892b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">CES Detects</div>
-                <div id="cesRate" style="font-size:2.8rem;font-weight:800;color:#007AFF;line-height:1;">42.4%</div>
-                <div style="font-size:0.8rem;color:#8892b0;margin-top:0.3rem;">of all violations</div>
+            <div style="background:rgba(125,57,235,0.08);border:1px solid rgba(125,57,235,0.25);border-radius:14px;padding:1.5rem;text-align:center;">
+                <div style="font-size:0.75rem;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">CES Detects</div>
+                <div id="cesRate" style="font-size:2.8rem;font-weight:800;color:#7D39EB;line-height:1;">42.4%</div>
+                <div style="font-size:0.8rem;color:rgba(255,255,255,0.65);margin-top:0.3rem;">of all violations</div>
             </div>
-            <div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.25);border-radius:14px;padding:1.5rem;text-align:center;">
-                <div style="font-size:0.75rem;color:#8892b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">CO&#8322;-Only Detects</div>
-                <div id="co2Rate" style="font-size:2.8rem;font-weight:800;color:#FF9800;line-height:1;">29.8%</div>
-                <div style="font-size:0.8rem;color:#8892b0;margin-top:0.3rem;">of all violations</div>
+            <div style="background:rgba(198,255,51,0.08);border:1px solid rgba(198,255,51,0.25);border-radius:14px;padding:1.5rem;text-align:center;">
+                <div style="font-size:0.75rem;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">CO&#8322;-Only Detects</div>
+                <div id="co2Rate" style="font-size:2.8rem;font-weight:800;color:#C6FF33;line-height:1;">29.8%</div>
+                <div style="font-size:0.8rem;color:rgba(255,255,255,0.65);margin-top:0.3rem;">of all violations</div>
             </div>
         </div>
 
@@ -374,35 +392,35 @@
         <div style="margin-bottom:1.5rem;">
             <div style="margin-bottom:0.75rem;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-size:0.85rem;font-weight:600;color:#e6f1ff;">CES (Multi-pollutant)</span>
-                    <span class="mono" style="color:#007AFF;font-weight:700;" id="cesBarLabel">42.4%</span>
+                    <span style="font-size:0.85rem;font-weight:600;color:#FFFFFF;">CES (Multi-pollutant)</span>
+                    <span class="mono" style="color:#7D39EB;font-weight:700;" id="cesBarLabel">42.4%</span>
                 </div>
                 <div style="width:100%;height:28px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;">
-                    <div id="cesBar" style="height:100%;width:42.4%;background:linear-gradient(90deg,#007AFF,#3395ff);border-radius:6px;transition:width 0.6s ease;"></div>
+                    <div id="cesBar" style="height:100%;width:42.4%;background:linear-gradient(90deg,#7D39EB,#7D39EB);border-radius:6px;transition:width 0.6s ease;"></div>
                 </div>
             </div>
             <div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-size:0.85rem;font-weight:600;color:#e6f1ff;">CO&#8322;-Only</span>
-                    <span class="mono" style="color:#FF9800;font-weight:700;" id="co2BarLabel">29.8%</span>
+                    <span style="font-size:0.85rem;font-weight:600;color:#FFFFFF;">CO&#8322;-Only</span>
+                    <span class="mono" style="color:#C6FF33;font-weight:700;" id="co2BarLabel">29.8%</span>
                 </div>
                 <div style="width:100%;height:28px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;">
-                    <div id="co2Bar" style="height:100%;width:29.8%;background:linear-gradient(90deg,#FF9800,#ffb74d);border-radius:6px;transition:width 0.6s ease;"></div>
+                    <div id="co2Bar" style="height:100%;width:29.8%;background:linear-gradient(90deg,#C6FF33,#C6FF33);border-radius:6px;transition:width 0.6s ease;"></div>
                 </div>
             </div>
         </div>
 
         <!-- Callout box -->
-        <div id="cesCallout" style="background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.3);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.75rem;">
+        <div id="cesCallout" style="background:rgba(198,255,51,0.08);border:1px solid rgba(198,255,51,0.3);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.75rem;">
             <span style="font-size:1.5rem;">&#9989;</span>
             <div>
-                <div style="font-size:1rem;font-weight:700;color:#4CAF50;">CES catches 42.3% more violations than CO&#8322;-only monitoring</div>
-                <div style="font-size:0.82rem;color:#8892b0;margin-top:2px;">CO&#8322;-only missed 15,007 violation-seconds that CES detected</div>
+                <div style="font-size:1rem;font-weight:700;color:#C6FF33;">CES catches 42.3% more violations than CO&#8322;-only monitoring</div>
+                <div style="font-size:0.82rem;color:rgba(255,255,255,0.65);margin-top:2px;">CO&#8322;-only missed 15,007 violation-seconds that CES detected</div>
             </div>
         </div>
 
         <!-- Per-pollutant breakdown table -->
-        <h4 style="font-size:0.9rem;color:#e6f1ff;margin-bottom:0.75rem;font-weight:600;">Per-Pollutant Detection Breakdown</h4>
+        <h4 style="font-size:0.9rem;color:#FFFFFF;margin-bottom:0.75rem;font-weight:600;">Per-Pollutant Detection Breakdown</h4>
         <div style="overflow-x:auto;">
             <table class="summary-table" id="pollutantBreakdownTable">
                 <thead>
@@ -416,39 +434,39 @@
                 </thead>
                 <tbody id="pollutantBreakdownBody">
                     <tr>
-                        <td style="font-weight:600;color:#e6f1ff;">NOx</td>
-                        <td class="mono" style="color:#007AFF;">38.2%</td>
-                        <td class="mono" style="color:#FF9800;">29.8%</td>
-                        <td class="mono" style="color:#4CAF50;">+8.4 pp</td>
-                        <td><span style="background:rgba(244,67,54,0.15);color:#F44336;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Highest</span></td>
+                        <td style="font-weight:600;color:#FFFFFF;">NOx</td>
+                        <td class="mono" style="color:#7D39EB;">38.2%</td>
+                        <td class="mono" style="color:#C6FF33;">29.8%</td>
+                        <td class="mono" style="color:#C6FF33;">+8.4 pp</td>
+                        <td><span style="background:rgba(125,57,235,0.15);color:#7D39EB;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Highest</span></td>
                     </tr>
                     <tr>
-                        <td style="font-weight:600;color:#e6f1ff;">PM2.5</td>
-                        <td class="mono" style="color:#007AFF;">35.1%</td>
-                        <td class="mono" style="color:#FF9800;">29.8%</td>
-                        <td class="mono" style="color:#4CAF50;">+5.3 pp</td>
-                        <td><span style="background:rgba(255,152,0,0.15);color:#FF9800;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">High</span></td>
+                        <td style="font-weight:600;color:#FFFFFF;">PM2.5</td>
+                        <td class="mono" style="color:#7D39EB;">35.1%</td>
+                        <td class="mono" style="color:#C6FF33;">29.8%</td>
+                        <td class="mono" style="color:#C6FF33;">+5.3 pp</td>
+                        <td><span style="background:rgba(198,255,51,0.15);color:#C6FF33;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">High</span></td>
                     </tr>
                     <tr>
-                        <td style="font-weight:600;color:#e6f1ff;">CO</td>
-                        <td class="mono" style="color:#007AFF;">33.6%</td>
-                        <td class="mono" style="color:#FF9800;">29.8%</td>
-                        <td class="mono" style="color:#4CAF50;">+3.8 pp</td>
-                        <td><span style="background:rgba(255,152,0,0.15);color:#FF9800;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">High</span></td>
+                        <td style="font-weight:600;color:#FFFFFF;">CO</td>
+                        <td class="mono" style="color:#7D39EB;">33.6%</td>
+                        <td class="mono" style="color:#C6FF33;">29.8%</td>
+                        <td class="mono" style="color:#C6FF33;">+3.8 pp</td>
+                        <td><span style="background:rgba(198,255,51,0.15);color:#C6FF33;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">High</span></td>
                     </tr>
                     <tr>
-                        <td style="font-weight:600;color:#e6f1ff;">HC</td>
-                        <td class="mono" style="color:#007AFF;">31.4%</td>
-                        <td class="mono" style="color:#FF9800;">29.8%</td>
-                        <td class="mono" style="color:#4CAF50;">+1.6 pp</td>
-                        <td><span style="background:rgba(76,175,80,0.15);color:#4CAF50;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Moderate</span></td>
+                        <td style="font-weight:600;color:#FFFFFF;">HC</td>
+                        <td class="mono" style="color:#7D39EB;">31.4%</td>
+                        <td class="mono" style="color:#C6FF33;">29.8%</td>
+                        <td class="mono" style="color:#C6FF33;">+1.6 pp</td>
+                        <td><span style="background:rgba(198,255,51,0.15);color:#C6FF33;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Moderate</span></td>
                     </tr>
                     <tr>
-                        <td style="font-weight:600;color:#e6f1ff;">CO&#8322;</td>
-                        <td class="mono" style="color:#007AFF;">29.8%</td>
-                        <td class="mono" style="color:#FF9800;">29.8%</td>
-                        <td class="mono" style="color:#8892b0;">+0.0 pp</td>
-                        <td><span style="background:rgba(255,255,255,0.05);color:#8892b0;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Baseline</span></td>
+                        <td style="font-weight:600;color:#FFFFFF;">CO&#8322;</td>
+                        <td class="mono" style="color:#7D39EB;">29.8%</td>
+                        <td class="mono" style="color:#C6FF33;">29.8%</td>
+                        <td class="mono" style="color:rgba(255,255,255,0.65);">+0.0 pp</td>
+                        <td><span style="background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.65);padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">Baseline</span></td>
                     </tr>
                 </tbody>
             </table>
@@ -477,11 +495,11 @@ let cesTrendChartInstance = null;
 let radarChartInstance = null;
 
 const VEHICLE_COLORS = [
-    '#007AFF', '#F44336', '#4CAF50', '#FF9800', '#9C27B0'
+    '#7D39EB', '#7D39EB', '#C6FF33', '#C6FF33', '#7D39EB'
 ];
 const VEHICLE_COLORS_ALPHA = [
-    'rgba(0,122,255,0.15)', 'rgba(244,67,54,0.15)', 'rgba(76,175,80,0.15)',
-    'rgba(255,152,0,0.15)', 'rgba(156,39,176,0.15)'
+    'rgba(125,57,235,0.15)', 'rgba(125,57,235,0.15)', 'rgba(198,255,51,0.15)',
+    'rgba(198,255,51,0.15)', 'rgba(125,57,235,0.15)'
 ];
 
 // BS-VI thresholds for radar normalization (g/km)
@@ -511,7 +529,7 @@ async function loadFleet() {
 
         if (!profiles || (Array.isArray(profiles) && profiles.length === 0) ||
             (typeof profiles === 'object' && Object.keys(profiles).length === 0)) {
-            grid.innerHTML = '<div class="empty-state"><div class="icon">&#128663;</div><p>No vehicles found in fleet.</p></div>';
+            grid.innerHTML = '<div class="empty-state"><div class="icon">&#128202;</div><p>No vehicles found in fleet.</p></div>';
             document.getElementById('selectorStatus').textContent = '0 vehicles';
             return;
         }
@@ -551,7 +569,7 @@ async function loadFleet() {
     } catch (e) {
         console.error('Failed to load fleet:', e);
         document.getElementById('vehicleSelectorGrid').innerHTML =
-            '<div class="empty-state"><p style="color:#F44336;">Failed to load vehicles: ' + escapeHtml(e.message) + '</p></div>';
+            '<div class="empty-state"><p style="color:#7D39EB;">Failed to load vehicles: ' + escapeHtml(e.message) + '</p></div>';
         document.getElementById('selectorStatus').textContent = 'Error';
     }
 }
@@ -589,10 +607,10 @@ function clearSelection() {
 
 function showAlert(msg, type) {
     const container = document.getElementById('alertsContainer');
-    const borderColor = type === 'warn' ? '#FF9800' : type === 'fail' ? '#F44336' : '#007AFF';
-    container.innerHTML = `<div class="alert" style="margin:0.5rem 0; padding:0.75rem 1rem; border-radius:8px; background:rgba(255,152,0,0.1); border-left:4px solid ${borderColor}; display:flex; justify-content:space-between; align-items:center;">
+    const borderColor = type === 'warn' ? '#C6FF33' : type === 'fail' ? '#7D39EB' : '#7D39EB';
+    container.innerHTML = `<div class="alert" style="margin:0.5rem 0; padding:0.75rem 1rem; border-radius:8px; background:rgba(198,255,51,0.1); border-left:4px solid ${borderColor}; display:flex; justify-content:space-between; align-items:center;">
         <span>${escapeHtml(msg)}</span>
-        <button style="background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.2rem;" onclick="this.parentElement.remove()">&#10005;</button>
+        <button style="background:none;border:none;color:rgba(255,255,255,0.65);cursor:pointer;font-size:1.2rem;" onclick="this.parentElement.remove()">&#10005;</button>
     </div>`;
     setTimeout(() => { if (container.firstChild) container.firstChild.remove(); }, 5000);
 }
@@ -653,7 +671,7 @@ function renderSpecsTable() {
     ];
 
     body.innerHTML = attrs.map(attr => {
-        return '<tr><td style="font-weight:600; color:#e6f1ff;">' + attr.label + '</td>' +
+        return '<tr><td style="font-weight:600; color:#FFFFFF;">' + attr.label + '</td>' +
             selectedVehicles.map(vid => {
                 const p = allProfiles[vid] || {};
                 const val = p[attr.key];
@@ -712,18 +730,18 @@ function renderCESTrendChart(trendsResults) {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { labels: { color: '#8892b0', usePointStyle: true, padding: 16 } },
+                legend: { labels: { color: 'rgba(255,255,255,0.65)', usePointStyle: true, padding: 16 } },
                 tooltip: {
-                    backgroundColor: '#1a2044', titleColor: '#e6f1ff',
-                    bodyColor: '#8892b0', borderColor: '#2a3158', borderWidth: 1
+                    backgroundColor: '#000000', titleColor: '#FFFFFF',
+                    bodyColor: 'rgba(255,255,255,0.65)', borderColor: '#000000', borderWidth: 1
                 }
             },
             scales: {
-                x: { ticks: { color: '#8892b0', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                x: { ticks: { color: 'rgba(255,255,255,0.65)', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
                 y: {
-                    ticks: { color: '#8892b0' },
+                    ticks: { color: 'rgba(255,255,255,0.65)' },
                     grid: { color: 'rgba(255,255,255,0.04)' },
-                    title: { display: true, text: 'CES Score', color: '#8892b0' }
+                    title: { display: true, text: 'CES Score', color: 'rgba(255,255,255,0.65)' }
                 }
             }
         }
@@ -781,10 +799,10 @@ function renderRadarChart(trendsResults) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { labels: { color: '#8892b0', usePointStyle: true, padding: 16 } },
+                legend: { labels: { color: 'rgba(255,255,255,0.65)', usePointStyle: true, padding: 16 } },
                 tooltip: {
-                    backgroundColor: '#1a2044', titleColor: '#e6f1ff',
-                    bodyColor: '#8892b0', borderColor: '#2a3158', borderWidth: 1,
+                    backgroundColor: '#000000', titleColor: '#FFFFFF',
+                    bodyColor: 'rgba(255,255,255,0.65)', borderColor: '#000000', borderWidth: 1,
                     callbacks: {
                         label: function(ctx) {
                             return ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '% of threshold';
@@ -796,8 +814,8 @@ function renderRadarChart(trendsResults) {
                 r: {
                     angleLines: { color: 'rgba(255,255,255,0.08)' },
                     grid: { color: 'rgba(255,255,255,0.08)' },
-                    pointLabels: { color: '#8892b0', font: { size: 12 } },
-                    ticks: { color: '#8892b0', backdropColor: 'transparent' },
+                    pointLabels: { color: 'rgba(255,255,255,0.65)', font: { size: 12 } },
+                    ticks: { color: 'rgba(255,255,255,0.65)', backdropColor: 'transparent' },
                     suggestedMin: 0,
                     suggestedMax: 150
                 }
@@ -821,7 +839,7 @@ function renderComplianceTimeline(trendsResults, statsResults) {
         if (!data || data.success === false) {
             html += `<div class="timeline-row">
                 <div class="timeline-label">${escapeHtml(vid)}</div>
-                <div class="timeline-bar-container"><div style="padding:4px 8px; color:#8892b0; font-size:0.75rem;">No data</div></div>
+                <div class="timeline-bar-container"><div style="padding:4px 8px; color:rgba(255,255,255,0.65); font-size:0.75rem;">No data</div></div>
             </div>`;
             return;
         }
@@ -831,7 +849,7 @@ function renderComplianceTimeline(trendsResults, statsResults) {
         if (ces.length === 0) {
             html += `<div class="timeline-row">
                 <div class="timeline-label">${escapeHtml(vid)}</div>
-                <div class="timeline-bar-container"><div style="padding:4px 8px; color:#8892b0; font-size:0.75rem;">No records</div></div>
+                <div class="timeline-bar-container"><div style="padding:4px 8px; color:rgba(255,255,255,0.65); font-size:0.75rem;">No records</div></div>
             </div>`;
             return;
         }
@@ -875,16 +893,16 @@ function renderSummaryStats(statsResults) {
     ];
 
     body.innerHTML = metrics.map(m => {
-        return '<tr><td style="font-weight:600; color:#e6f1ff;">' + m.label + '</td>' +
+        return '<tr><td style="font-weight:600; color:#FFFFFF;">' + m.label + '</td>' +
             selectedVehicles.map((vid, i) => {
                 const stats = statsResults[i] || {};
                 const s = stats.stats || stats;
                 const val = s[m.key];
                 const display = m.fmt(val);
                 let style = '';
-                if (m.key === 'violations' && val > 0) style = 'color:#F44336;';
+                if (m.key === 'violations' && val > 0) style = 'color:#7D39EB;';
                 if (m.key === 'compliance_rate' && val != null) {
-                    style = val >= 80 ? 'color:#4CAF50;' : val >= 50 ? 'color:#FF9800;' : 'color:#F44336;';
+                    style = val >= 80 ? 'color:#C6FF33;' : val >= 50 ? 'color:#C6FF33;' : 'color:#7D39EB;';
                 }
                 return '<td class="mono" style="' + style + '">' + escapeHtml(display) + '</td>';
             }).join('') + '</tr>';
@@ -942,5 +960,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

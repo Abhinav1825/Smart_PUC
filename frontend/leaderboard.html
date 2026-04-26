@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Fleet Leaderboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         .lb-container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
 
@@ -71,22 +73,22 @@
             font-weight: 800; font-size: 0.85rem;
             font-family: var(--font-mono);
         }
-        .rank-1 { background: linear-gradient(135deg, #ffd700, #ffb300); color: #000; box-shadow: 0 0 12px rgba(255,215,0,0.4); }
-        .rank-2 { background: linear-gradient(135deg, #c0c0c0, #9e9e9e); color: #000; box-shadow: 0 0 10px rgba(192,192,192,0.3); }
-        .rank-3 { background: linear-gradient(135deg, #cd7f32, #a0522d); color: #fff; box-shadow: 0 0 10px rgba(205,127,50,0.3); }
+        .rank-1 { background: linear-gradient(135deg, #C6FF33, #C6FF33); color: #000000; box-shadow: 0 0 12px rgba(198,255,51,0.4); }
+        .rank-2 { background: linear-gradient(135deg, #FFFFFF, var(--clr-text-muted)); color: #000000; box-shadow: 0 0 10px rgba(255,255,255,0.3); }
+        .rank-3 { background: linear-gradient(135deg, #C6FF33, #C6FF33); color: var(--clr-text); box-shadow: 0 0 10px rgba(198,255,51,0.3); }
         .rank-other { background: var(--clr-surface-3); color: var(--clr-text-muted); }
 
         /* Green glow for best vehicle */
         .greenest-row td {
-            background: rgba(16, 185, 129, 0.05) !important;
+            background: rgba(198,255,51,0.05) !important;
         }
         .greenest-row {
-            box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.3);
+            box-shadow: inset 0 0 0 1px rgba(198,255,51,0.3);
             animation: greenGlow 2s ease-in-out infinite;
         }
         @keyframes greenGlow {
-            0%, 100% { box-shadow: inset 0 0 0 1px rgba(16,185,129,0.2), 0 0 8px rgba(16,185,129,0.1); }
-            50%      { box-shadow: inset 0 0 0 1px rgba(16,185,129,0.5), 0 0 20px rgba(16,185,129,0.2); }
+            0%, 100% { box-shadow: inset 0 0 0 1px rgba(198,255,51,0.2), 0 0 8px rgba(198,255,51,0.1); }
+            50%      { box-shadow: inset 0 0 0 1px rgba(198,255,51,0.5), 0 0 20px rgba(198,255,51,0.2); }
         }
 
         /* Vehicle info in table */
@@ -137,16 +139,14 @@
             align-items: center; justify-content: center;
             text-align: center;
             padding: var(--space-xl);
-            background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(34,211,238,0.05));
+            background: linear-gradient(135deg, rgba(125,57,235,0.05), rgba(125,57,235,0.05));
             border-radius: var(--radius-lg);
             border: 1px solid var(--clr-border);
         }
         .cost-big {
             font-size: 2.5rem; font-weight: 800;
             font-family: var(--font-mono);
-            background: linear-gradient(135deg, var(--clr-text), var(--clr-accent));
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--clr-lime);
             margin-bottom: var(--space-sm);
         }
         .cost-label-main {
@@ -196,37 +196,62 @@
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Navbar -->
-        <nav class="navbar">
-            <div class="navbar-top-row">
-                <a href="index.html" class="navbar-brand">
-                    <div class="logo">&#9889;</div>
-                    <div><h1>Smart PUC</h1><span>Fleet Leaderboard</span></div>
-                </a>
-                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
-            </div>
-            <div class="navbar-actions" id="navbarActions">
-                <a href="index.html" class="nav-link">Vehicle</a>
-                <a href="authority.html" class="nav-link">Authority</a>
-                <a href="verify.html" class="nav-link">Verify</a>
-                <a href="analytics.html" class="nav-link">Analytics</a>
-                <a href="fleet.html" class="nav-link">Fleet</a>
-                <a href="rto.html" class="nav-link">RTO</a>
-                <a href="marketplace.html" class="nav-link">Marketplace</a>
-                <a href="cpcb.html" class="nav-link">CPCB</a>
-                <a href="compare.html" class="nav-link">Compare</a>
+    <div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
+            </a>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
                 <a href="twin.html" class="nav-link">Twin</a>
                 <a href="leaderboard.html" class="nav-link active">Leaderboard</a>
                 <a href="explorer.html" class="nav-link">Explorer</a>
-                <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                </div>
             </div>
-        </nav>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
+        </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
+    </nav>
 
         <!-- Leaderboard -->
-        <div class="section-title">
-            &#127942; Fleet Leaderboard
+        <div class="section-title">&#127942; Fleet Leaderboard
             <span class="refresh-indicator" id="refreshTimer">Auto-refresh in 15s</span>
         </div>
 
@@ -250,7 +275,7 @@
         </div>
 
         <!-- Cost Calculator -->
-        <div class="section-title">&#128176; Pollution Cost Calculator</div>
+        <div class="section-title">&#128202; Pollution Cost Calculator</div>
         <div class="cost-section">
             <div class="cost-grid">
                 <div class="cost-controls">
@@ -306,7 +331,7 @@
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                 if (accounts.length > 0) {
                     document.getElementById('walletAddress').textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
-                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('walletDot').style.background = '#C6FF33';
                     document.getElementById('connectWalletBtn').textContent = 'Connected';
                 }
             } catch(e) { console.error(e); }
@@ -357,10 +382,10 @@
         }
 
         function getCESBarGradient(ces) {
-            if (ces < 0.5) return 'linear-gradient(90deg, #10b981, #34d399)';
-            if (ces < 0.75) return 'linear-gradient(90deg, #22d3ee, #67e8f9)';
-            if (ces < 1.0) return 'linear-gradient(90deg, #f59e0b, #fbbf24)';
-            return 'linear-gradient(90deg, #ef4444, #f87171)';
+            if (ces < 0.5) return 'linear-gradient(90deg, #C6FF33, #C6FF33)';
+            if (ces < 0.75) return 'linear-gradient(90deg, #7D39EB, #7D39EB)';
+            if (ces < 1.0) return 'linear-gradient(90deg, #C6FF33, #C6FF33)';
+            return 'linear-gradient(90deg, #7D39EB, #7D39EB)';
         }
 
         function renderLeaderboard() {
@@ -517,5 +542,28 @@
         loadFleetData();
         startAutoRefresh();
     </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

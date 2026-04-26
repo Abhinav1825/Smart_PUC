@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — RTO Integration Portal</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         /* ── RTO-specific styles ── */
         .rto-container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem; }
@@ -17,20 +19,20 @@
             letter-spacing: 2px; text-align: center; margin: 1rem 0;
         }
         .verdict-compliant {
-            background: rgba(76,175,80,0.15); color: #4CAF50;
-            border: 2px solid #4CAF50; box-shadow: 0 0 20px rgba(76,175,80,0.2);
+            background: rgba(198,255,51,0.15); color: #C6FF33;
+            border: 2px solid #C6FF33; box-shadow: 0 0 20px rgba(198,255,51,0.2);
         }
         .verdict-non-compliant {
-            background: rgba(244,67,54,0.15); color: #F44336;
-            border: 2px solid #F44336; box-shadow: 0 0 20px rgba(244,67,54,0.2);
+            background: rgba(125,57,235,0.15); color: #7D39EB;
+            border: 2px solid #7D39EB; box-shadow: 0 0 20px rgba(125,57,235,0.2);
         }
         .verdict-expired {
-            background: rgba(255,152,0,0.15); color: #FF9800;
-            border: 2px solid #FF9800; box-shadow: 0 0 20px rgba(255,152,0,0.2);
+            background: rgba(198,255,51,0.15); color: #C6FF33;
+            border: 2px solid #C6FF33; box-shadow: 0 0 20px rgba(198,255,51,0.2);
         }
         .verdict-unknown {
-            background: rgba(136,146,176,0.15); color: #8892b0;
-            border: 2px solid #8892b0;
+            background: rgba(125,57,235,0.15); color: var(--clr-text-muted);
+            border: 2px solid var(--clr-text-muted);
         }
 
         /* Info grid */
@@ -42,7 +44,7 @@
             padding: 0.85rem; background: rgba(255,255,255,0.03); border-radius: 10px;
         }
         .info-item label {
-            display: block; font-size: 0.7rem; color: #8892b0;
+            display: block; font-size: 0.7rem; color: var(--clr-text-muted);
             text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.25rem;
         }
         .info-item .value { font-size: 1rem; font-weight: 600; }
@@ -64,14 +66,14 @@
         .heatmap-cell:hover { transform: scale(1.05); }
         .heatmap-cell .zone-name { display: block; font-size: 0.7rem; margin-bottom: 0.25rem; opacity: 0.8; }
         .heatmap-cell .zone-pct { display: block; font-size: 1.1rem; font-weight: 800; }
-        .heat-high { background: rgba(76,175,80,0.25); color: #66BB6A; }
-        .heat-med { background: rgba(255,193,7,0.25); color: #FFC107; }
-        .heat-low { background: rgba(244,67,54,0.25); color: #EF5350; }
-        .heat-vlow { background: rgba(211,47,47,0.35); color: #F44336; }
+        .heat-high { background: rgba(198,255,51,0.25); color: #C6FF33; }
+        .heat-med { background: rgba(198,255,51,0.25); color: #C6FF33; }
+        .heat-low { background: rgba(125,57,235,0.25); color: #7D39EB; }
+        .heat-vlow { background: rgba(125,57,235,0.35); color: #7D39EB; }
 
         .heatmap-legend {
             display: flex; gap: 1rem; margin-top: 0.75rem; justify-content: center;
-            font-size: 0.75rem; color: #8892b0;
+            font-size: 0.75rem; color: var(--clr-text-muted);
         }
         .legend-dot {
             display: inline-block; width: 12px; height: 12px; border-radius: 3px;
@@ -89,29 +91,29 @@
             font-size: 0.8rem;
         }
         .action-log-entry:last-child { border-bottom: none; }
-        .action-log-entry .action-time { color: #8892b0; font-size: 0.7rem; }
+        .action-log-entry .action-time { color: var(--clr-text-muted); font-size: 0.7rem; }
 
         /* Severity badges */
-        .severity-critical { color: #F44336; font-weight: 700; }
-        .severity-high { color: #FF9800; font-weight: 700; }
-        .severity-medium { color: #FFC107; font-weight: 600; }
-        .severity-low { color: #8892b0; }
+        .severity-critical { color: #7D39EB; font-weight: 700; }
+        .severity-high { color: #C6FF33; font-weight: 700; }
+        .severity-medium { color: #C6FF33; font-weight: 600; }
+        .severity-low { color: var(--clr-text-muted); }
 
         /* Section tabs */
         .rto-tabs {
             display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
-            border-bottom: 1px solid var(--clr-border, #2a3158); padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--clr-border, #000000); padding-bottom: 0.75rem;
             flex-wrap: wrap;
         }
         .rto-tab {
             padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid transparent;
-            background: rgba(255,255,255,0.03); color: #8892b0; cursor: pointer;
+            background: rgba(255,255,255,0.03); color: var(--clr-text-muted); cursor: pointer;
             font-size: 0.85rem; font-weight: 600; transition: all 0.2s;
         }
-        .rto-tab:hover { background: rgba(255,255,255,0.06); color: #ccd6f6; }
+        .rto-tab:hover { background: rgba(255,255,255,0.06); color: var(--clr-text); }
         .rto-tab.active {
-            background: rgba(0,122,255,0.15); color: #007AFF;
-            border-color: #007AFF;
+            background: rgba(125,57,235,0.15); color: #7D39EB;
+            border-color: #7D39EB;
         }
         .rto-section { display: none; }
         .rto-section.active { display: block; }
@@ -119,46 +121,62 @@
         /* Flagged table row hover */
         .flagged-row { cursor: pointer; transition: background 0.15s; }
         .flagged-row:hover { background: rgba(255,255,255,0.03); }
-        .flagged-row.selected { background: rgba(0,122,255,0.1); }
+        .flagged-row.selected { background: rgba(125,57,235,0.1); }
     </style>
 </head>
 <body>
-<div class="app-container">
-
-    <!-- Navbar -->
-    <nav class="navbar">
+<div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>RTO Integration Portal</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link active" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link active" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div id="alertsContainer"></div>
@@ -179,7 +197,7 @@
         <div id="section-compliance" class="rto-section active">
             <div class="card mb-lg">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">&#128269;</span> Vehicle Compliance Check</div>
+                    <div class="card-title"><span class="icon">&#9989;</span> Vehicle Compliance Check</div>
                 </div>
                 <div style="display:flex; gap:1rem; align-items:end; flex-wrap:wrap;">
                     <div class="form-group" style="flex:1; min-width:220px;">
@@ -206,7 +224,7 @@
                 <!-- VAHAN Registration Info -->
                 <div class="card mb-lg">
                     <div class="card-header">
-                        <div class="card-title"><span class="icon">&#128203;</span> VAHAN Registration Info</div>
+                        <div class="card-title"><span class="icon">&#128221;</span> VAHAN Registration Info</div>
                     </div>
                     <div class="info-grid">
                         <div class="info-item">
@@ -290,11 +308,11 @@
                         </div>
                         <div class="info-item">
                             <label>Violations</label>
-                            <div class="value" id="crViolations" style="color:#F44336;">0</div>
+                            <div class="value" id="crViolations" style="color:#7D39EB;">0</div>
                         </div>
                         <div class="info-item">
                             <label>Fraud Alerts</label>
-                            <div class="value" id="crFraudAlerts" style="color:#FF9800;">0</div>
+                            <div class="value" id="crFraudAlerts" style="color:#C6FF33;">0</div>
                         </div>
                         <div class="info-item">
                             <label>Avg CES (History)</label>
@@ -357,42 +375,42 @@
         <div id="section-heatmap" class="rto-section">
             <div class="card mb-lg">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">&#127758;</span> Compliance Heatmap &mdash; Mumbai Zones</div>
+                    <div class="card-title"><span class="icon">&#128293;</span> Compliance Heatmap &mdash; Mumbai Zones</div>
                     <span class="text-muted text-mono">Static Mockup</span>
                 </div>
-                <p style="color:#8892b0; font-size:0.85rem; margin-bottom:0.5rem;">
+                <p style="color:rgba(255,255,255,0.65); font-size:0.85rem; margin-bottom:0.5rem;">
                     PUC compliance rates across Mumbai RTO jurisdictions. Data aggregated from fleet analytics.
                 </p>
                 <div class="heatmap-grid" id="heatmapGrid"></div>
                 <div class="heatmap-legend">
-                    <span><span class="legend-dot" style="background:#4CAF50;"></span> &gt;85% Compliant</span>
-                    <span><span class="legend-dot" style="background:#FFC107;"></span> 70-85% Compliant</span>
-                    <span><span class="legend-dot" style="background:#FF9800;"></span> 55-70% Compliant</span>
-                    <span><span class="legend-dot" style="background:#F44336;"></span> &lt;55% Compliant</span>
+                    <span><span class="legend-dot" style="background:#C6FF33;"></span> &gt;85% Compliant</span>
+                    <span><span class="legend-dot" style="background:#C6FF33;"></span> 70-85% Compliant</span>
+                    <span><span class="legend-dot" style="background:#C6FF33;"></span> 55-70% Compliant</span>
+                    <span><span class="legend-dot" style="background:#7D39EB;"></span> &lt;55% Compliant</span>
                 </div>
             </div>
 
             <!-- Zone Summary -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">&#128200;</span> Zone Summary Statistics</div>
+                    <div class="card-title"><span class="icon">&#128209;</span> Zone Summary Statistics</div>
                 </div>
                 <div class="info-grid" style="grid-template-columns: repeat(4, 1fr);">
                     <div class="info-item">
                         <label>Total Vehicles Tracked</label>
-                        <div class="value" style="color:#007AFF;">1,48,327</div>
+                        <div class="value" style="color:#7D39EB;">1,48,327</div>
                     </div>
                     <div class="info-item">
                         <label>Overall Compliance</label>
-                        <div class="value" style="color:#4CAF50;">76.3%</div>
+                        <div class="value" style="color:#C6FF33;">76.3%</div>
                     </div>
                     <div class="info-item">
                         <label>Expired PUCs</label>
-                        <div class="value" style="color:#FF9800;">18,241</div>
+                        <div class="value" style="color:#C6FF33;">18,241</div>
                     </div>
                     <div class="info-item">
                         <label>Flagged for Action</label>
-                        <div class="value" style="color:#F44336;">4,612</div>
+                        <div class="value" style="color:#7D39EB;">4,612</div>
                     </div>
                 </div>
             </div>
@@ -438,7 +456,7 @@
                         <button class="btn btn-outline btn-sm" onclick="clearActionLog()">Clear</button>
                     </div>
                     <div class="action-log" id="actionLog">
-                        <div class="action-log-entry" style="color:#8892b0; text-align:center; padding:2rem 0;">
+                        <div class="action-log-entry" style="color:rgba(255,255,255,0.65); text-align:center; padding:2rem 0;">
                             No enforcement actions recorded yet.
                         </div>
                     </div>
@@ -471,7 +489,7 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+            .replace(/'/g, '&#39;');
     }
 
     function formatDate(ts) {
@@ -659,16 +677,16 @@
         // Certificate info
         var cert = data.certificate || {};
         document.getElementById('crCertValid').innerHTML = cert.valid
-            ? '<span style="color:#4CAF50;">Yes</span>'
-            : '<span style="color:#F44336;">No</span>';
+            ? '<span style="color:#C6FF33;">Yes</span>'
+            : '<span style="color:#7D39EB;">No</span>';
         document.getElementById('crTokenId').textContent = cert.token_id ? '#' + cert.token_id : '\u2014';
         document.getElementById('crIssueDate').innerHTML = formatDate(cert.issue_date);
         document.getElementById('crExpiryDate').innerHTML = formatDate(cert.expiry_date);
         document.getElementById('crAvgCES').textContent = cert.average_ces
             ? Number(cert.average_ces).toFixed(4) : '\u2014';
         document.getElementById('crRevoked').innerHTML = cert.revoked
-            ? '<span style="color:#F44336;">Yes</span>'
-            : '<span style="color:#4CAF50;">No</span>';
+            ? '<span style="color:#7D39EB;">Yes</span>'
+            : '<span style="color:#C6FF33;">No</span>';
 
         // Stats
         var s = data.stats || {};
@@ -763,7 +781,7 @@
             switch (v.issue_type) {
                 case 'Expired PUC': issueIcon = '&#9200; '; break;
                 case 'Multiple Violations': issueIcon = '&#9888; '; break;
-                case 'Fraud': issueIcon = '&#128683; '; break;
+                case 'Fraud': issueIcon = '&#128202; '; break;
             }
             return '<tr class="flagged-row" onclick="selectFlaggedVehicle(\'' + escapeHtml(v.vehicle_id) + '\')">'
                 + '<td class="mono">' + (i + 1) + '</td>'
@@ -848,7 +866,7 @@
             'inspection': 'Flag for Inspection'
         };
 
-        resultDiv.innerHTML = '<span style="color:#007AFF;">Submitting action...</span>';
+        resultDiv.innerHTML = '<span style="color:#7D39EB;">Submitting action...</span>';
 
         try {
             var res = await authFetch(API_BASE + '/api/rto/enforce', {
@@ -889,20 +907,20 @@
         var logDiv = document.getElementById('actionLog');
 
         if (actionLogEntries.length === 0) {
-            logDiv.innerHTML = '<div class="action-log-entry" style="color:#8892b0; text-align:center; padding:2rem 0;">No enforcement actions recorded yet.</div>';
+            logDiv.innerHTML = '<div class="action-log-entry" style="color:rgba(255,255,255,0.65); text-align:center; padding:2rem 0;">No enforcement actions recorded yet.</div>';
             return;
         }
 
         logDiv.innerHTML = actionLogEntries.map(function(e) {
-            var actionColor = '#007AFF';
-            if (e.action.indexOf('Warning') >= 0) actionColor = '#FF9800';
-            if (e.action.indexOf('Inspection') >= 0) actionColor = '#F44336';
-            if (e.action.indexOf('Re-Test') >= 0) actionColor = '#FFC107';
+            var actionColor = '#7D39EB';
+            if (e.action.indexOf('Warning') >= 0) actionColor = '#C6FF33';
+            if (e.action.indexOf('Inspection') >= 0) actionColor = '#7D39EB';
+            if (e.action.indexOf('Re-Test') >= 0) actionColor = '#C6FF33';
 
             return '<div class="action-log-entry">'
                 + '<div><strong style="color:' + actionColor + ';">' + escapeHtml(e.action) + '</strong>'
                 + ' &mdash; <strong>' + escapeHtml(e.vehicleId) + '</strong></div>'
-                + (e.remarks ? '<div style="color:#8892b0;font-size:0.75rem;margin-top:0.15rem;">' + escapeHtml(e.remarks) + '</div>' : '')
+                + (e.remarks ? '<div style="color:rgba(255,255,255,0.65);font-size:0.75rem;margin-top:0.15rem;">' + escapeHtml(e.remarks) + '</div>' : '')
                 + '<div class="action-time">' + escapeHtml(e.time) + '</div>'
                 + '</div>';
         }).join('');
@@ -924,19 +942,19 @@
         var alertEl = document.createElement('div');
         alertEl.className = alertClass;
         alertEl.style.cssText = 'padding:0.75rem 1rem;margin:0.5rem 1rem;border-radius:8px;'
-            + 'background:rgba(0,122,255,0.1);border-left:4px solid #007AFF;position:relative;';
+            + 'background:rgba(125,57,235,0.1);border-left:4px solid #7D39EB;position:relative;';
 
         if (type === 'error') {
-            alertEl.style.background = 'rgba(244,67,54,0.1)';
-            alertEl.style.borderLeftColor = '#F44336';
+            alertEl.style.background = 'rgba(125,57,235,0.1)';
+            alertEl.style.borderLeftColor = '#7D39EB';
         } else if (type === 'warn') {
-            alertEl.style.background = 'rgba(255,152,0,0.1)';
-            alertEl.style.borderLeftColor = '#FF9800';
+            alertEl.style.background = 'rgba(198,255,51,0.1)';
+            alertEl.style.borderLeftColor = '#C6FF33';
         }
 
         alertEl.innerHTML = escapeHtml(msg)
             + '<button style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);'
-            + 'background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.1rem;" '
+            + 'background:none;border:none;color:rgba(255,255,255,0.65);cursor:pointer;font-size:1.1rem;" '
             + 'onclick="this.parentElement.remove()">&#10005;</button>';
 
         container.appendChild(alertEl);
@@ -957,5 +975,28 @@
 
 })();
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

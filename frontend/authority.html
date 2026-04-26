@@ -6,42 +6,63 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Authority Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
 </head>
 <body>
 <div class="app-container">
-    <nav class="navbar">
+        <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>Authority Dashboard</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link active" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link active" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div id="alertsContainer"></div>
@@ -52,8 +73,8 @@
     <!-- Summary Stats -->
     <div class="metrics-grid" style="grid-template-columns: repeat(6, 1fr);">
         <div class="metric-card"><div class="metric-label">Total Records</div><div class="metric-value" id="statTotal">0</div></div>
-        <div class="metric-card"><div class="metric-label">Violations</div><div class="metric-value" id="statViol" style="-webkit-text-fill-color:var(--clr-fail)">0</div></div>
-        <div class="metric-card"><div class="metric-label">Fraud Alerts</div><div class="metric-value" id="statFraud" style="-webkit-text-fill-color:var(--clr-warn)">0</div></div>
+        <div class="metric-card"><div class="metric-label">Violations</div><div class="metric-value" id="statViol">0</div></div>
+        <div class="metric-card"><div class="metric-label">Fraud Alerts</div><div class="metric-value" id="statFraud">0</div></div>
         <div class="metric-card"><div class="metric-label">Vehicles</div><div class="metric-value" id="statVeh">0</div></div>
         <div class="metric-card"><div class="metric-label">Compliance %</div><div class="metric-value" id="statComp">&mdash;</div></div>
         <div class="metric-card"><div class="metric-label">Avg CES</div><div class="metric-value" id="statAvgCes">&mdash;</div></div>
@@ -270,7 +291,7 @@ async function issueCertificate() {
     const resultDiv = document.getElementById('issueResult');
     if (!vid || !owner) { resultDiv.innerHTML = '<span class="text-fail">Both fields required</span>'; return; }
 
-    resultDiv.innerHTML = '<span style="color:#007AFF;">Issuing certificate...</span>';
+    resultDiv.innerHTML = '<span style="color:#7D39EB;">Issuing certificate...</span>';
     try {
         const res = await authFetch(`${API}/api/certificate/issue`, {
             method: 'POST',
@@ -292,7 +313,7 @@ async function revokeCertificate() {
     const resultDiv = document.getElementById('revokeResult');
     if (!tokenId) { resultDiv.innerHTML = '<span class="text-fail">Token ID required</span>'; return; }
 
-    resultDiv.innerHTML = '<span style="color:#007AFF;">Revoking...</span>';
+    resultDiv.innerHTML = '<span style="color:#7D39EB;">Revoking...</span>';
     try {
         const res = await authFetch(`${API}/api/certificate/revoke`, {
             method: 'POST',
@@ -316,7 +337,7 @@ async function registerDevice(authorize) {
     try {
         const contract = await getRegistryContract(true);
         if (!contract) { resultDiv.innerHTML = '<span class="text-fail">Connect wallet first</span>'; return; }
-        resultDiv.innerHTML = '<span style="color:#007AFF;">Submitting transaction...</span>';
+        resultDiv.innerHTML = '<span style="color:#7D39EB;">Submitting transaction...</span>';
         const tx = await contract.setRegisteredDevice(addr, authorize);
         await tx.wait();
         resultDiv.innerHTML = `<span class="text-pass">${authorize ? 'Registered' : 'Deregistered'}!</span>`;
@@ -332,7 +353,7 @@ async function registerStation(authorize) {
     try {
         const contract = await getRegistryContract(true);
         if (!contract) { resultDiv.innerHTML = '<span class="text-fail">Connect wallet first</span>'; return; }
-        resultDiv.innerHTML = '<span style="color:#007AFF;">Submitting transaction...</span>';
+        resultDiv.innerHTML = '<span style="color:#7D39EB;">Submitting transaction...</span>';
         const tx = await contract.setTestingStation(addr, authorize);
         await tx.wait();
         resultDiv.innerHTML = `<span class="text-pass">${authorize ? 'Authorized' : 'Deauthorized'}!</span>`;
@@ -391,7 +412,7 @@ async function listenEvents() {
 
         contract.on('CertificateEligible', (v, passes) => {
             document.getElementById('violationAlerts').insertAdjacentHTML('afterbegin',
-                `<div class="alert" style="background:rgba(76,175,80,0.1);border-left:4px solid #4CAF50;padding:0.75rem 1rem;margin-bottom:0.5rem;border-radius:8px;">CERT ELIGIBLE: ${esc(v)} (${Number(passes)} consecutive passes)<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>`);
+                `<div class="alert" style="background:rgba(198,255,51,0.1);border-left:4px solid #C6FF33;padding:0.75rem 1rem;margin-bottom:0.5rem;border-radius:8px;">CERT ELIGIBLE: ${esc(v)} (${Number(passes)} consecutive passes)<button class="alert-dismiss" onclick="this.parentElement.remove()">&#10005;</button></div>`);
         });
 
     } catch (e) { console.warn('Event listener setup failed:', e); }
@@ -408,5 +429,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

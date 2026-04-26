@@ -22,10 +22,12 @@
     ">
     <title>Smart PUC — CPCB Public Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         .cpcb-banner {
-            background: linear-gradient(135deg, #0d47a1, #00695c);
-            color: #fff;
+            background: linear-gradient(135deg, #7D39EB, #C6FF33);
+            color: var(--clr-text);
             padding: 1.25rem 1.5rem;
             border-radius: 14px;
             margin-bottom: 1.5rem;
@@ -44,27 +46,23 @@
 
         .fleet-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
         .fleet-card {
-            background: var(--bg-card, #111834); border-radius: 14px;
+            background: var(--bg-card, #000000); border-radius: 14px;
             padding: 1.5rem; text-align: center;
             border: 1px solid rgba(255,255,255,0.06);
         }
         .fleet-card .fleet-value {
             font-size: 2.2rem; font-weight: 700;
-            background: linear-gradient(135deg, #007AFF, #00BCD4);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--clr-lime);
         }
         .fleet-card .fleet-label {
-            font-size: 0.78rem; color: #8892b0;
+            font-size: 0.78rem; color: var(--clr-text-muted);
             text-transform: uppercase; letter-spacing: 1px; margin-top: 0.4rem;
         }
         .fleet-card.success .fleet-value {
-            background: linear-gradient(135deg, #4CAF50, #00BCD4);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            color: var(--clr-lime);
         }
         .fleet-card.warn .fleet-value {
-            background: linear-gradient(135deg, #FF9800, #F44336);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            color: var(--clr-purple);
         }
 
         .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
@@ -76,23 +74,23 @@
             min-height: 320px;
             border-radius: 10px;
             background:
-                radial-gradient(circle at 30% 40%, rgba(76,175,80,0.25) 0%, transparent 35%),
-                radial-gradient(circle at 70% 60%, rgba(255,152,0,0.25) 0%, transparent 35%),
-                radial-gradient(circle at 50% 30%, rgba(244,67,54,0.22) 0%, transparent 30%),
-                linear-gradient(135deg, #0d1229, #111834);
+                radial-gradient(circle at 30% 40%, rgba(198,255,51,0.25) 0%, transparent 35%),
+                radial-gradient(circle at 70% 60%, rgba(198,255,51,0.25) 0%, transparent 35%),
+                radial-gradient(circle at 50% 30%, rgba(125,57,235,0.22) 0%, transparent 30%),
+                linear-gradient(135deg, #000000, #000000);
             border: 1px dashed rgba(255,255,255,0.12);
             display: flex; align-items: center; justify-content: center;
-            color: #8892b0; font-size: 0.85rem; text-align: center;
+            color: var(--clr-text-muted); font-size: 0.85rem; text-align: center;
         }
         .map-placeholder svg { opacity: 0.4; }
 
         .disclaimer {
             margin-top: 1.5rem; padding: 1rem 1.25rem; border-radius: 10px;
-            background: rgba(255,152,0,0.06);
-            border: 1px solid rgba(255,152,0,0.25);
-            color: #ffcc80; font-size: 0.82rem; line-height: 1.55;
+            background: rgba(198,255,51,0.06);
+            border: 1px solid rgba(198,255,51,0.25);
+            color: #C6FF33; font-size: 0.82rem; line-height: 1.55;
         }
-        .disclaimer strong { color: #ffb74d; }
+        .disclaimer strong { color: #C6FF33; }
 
         @media (max-width: 900px) {
             .analytics-grid { grid-template-columns: 1fr; }
@@ -104,45 +102,58 @@
     </style>
 </head>
 <body>
-<div class="app-container">
-
-    <!-- Navbar: public read-only, no wallet, no login -->
-    <nav class="navbar">
+<div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
                 <div>
-                    <h1>Smart PUC</h1>
-                    <span>CPCB Public Dashboard</span>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
                 </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link active" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link active" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div id="alertsContainer"></div>
@@ -197,7 +208,7 @@
     <div class="analytics-grid">
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#128202;</span> Citywide CES Distribution</div>
+                <div class="card-title"><span class="icon">&#127961;</span> Citywide CES Distribution</div>
                 <span class="text-muted text-mono" id="cpcbDistStatus">Loading&hellip;</span>
             </div>
             <div class="chart-container">
@@ -207,18 +218,18 @@
 
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#127758;</span> Geographic Coverage</div>
+                <div class="card-title"><span class="icon">&#128506;</span> Geographic Coverage</div>
                 <span class="text-muted text-mono">Static view</span>
             </div>
             <div class="map-placeholder" aria-label="Geographic coverage placeholder">
                 <div>
                     <svg width="120" height="80" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M10 40 Q30 10 55 25 T100 35 L105 60 L60 70 L15 62 Z"
-                              stroke="#4CAF50" stroke-width="1.5" fill="rgba(76,175,80,0.08)"/>
-                        <circle cx="35" cy="35" r="3" fill="#F44336"/>
-                        <circle cx="60" cy="45" r="3" fill="#FF9800"/>
-                        <circle cx="85" cy="40" r="3" fill="#4CAF50"/>
-                        <circle cx="50" cy="55" r="3" fill="#4CAF50"/>
+                              stroke="#C6FF33" stroke-width="1.5" fill="rgba(198,255,51,0.08)"/>
+                        <circle cx="35" cy="35" r="3" fill="#7D39EB"/>
+                        <circle cx="60" cy="45" r="3" fill="#C6FF33"/>
+                        <circle cx="85" cy="40" r="3" fill="#C6FF33"/>
+                        <circle cx="50" cy="55" r="3" fill="#C6FF33"/>
                     </svg>
                     <div style="margin-top: 0.75rem;">
                         Testing stations across participating districts.<br>
@@ -411,14 +422,14 @@
                     label: 'Vehicles',
                     data: counts,
                     backgroundColor: [
-                        'rgba(76,175,80,0.75)',
-                        'rgba(139,195,74,0.75)',
-                        'rgba(255,193,7,0.75)',
-                        'rgba(255,152,0,0.75)',
-                        'rgba(244,67,54,0.75)'
+                        'rgba(198,255,51,0.75)',
+                        'rgba(198,255,51,0.75)',
+                        'rgba(198,255,51,0.75)',
+                        'rgba(198,255,51,0.75)',
+                        'rgba(125,57,235,0.75)'
                     ],
                     borderColor: [
-                        '#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336'
+                        '#C6FF33', '#C6FF33', '#C6FF33', '#C6FF33', '#7D39EB'
                     ],
                     borderWidth: 1
                 }]
@@ -431,13 +442,13 @@
                     title: {
                         display: true,
                         text: 'CES bucket (Pass < 1.0, Fail >= 1.0)',
-                        color: '#8892b0',
+                        color: 'rgba(255,255,255,0.65)',
                         font: { size: 12 }
                     }
                 },
                 scales: {
-                    x: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.04)' } },
-                    y: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true }
+                    x: { ticks: { color: 'rgba(255,255,255,0.65)' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: 'rgba(255,255,255,0.65)' }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true }
                 }
             }
         });
@@ -468,5 +479,28 @@
     }
 })();
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

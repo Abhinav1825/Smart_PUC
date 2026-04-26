@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Digital Twin Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         .twin-container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
 
@@ -28,7 +30,7 @@
             position: absolute;
             bottom: 0; left: 0; right: 0;
             height: 60px;
-            background: linear-gradient(to top, rgba(99,102,241,0.05), transparent);
+            background: linear-gradient(to top, rgba(125,57,235,0.05), transparent);
         }
         .viz-svg-wrap {
             position: relative;
@@ -75,7 +77,7 @@
             transition: var(--transition);
         }
         .gauge-card:hover {
-            border-color: rgba(99,102,241,0.2);
+            border-color: rgba(125,57,235,0.2);
             transform: translateY(-2px);
             box-shadow: var(--shadow-lg);
         }
@@ -137,7 +139,7 @@
             transition: var(--transition);
         }
         .health-card:hover {
-            border-color: rgba(99,102,241,0.2);
+            border-color: rgba(125,57,235,0.2);
         }
         .health-card h3 {
             font-size: 0.85rem;
@@ -248,33 +250,59 @@
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Navbar -->
-        <nav class="navbar">
-            <div class="navbar-top-row">
-                <a href="index.html" class="navbar-brand">
-                    <div class="logo">&#9889;</div>
-                    <div><h1>Smart PUC</h1><span>Digital Twin Dashboard</span></div>
-                </a>
-                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
-            </div>
-            <div class="navbar-actions" id="navbarActions">
-                <a href="index.html" class="nav-link">Vehicle</a>
-                <a href="authority.html" class="nav-link">Authority</a>
-                <a href="verify.html" class="nav-link">Verify</a>
-                <a href="analytics.html" class="nav-link">Analytics</a>
-                <a href="fleet.html" class="nav-link">Fleet</a>
-                <a href="rto.html" class="nav-link">RTO</a>
-                <a href="marketplace.html" class="nav-link">Marketplace</a>
-                <a href="cpcb.html" class="nav-link">CPCB</a>
-                <a href="compare.html" class="nav-link">Compare</a>
+    <div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
+            </a>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
                 <a href="twin.html" class="nav-link active">Twin</a>
                 <a href="leaderboard.html" class="nav-link">Leaderboard</a>
                 <a href="explorer.html" class="nav-link">Explorer</a>
-                <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                </div>
             </div>
-        </nav>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
+        </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
+    </nav>
 
         <!-- Vehicle Selector -->
         <div class="card mb-lg" style="margin-bottom: var(--space-lg);">
@@ -291,7 +319,7 @@
 
         <!-- Empty state -->
         <div id="emptyState" class="empty-state">
-            <div class="icon">&#128663;</div>
+            <div class="icon">&#128202;</div>
             <h2>Select a Vehicle</h2>
             <p>Choose a vehicle from the dropdown above to view its digital twin visualization.</p>
         </div>
@@ -300,7 +328,7 @@
         <div id="twinContent" style="display: none;">
 
             <!-- Vehicle Visualization -->
-            <div class="section-title">&#128752; Vehicle Visualization</div>
+            <div class="section-title">&#128663; Vehicle Visualization</div>
             <div class="viz-area" id="vizArea">
                 <div class="ground-line"></div>
                 <div class="viz-svg-wrap" id="vizSvgWrap"></div>
@@ -308,7 +336,7 @@
             </div>
 
             <!-- Live Metrics -->
-            <div class="section-title">&#128200; Live Emission Metrics</div>
+            <div class="section-title">&#128202; Live Emission Metrics</div>
             <div class="metrics-panel" id="metricsPanel">
                 <div class="gauge-card" id="gaugeCO2">
                     <div class="gauge-label">CO2</div>
@@ -320,30 +348,30 @@
                     <div class="gauge-label">CO</div>
                     <div class="gauge-value" id="valCO">--</div>
                     <div class="gauge-unit">g/km</div>
-                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barCO" style="width:0%;background:#f59e0b;"></div></div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barCO" style="width:0%;background:#C6FF33;"></div></div>
                 </div>
                 <div class="gauge-card" id="gaugeNOx">
                     <div class="gauge-label">NOx</div>
                     <div class="gauge-value" id="valNOx">--</div>
                     <div class="gauge-unit">g/km</div>
-                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barNOx" style="width:0%;background:#ef4444;"></div></div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barNOx" style="width:0%;background:#7D39EB;"></div></div>
                 </div>
                 <div class="gauge-card" id="gaugeHC">
                     <div class="gauge-label">HC</div>
                     <div class="gauge-value" id="valHC">--</div>
                     <div class="gauge-unit">g/km</div>
-                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barHC" style="width:0%;background:#a855f7;"></div></div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barHC" style="width:0%;background:#7D39EB;"></div></div>
                 </div>
                 <div class="gauge-card" id="gaugePM">
                     <div class="gauge-label">PM2.5</div>
                     <div class="gauge-value" id="valPM">--</div>
                     <div class="gauge-unit">mg/km</div>
-                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barPM" style="width:0%;background:#ec4899;"></div></div>
+                    <div class="gauge-bar"><div class="gauge-bar-fill" id="barPM" style="width:0%;background:#7D39EB;"></div></div>
                 </div>
             </div>
 
             <!-- Vehicle Health Summary -->
-            <div class="section-title">&#128737; Vehicle Health Summary</div>
+            <div class="section-title">&#128153; Vehicle Health Summary</div>
             <div class="health-grid">
                 <div class="health-card">
                     <h3>Degradation Risk</h3>
@@ -400,7 +428,7 @@
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                 if (accounts.length > 0) {
                     document.getElementById('walletAddress').textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
-                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('walletDot').style.background = '#C6FF33';
                     document.getElementById('connectWalletBtn').textContent = 'Connected';
                 }
             } catch(e) { console.error(e); }
@@ -426,74 +454,74 @@
         /* ---- Vehicle SVG generators ---- */
         function svgSedan() {
             return `<svg viewBox="0 0 400 160" xmlns="http://www.w3.org/2000/svg">
-                <rect x="40" y="70" width="300" height="55" rx="20" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
-                <path d="M120 70 Q130 30 180 25 L260 25 Q310 30 300 70" fill="#232d42" stroke="#6366f1" stroke-width="2"/>
-                <rect x="145" y="32" width="50" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="210" y="32" width="55" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <circle cx="110" cy="130" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="110" cy="130" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <circle cx="290" cy="130" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="290" cy="130" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <rect x="55" y="80" width="18" height="8" rx="3" fill="#22d3ee" opacity="0.8"/>
-                <rect x="310" y="80" width="18" height="8" rx="3" fill="#ef4444" opacity="0.8"/>
+                <rect x="40" y="70" width="300" height="55" rx="20" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <path d="M120 70 Q130 30 180 25 L260 25 Q310 30 300 70" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <rect x="145" y="32" width="50" height="35" rx="4" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="210" y="32" width="55" height="35" rx="4" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <circle cx="110" cy="130" r="22" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="110" cy="130" r="12" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="290" cy="130" r="22" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="290" cy="130" r="12" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <rect x="55" y="80" width="18" height="8" rx="3" fill="#7D39EB" opacity="0.8"/>
+                <rect x="310" y="80" width="18" height="8" rx="3" fill="#7D39EB" opacity="0.8"/>
                 <circle id="exhaustPoint" cx="42" cy="100" r="0" fill="none"/>
             </svg>`;
         }
         function svgTruck() {
             return `<svg viewBox="0 0 450 170" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="50" width="280" height="75" rx="8" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
-                <rect x="300" y="40" width="120" height="85" rx="12" fill="#232d42" stroke="#6366f1" stroke-width="2"/>
-                <rect x="315" y="50" width="45" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="370" y="50" width="35" height="35" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <circle cx="80" cy="140" r="24" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="80" cy="140" r="13" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <circle cx="200" cy="140" r="24" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="200" cy="140" r="13" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <circle cx="360" cy="140" r="24" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="360" cy="140" r="13" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <rect x="25" y="55" width="6" height="50" rx="3" fill="#22d3ee" opacity="0.6"/>
+                <rect x="20" y="50" width="280" height="75" rx="8" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <rect x="300" y="40" width="120" height="85" rx="12" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <rect x="315" y="50" width="45" height="35" rx="4" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="370" y="50" width="35" height="35" rx="4" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <circle cx="80" cy="140" r="24" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="80" cy="140" r="13" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="200" cy="140" r="24" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="200" cy="140" r="13" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="360" cy="140" r="24" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="360" cy="140" r="13" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <rect x="25" y="55" width="6" height="50" rx="3" fill="#7D39EB" opacity="0.6"/>
                 <circle id="exhaustPoint" cx="22" cy="90" r="0" fill="none"/>
             </svg>`;
         }
         function svgTwoWheeler() {
             return `<svg viewBox="0 0 300 160" xmlns="http://www.w3.org/2000/svg">
-                <path d="M100 90 L160 50 L200 50 L220 70 L200 100 L140 110 Z" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
-                <line x1="160" y1="50" x2="170" y2="30" stroke="#6366f1" stroke-width="3" stroke-linecap="round"/>
-                <line x1="170" y1="30" x2="185" y2="25" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/>
-                <circle cx="85" cy="120" r="28" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="85" cy="120" r="16" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <circle cx="230" cy="120" r="28" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="230" cy="120" r="16" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <rect x="78" y="85" width="10" height="5" rx="2" fill="#22d3ee" opacity="0.8"/>
+                <path d="M100 90 L160 50 L200 50 L220 70 L200 100 L140 110 Z" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <line x1="160" y1="50" x2="170" y2="30" stroke="#7D39EB" stroke-width="3" stroke-linecap="round"/>
+                <line x1="170" y1="30" x2="185" y2="25" stroke="#7D39EB" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="85" cy="120" r="28" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="85" cy="120" r="16" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="230" cy="120" r="28" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="230" cy="120" r="16" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <rect x="78" y="85" width="10" height="5" rx="2" fill="#7D39EB" opacity="0.8"/>
                 <circle id="exhaustPoint" cx="82" cy="108" r="0" fill="none"/>
             </svg>`;
         }
         function svgBus() {
             return `<svg viewBox="0 0 420 180" xmlns="http://www.w3.org/2000/svg">
-                <rect x="30" y="25" width="350" height="110" rx="12" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
-                <rect x="50" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="110" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="170" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="230" y="40" width="45" height="40" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="300" y="40" width="60" height="55" rx="5" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="120" y="95" width="40" height="35" rx="3" fill="#232d42" stroke="#6366f1" stroke-width="1.5"/>
-                <circle cx="90" cy="150" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="90" cy="150" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <circle cx="330" cy="150" r="22" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="330" cy="150" r="12" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <rect x="30" y="25" width="350" height="110" rx="12" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <rect x="50" y="40" width="45" height="40" rx="5" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="110" y="40" width="45" height="40" rx="5" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="170" y="40" width="45" height="40" rx="5" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="230" y="40" width="45" height="40" rx="5" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="300" y="40" width="60" height="55" rx="5" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="120" y="95" width="40" height="35" rx="3" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="90" cy="150" r="22" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="90" cy="150" r="12" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="330" cy="150" r="22" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="330" cy="150" r="12" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
                 <circle id="exhaustPoint" cx="32" cy="100" r="0" fill="none"/>
             </svg>`;
         }
         function svgAutoRickshaw() {
             return `<svg viewBox="0 0 300 160" xmlns="http://www.w3.org/2000/svg">
-                <path d="M80 55 L200 45 L220 55 L230 100 L70 100 Z" fill="#1a2236" stroke="#6366f1" stroke-width="2"/>
-                <path d="M90 55 L130 35 L190 35 L200 45 L90 55" fill="#232d42" stroke="#6366f1" stroke-width="1.5"/>
-                <rect x="100" y="45" width="35" height="25" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <rect x="150" y="45" width="35" height="25" rx="4" fill="rgba(99,102,241,0.15)" stroke="#6366f1" stroke-width="1"/>
-                <circle cx="95" cy="120" r="20" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="95" cy="120" r="11" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
-                <circle cx="210" cy="120" r="20" fill="#111827" stroke="#6366f1" stroke-width="2"/>
-                <circle cx="210" cy="120" r="11" fill="#232d42" stroke="#22d3ee" stroke-width="1.5"/>
+                <path d="M80 55 L200 45 L220 55 L230 100 L70 100 Z" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <path d="M90 55 L130 35 L190 35 L200 45 L90 55" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <rect x="100" y="45" width="35" height="25" rx="4" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <rect x="150" y="45" width="35" height="25" rx="4" fill="rgba(125,57,235,0.15)" stroke="#7D39EB" stroke-width="1"/>
+                <circle cx="95" cy="120" r="20" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="95" cy="120" r="11" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
+                <circle cx="210" cy="120" r="20" fill="#000000" stroke="#7D39EB" stroke-width="2"/>
+                <circle cx="210" cy="120" r="11" fill="#000000" stroke="#7D39EB" stroke-width="1.5"/>
                 <circle id="exhaustPoint" cx="72" cy="100" r="0" fill="none"/>
             </svg>`;
         }
@@ -744,5 +772,28 @@
         // Init
         loadVehicles();
     </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

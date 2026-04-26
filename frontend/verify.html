@@ -6,151 +6,192 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Public Verification Portal</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
-        .verify-container { max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+        .verify-container { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
         .verify-card {
-            background: var(--bg-card, #111834); border-radius: 16px;
-            padding: 2.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            background: var(--clr-surface); border: 1px solid var(--clr-border);
+            border-radius: var(--radius-xl);
+            padding: 2rem; box-shadow: var(--shadow-md);
         }
-        .verify-header { text-align: center; margin-bottom: 2rem; }
-        .verify-header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
-        .verify-header p { color: #8892b0; font-size: 0.95rem; }
+        .verify-header { text-align: center; margin-bottom: 1.5rem; }
+        .verify-header h1 { font-size: var(--fs-2xl); margin-bottom: 0.375rem; letter-spacing: -0.02em; }
+        .verify-header p { color: var(--clr-text-muted); font-size: var(--fs-sm); line-height: 1.55; }
         .verify-badge {
-            display: inline-block; padding: 0.5rem 1.5rem; border-radius: 30px;
-            font-size: 1rem; font-weight: 700; text-transform: uppercase; margin-top: 0.5rem;
+            display: inline-block; padding: 0.4rem 1.25rem; border-radius: var(--radius-pill);
+            font-size: var(--fs-sm); font-weight: 700; text-transform: uppercase; margin-top: 0.5rem;
+            letter-spacing: 0.04em;
         }
-        .badge-valid { background: rgba(76,175,80,0.15); color: #4CAF50; border: 2px solid #4CAF50; }
-        .badge-invalid { background: rgba(244,67,54,0.15); color: #F44336; border: 2px solid #F44336; }
-        .badge-expired { background: rgba(255,152,0,0.15); color: #FF9800; border: 2px solid #FF9800; }
-        .badge-checking { background: rgba(0,122,255,0.15); color: #007AFF; border: 2px solid #007AFF; }
-        .verify-search { display: flex; gap: 0.75rem; margin-bottom: 2rem; }
+        .badge-valid    { background: var(--clr-pass-bg); color: var(--clr-lime);   border: 1px solid var(--clr-lime); }
+        .badge-invalid  { background: var(--clr-fail-bg); color: var(--clr-white);  border: 1px solid var(--clr-purple); }
+        .badge-expired  { background: var(--clr-pass-bg); color: var(--clr-lime);   border: 1px solid var(--clr-lime); }
+        .badge-checking { background: var(--clr-fail-bg); color: var(--clr-white);  border: 1px solid var(--clr-purple); }
+
+        .verify-search { display: flex; gap: 0.625rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
         .verify-search input {
-            flex: 1; padding: 0.85rem 1rem; border-radius: 10px;
-            border: 1px solid #2a3158; background: #0d1229; color: #fff;
-            font-size: 1rem; text-transform: uppercase;
+            flex: 1 1 220px; padding: 0.75rem 1rem; border-radius: var(--radius-md);
+            border: 1px solid var(--clr-border); background: var(--clr-bg); color: var(--clr-text);
+            font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.02em;
+            transition: var(--transition);
         }
+        .verify-search input::placeholder { color: var(--clr-text-dim); text-transform: none; letter-spacing: 0; }
+        .verify-search input:focus { outline: none; border-color: var(--clr-lime); box-shadow: 0 0 0 3px var(--clr-accent-glow); }
+
         .verify-search button {
-            padding: 0.85rem 1.5rem; border-radius: 10px; border: none;
-            background: #007AFF; color: white; font-weight: 600; cursor: pointer;
-            font-size: 1rem;
+            padding: 0.75rem 1.5rem; border-radius: var(--radius-md); border: 1px solid transparent;
+            background: var(--clr-purple); color: var(--clr-white);
+            font-weight: 600; cursor: pointer; font-size: var(--fs-sm);
+            box-shadow: var(--shadow-glow-primary);
+            transition: var(--transition);
         }
-        .verify-search button:hover { background: #0056b3; }
-        .verify-search button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
-        .result-item { padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 10px; }
-        .result-item label { display: block; font-size: 0.75rem; color: #8892b0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.3rem; }
-        .result-item .value { font-size: 1.1rem; font-weight: 600; }
+        .verify-search button:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(125,57,235,0.5), 0 10px 32px rgba(125,57,235,0.35); }
+        .verify-search button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.875rem; margin-top: 1.25rem; }
+        .result-item {
+            padding: 0.875rem 1rem;
+            background: var(--clr-surface-2);
+            border: 1px solid var(--clr-border);
+            border-radius: var(--radius-md);
+        }
+        .result-item label {
+            display: block; font-size: 0.65rem; color: var(--clr-text-muted);
+            text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.25rem; font-weight: 600;
+        }
+        .result-item .value { font-size: var(--fs-md); font-weight: 600; color: var(--clr-text); word-break: break-word; }
         .result-full { grid-column: 1 / -1; }
-        .chain-proof { margin-top: 1.5rem; padding: 1rem; background: rgba(0,188,212,0.08); border-radius: 10px; border: 1px solid rgba(0,188,212,0.2); }
-        .chain-proof h4 { color: #00BCD4; margin-bottom: 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
-        .chain-proof p { font-size: 0.8rem; color: #8892b0; word-break: break-all; }
-        .no-backend-note { text-align: center; padding: 1.5rem; color: #8892b0; font-size: 0.9rem; }
-        .wallet-verify-section { margin-top: 1.5rem; text-align: center; }
-        .wallet-verify-section button {
-            padding: 0.7rem 1.5rem; border-radius: 10px; border: 1px solid #007AFF;
-            background: transparent; color: #007AFF; cursor: pointer; font-size: 0.9rem;
+
+        .chain-proof {
+            margin-top: 1.25rem; padding: 0.875rem 1rem;
+            background: var(--clr-surface-2); border-radius: var(--radius-md);
+            border: 1px solid var(--clr-border-hover);
         }
-        .wallet-verify-section button:hover { background: rgba(0,122,255,0.1); }
-        #directChainResult { margin-top: 1rem; padding: 1rem; border-radius: 10px; display: none; }
-        .stats-row { display: flex; gap: 1rem; justify-content: center; margin-top: 1rem; }
+        .chain-proof h4 { color: var(--clr-lime); margin-bottom: 0.375rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; }
+        .chain-proof p { font-size: var(--fs-xs); color: var(--clr-text-muted); word-break: break-all; font-family: var(--font-mono); }
+
+        .no-backend-note { text-align: center; padding: 1.25rem; color: var(--clr-text-muted); font-size: var(--fs-sm); }
+
+        .wallet-verify-section { margin-top: 1.25rem; text-align: center; }
+        .wallet-verify-section button {
+            padding: 0.6rem 1.25rem; border-radius: var(--radius-md);
+            border: 1px solid var(--clr-border);
+            background: transparent; color: var(--clr-text); cursor: pointer; font-size: var(--fs-xs);
+            font-weight: 600;
+            transition: var(--transition);
+        }
+        .wallet-verify-section button:hover { color: var(--clr-lime); border-color: var(--clr-lime); background: var(--clr-surface-2); }
+
+        #directChainResult { margin-top: 1rem; padding: 0.875rem 1rem; border-radius: var(--radius-md); display: none; }
+
+        .stats-row { display: flex; gap: 0.625rem; justify-content: center; margin-top: 0.875rem; flex-wrap: wrap; }
         .stat-chip {
-            padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem;
-            background: rgba(255,255,255,0.05);
+            padding: 0.375rem 0.875rem; border-radius: var(--radius-pill); font-size: var(--fs-xs);
+            background: var(--clr-surface-2); border: 1px solid var(--clr-border); color: var(--clr-text);
         }
 
         /* QR Code section */
         .qr-section {
-            margin-top: 2rem; text-align: center; padding: 1.5rem;
-            background: rgba(76,175,80,0.05); border-radius: 12px;
-            border: 1px solid rgba(76,175,80,0.15);
+            margin-top: 1.5rem; text-align: center; padding: 1.25rem;
+            background: var(--clr-pass-bg); border-radius: var(--radius-lg);
+            border: 1px solid rgba(198,255,51,0.25);
         }
         .qr-section h4 {
-            color: #4CAF50; margin-bottom: 1rem; font-size: 0.9rem;
-            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--clr-lime); margin-bottom: 0.75rem; font-size: 0.7rem;
+            text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;
         }
         .qr-container {
-            display: inline-block; padding: 16px; background: #fff; border-radius: 12px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            display: inline-block; padding: 12px; background: #FFFFFF; border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
         }
-        .qr-label {
-            margin-top: 0.75rem; font-size: 0.85rem; color: #8892b0;
-        }
-        .qr-actions {
-            display: flex; gap: 0.75rem; justify-content: center; margin-top: 1.25rem; flex-wrap: wrap;
-        }
+        .qr-label { margin-top: 0.625rem; font-size: var(--fs-xs); color: var(--clr-text-muted); }
+        .qr-actions { display: flex; gap: 0.625rem; justify-content: center; margin-top: 1rem; flex-wrap: wrap; }
         .qr-actions button {
-            padding: 0.6rem 1.2rem; border-radius: 10px; border: none;
-            font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+            padding: 0.5rem 1rem; border-radius: var(--radius-md); border: 1px solid transparent;
+            font-size: var(--fs-xs); font-weight: 600; cursor: pointer; transition: var(--transition);
         }
-        .btn-download-qr {
-            background: #4CAF50; color: white;
-        }
-        .btn-download-qr:hover { background: #388E3C; }
-        .btn-print-cert {
-            background: transparent; color: #00BCD4; border: 1px solid #00BCD4 !important;
-        }
-        .btn-print-cert:hover { background: rgba(0,188,212,0.1); }
+        .btn-download-qr { background: var(--clr-lime); color: var(--clr-black); }
+        .btn-download-qr:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(198,255,51,0.5), 0 8px 24px rgba(198,255,51,0.3); }
+        .btn-print-cert { background: transparent; color: var(--clr-text); border: 1px solid var(--clr-border); }
+        .btn-print-cert:hover { color: var(--clr-lime); border-color: var(--clr-lime); background: var(--clr-surface-2); }
 
         /* Print styles */
         @media print {
-            body { background: #fff !important; color: #000 !important; }
+            body { background: #FFFFFF !important; color: #000000 !important; }
             .navbar, .verify-search, .wallet-verify-section, .qr-actions,
             #directChainResult, .chain-proof { display: none !important; }
             .verify-container { max-width: 100%; margin: 0; }
             .verify-card {
-                background: #fff !important; box-shadow: none !important;
-                border: 1px solid #ccc; color: #000 !important;
+                background: #FFFFFF !important; box-shadow: none !important;
+                border: 1px solid #FFFFFF; color: #000000 !important;
             }
-            .verify-header h1 { color: #000 !important; }
-            .verify-header p { color: #555 !important; }
-            .result-item { background: #f9f9f9 !important; border: 1px solid #ddd; }
-            .result-item label { color: #555 !important; }
-            .result-item .value { color: #000 !important; }
-            .stat-chip { background: #f0f0f0 !important; color: #000 !important; }
-            .qr-section { background: #fff !important; border-color: #ccc !important; }
-            .qr-section h4 { color: #333 !important; }
-            .qr-label { color: #555 !important; }
-            .badge-valid { background: #e8f5e9 !important; color: #2e7d32 !important; border-color: #2e7d32 !important; }
-            .badge-invalid { background: #ffebee !important; color: #c62828 !important; border-color: #c62828 !important; }
-            .badge-expired { background: #fff3e0 !important; color: #e65100 !important; border-color: #e65100 !important; }
+            .verify-header h1 { color: #000000 !important; }
+            .verify-header p { color: rgba(255,255,255,0.35) !important; }
+            .result-item { background: #FFFFFF !important; border: 1px solid #FFFFFF; }
+            .result-item label { color: rgba(255,255,255,0.35) !important; }
+            .result-item .value { color: #000000 !important; }
+            .stat-chip { background: #FFFFFF !important; color: #000000 !important; }
+            .qr-section { background: #FFFFFF !important; border-color: var(--clr-text) !important; }
+            .qr-section h4 { color: #000000 !important; }
+            .qr-label { color: rgba(255,255,255,0.35) !important; }
+            .badge-valid { background: #C6FF33 !important; color: #C6FF33 !important; border-color: #C6FF33 !important; }
+            .badge-invalid { background: #FFFFFF !important; color: #7D39EB !important; border-color: #7D39EB !important; }
+            .badge-expired { background: #FFFFFF !important; color: #C6FF33 !important; border-color: #C6FF33 !important; }
         }
     </style>
 </head>
-<body>
-    <!-- Navbar -->
-    <nav class="navbar">
+<body>    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>Verification Portal</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link active" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link active" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div class="verify-container">
@@ -246,7 +287,7 @@
                     <div class="qr-actions">
                         <button class="btn-download-qr" onclick="downloadQRCode()">Download QR Code</button>
                         <button class="btn-print-cert" onclick="printCertificate()">Print Certificate</button>
-                        <button class="btn-download-qr" onclick="downloadPDFCert()" style="background:#6366f1;">Download PDF Certificate</button>
+                        <button class="btn-download-qr" onclick="downloadPDFCert()" style="background:#7D39EB;">Download PDF Certificate</button>
                     </div>
                 </div>
 
@@ -267,18 +308,18 @@
     </div>
 
     <!-- Hidden PDF Certificate Template — Styled like official Indian PUC -->
-    <div id="pdfCertTemplate" style="position:absolute;left:-9999px;top:0;width:794px;background:#ffffff;color:#1a1a1a;font-family:'Inter',Arial,Helvetica,sans-serif;padding:0;">
-        <div style="border:4px double #0d47a1;margin:24px;padding:0;position:relative;">
+    <div id="pdfCertTemplate" style="position:absolute;left:-9999px;top:0;width:794px;background:#FFFFFF;color:#000000;font-family:'Inter',Arial,Helvetica,sans-serif;padding:0;">
+        <div style="border:4px double #7D39EB;margin:24px;padding:0;position:relative;">
             <!-- Top accent bar -->
-            <div style="height:8px;background:linear-gradient(90deg,#ff6f00,#ffffff,#138808);"></div>
+            <div style="height:8px;background:linear-gradient(90deg,#C6FF33,#FFFFFF,#C6FF33);"></div>
 
             <!-- Header -->
-            <div style="text-align:center;padding:28px 30px 18px;background:#fafbff;">
-                <div style="font-size:11px;color:#333;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px;">Government of India | Ministry of Road Transport & Highways</div>
-                <div style="font-size:32px;font-weight:900;color:#0d47a1;letter-spacing:3px;margin:8px 0 2px;">SMART PUC</div>
-                <div style="font-size:13px;color:#444;letter-spacing:2px;text-transform:uppercase;">Pollution Under Control Certificate</div>
-                <div style="font-size:10px;color:#777;margin-top:6px;letter-spacing:1px;">(Issued under Rule 115 of the Central Motor Vehicles Rules, 1989)</div>
-                <div style="width:80px;height:3px;background:#0d47a1;margin:14px auto 0;border-radius:2px;"></div>
+            <div style="text-align:center;padding:28px 30px 18px;background:#FFFFFF;">
+                <div style="font-size:11px;color:#000000;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px;">Government of India | Ministry of Road Transport & Highways</div>
+                <div style="font-size:32px;font-weight:900;color:#7D39EB;letter-spacing:3px;margin:8px 0 2px;">SMART PUC</div>
+                <div style="font-size:13px;color:rgba(255,255,255,0.15);letter-spacing:2px;text-transform:uppercase;">Pollution Under Control Certificate</div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:1px;">(Issued under Rule 115 of the Central Motor Vehicles Rules, 1989)</div>
+                <div style="width:80px;height:3px;background:#7D39EB;margin:14px auto 0;border-radius:2px;"></div>
             </div>
 
             <!-- Status Badge -->
@@ -290,56 +331,56 @@
             <div style="padding:0 30px;">
                 <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13px;">
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;width:42%;color:#1a1a1a;">Certificate No. (Token ID)</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;font-weight:600;" id="pdfTokenId">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;width:42%;color:#000000;">Certificate No. (Token ID)</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;font-weight:600;" id="pdfTokenId">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Vehicle Registration No.</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;font-size:15px;font-weight:700;letter-spacing:1px;" id="pdfVehicleId">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Vehicle Registration No.</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;font-size:15px;font-weight:700;letter-spacing:1px;" id="pdfVehicleId">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Owner Wallet Address</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#444;font-size:10px;font-family:monospace;word-break:break-all;" id="pdfOwner">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Owner Wallet Address</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:rgba(255,255,255,0.15);font-size:10px;font-family:monospace;word-break:break-all;" id="pdfOwner">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Vehicle Class</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;" id="pdfVehicleType">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Vehicle Class</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;" id="pdfVehicleType">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Fuel Type</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;text-transform:capitalize;" id="pdfFuelType">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Fuel Type</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;text-transform:capitalize;" id="pdfFuelType">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Composite Emission Score (CES)</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;font-weight:800;font-size:16px;" id="pdfCES">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Composite Emission Score (CES)</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;font-weight:800;font-size:16px;" id="pdfCES">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Compliance Status</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;font-weight:700;" id="pdfCompliance">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Compliance Status</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;font-weight:700;" id="pdfCompliance">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Date of Issue</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;" id="pdfIssueDate">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Date of Issue</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;" id="pdfIssueDate">--</td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;background:#eef1f7;font-weight:700;color:#1a1a1a;">Valid Until</td>
-                        <td style="padding:10px 14px;border:1px solid #c0c8d8;color:#222;font-weight:600;" id="pdfExpiryDate">--</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;background:#FFFFFF;font-weight:700;color:#000000;">Valid Until</td>
+                        <td style="padding:10px 14px;border:1px solid #FFFFFF;color:#000000;font-weight:600;" id="pdfExpiryDate">--</td>
                     </tr>
                 </table>
             </div>
 
             <!-- QR + Blockchain Proof side by side -->
-            <div style="display:flex;align-items:stretch;gap:0;margin:0 30px 20px;border:1px solid #c0c8d8;border-radius:6px;overflow:hidden;">
-                <div style="padding:16px 20px;background:#f8f9fc;display:flex;align-items:center;justify-content:center;border-right:1px solid #c0c8d8;">
+            <div style="display:flex;align-items:stretch;gap:0;margin:0 30px 20px;border:1px solid #FFFFFF;border-radius:6px;overflow:hidden;">
+                <div style="padding:16px 20px;background:#FFFFFF;display:flex;align-items:center;justify-content:center;border-right:1px solid #FFFFFF;">
                     <div id="pdfQRContainer" style="min-width:110px;min-height:110px;"></div>
                 </div>
-                <div style="flex:1;padding:16px 20px;background:#f8f9fc;">
-                    <div style="font-size:12px;font-weight:800;color:#0d47a1;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Blockchain Verification</div>
-                    <div style="font-size:11px;color:#333;line-height:1.6;word-break:break-all;" id="pdfChainProof">This certificate is immutably stored on the Ethereum blockchain.</div>
-                    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #c0c8d8;font-size:10px;color:#555;">
-                        <strong style="color:#333;">Network:</strong> Ethereum (Local Hardhat) &nbsp;|&nbsp;
-                        <strong style="color:#333;">Standard:</strong> ERC-721 NFT &nbsp;|&nbsp;
-                        <strong style="color:#333;">Tamper-proof:</strong> Yes
+                <div style="flex:1;padding:16px 20px;background:#FFFFFF;">
+                    <div style="font-size:12px;font-weight:800;color:#7D39EB;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Blockchain Verification</div>
+                    <div style="font-size:11px;color:#000000;line-height:1.6;word-break:break-all;" id="pdfChainProof">This certificate is immutably stored on the Ethereum blockchain.</div>
+                    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #FFFFFF;font-size:10px;color:rgba(255,255,255,0.35);">
+                        <strong style="color:#000000;">Network:</strong> Ethereum (Local Hardhat) &nbsp;|&nbsp;
+                        <strong style="color:#000000;">Standard:</strong> ERC-721 NFT &nbsp;|&nbsp;
+                        <strong style="color:#000000;">Tamper-proof:</strong> Yes
                     </div>
                 </div>
             </div>
@@ -347,22 +388,22 @@
             <!-- Signatures Section -->
             <div style="display:flex;justify-content:space-between;padding:0 30px;margin-bottom:20px;">
                 <div style="text-align:center;width:200px;">
-                    <div style="border-top:1px solid #555;padding-top:6px;font-size:10px;color:#444;font-weight:600;">Authorized Testing Station</div>
-                    <div style="font-size:9px;color:#777;margin-top:2px;">Smart PUC Digital Station</div>
+                    <div style="border-top:1px solid rgba(255,255,255,0.35);padding-top:6px;font-size:10px;color:rgba(255,255,255,0.15);font-weight:600;">Authorized Testing Station</div>
+                    <div style="font-size:9px;color:rgba(255,255,255,0.5);margin-top:2px;">Smart PUC Digital Station</div>
                 </div>
                 <div style="text-align:center;width:200px;">
-                    <div style="border-top:1px solid #555;padding-top:6px;font-size:10px;color:#444;font-weight:600;">Issuing Authority</div>
-                    <div style="font-size:9px;color:#777;margin-top:2px;">Blockchain Smart Contract</div>
+                    <div style="border-top:1px solid rgba(255,255,255,0.35);padding-top:6px;font-size:10px;color:rgba(255,255,255,0.15);font-weight:600;">Issuing Authority</div>
+                    <div style="font-size:9px;color:rgba(255,255,255,0.5);margin-top:2px;">Blockchain Smart Contract</div>
                 </div>
             </div>
 
             <!-- Footer -->
-            <div style="background:#f0f2f8;padding:10px 30px;text-align:center;font-size:9px;color:#555;border-top:1px solid #c0c8d8;">
+            <div style="background:#FFFFFF;padding:10px 30px;text-align:center;font-size:9px;color:rgba(255,255,255,0.35);border-top:1px solid #FFFFFF;">
                 This is a digitally generated certificate verified on the Ethereum blockchain. &nbsp;|&nbsp; CMVR Rule 115 compliant &nbsp;|&nbsp; Scan QR code to verify authenticity
             </div>
 
             <!-- Bottom accent bar -->
-            <div style="height:8px;background:linear-gradient(90deg,#ff6f00,#ffffff,#138808);"></div>
+            <div style="height:8px;background:linear-gradient(90deg,#C6FF33,#FFFFFF,#C6FF33);"></div>
         </div>
     </div>
 
@@ -413,7 +454,7 @@
                 if (accounts.length > 0) {
                     const addr = accounts[0];
                     document.getElementById('walletAddress').textContent = addr.slice(0, 6) + '...' + addr.slice(-4);
-                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('walletDot').style.background = '#C6FF33';
                     document.getElementById('connectWalletBtn').textContent = 'Connected';
                 }
             } catch (err) {
@@ -507,7 +548,7 @@
                 width: 180,
                 height: 180,
                 colorDark: '#000000',
-                colorLight: '#ffffff',
+                colorLight: '#FFFFFF',
                 correctLevel: QRCode.CorrectLevel.M
             });
 
@@ -552,9 +593,9 @@
             // Populate PDF template
             const badge = document.getElementById('pdfStatusBadge');
             badge.textContent = v.valid ? 'VALID' : 'INVALID';
-            badge.style.background = v.valid ? '#e8f5e9' : '#fbe9e7';
-            badge.style.color = v.valid ? '#1b5e20' : '#b71c1c';
-            badge.style.border = v.valid ? '2px solid #2e7d32' : '2px solid #c62828';
+            badge.style.background = v.valid ? '#C6FF33' : '#7D39EB';
+            badge.style.color = v.valid ? '#C6FF33' : '#7D39EB';
+            badge.style.border = v.valid ? '2px solid #C6FF33' : '2px solid #7D39EB';
 
             document.getElementById('pdfTokenId').textContent = v.token_id > 0 ? '#' + v.token_id : '--';
             document.getElementById('pdfVehicleId').textContent = lastVehicleId;
@@ -565,11 +606,11 @@
             const cesVal = v.average_ces ? v.average_ces.toFixed(4) : '--';
             const cesEl = document.getElementById('pdfCES');
             cesEl.textContent = cesVal;
-            cesEl.style.color = v.average_ces <= 1.0 ? '#1b5e20' : '#b71c1c';
+            cesEl.style.color = v.average_ces <= 1.0 ? '#C6FF33' : '#7D39EB';
 
             const compEl = document.getElementById('pdfCompliance');
             compEl.textContent = v.valid ? 'COMPLIANT' : 'NON-COMPLIANT';
-            compEl.style.color = v.valid ? '#1b5e20' : '#b71c1c';
+            compEl.style.color = v.valid ? '#C6FF33' : '#7D39EB';
 
             document.getElementById('pdfIssueDate').textContent = formatDate(v.issue_date);
             document.getElementById('pdfExpiryDate').textContent = formatDate(v.expiry_date);
@@ -588,7 +629,7 @@
             new QRCode(pdfQR, {
                 text: JSON.stringify({ vid: lastVehicleId, token: v.token_id, valid: v.valid }),
                 width: 100, height: 100,
-                colorDark: '#000000', colorLight: '#ffffff',
+                colorDark: '#000000', colorLight: '#FFFFFF',
                 correctLevel: QRCode.CorrectLevel.M
             });
 
@@ -603,7 +644,7 @@
             template.style.zIndex = '-1';
 
             try {
-                const canvas = await html2canvas(template, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                const canvas = await html2canvas(template, { scale: 2, useCORS: true, backgroundColor: '#FFFFFF' });
                 const imgData = canvas.toDataURL('image/png');
                 const { jsPDF } = window.jspdf;
                 const pdf = new jsPDF('p', 'mm', 'a4');
@@ -715,12 +756,12 @@
             resultDiv.style.display = 'block';
 
             if (typeof window.ethereum === 'undefined') {
-                resultDiv.innerHTML = '<p style="color:#FF9800;">MetaMask not detected. Install MetaMask for direct chain verification.</p>';
+                resultDiv.innerHTML = '<p style="color:#C6FF33;">MetaMask not detected. Install MetaMask for direct chain verification.</p>';
                 return;
             }
 
             try {
-                resultDiv.innerHTML = '<p style="color:#007AFF;">Connecting to blockchain...</p>';
+                resultDiv.innerHTML = '<p style="color:#7D39EB;">Connecting to blockchain...</p>';
                 await window.ethereum.request({ method: 'eth_requestAccounts' });
 
                 // Make sure MetaMask is pointed at the local Hardhat chain
@@ -730,7 +771,7 @@
                     try {
                         await window.SmartPUC.ensureChain();
                     } catch (chainErr) {
-                        resultDiv.innerHTML = '<p style="color:#F44336;">Please switch MetaMask to the <strong>' + window.SmartPUC.LOCAL_CHAIN_NAME + '</strong> network (chainId ' + window.SmartPUC.LOCAL_CHAIN_ID_DEC + ') and try again.</p>';
+                        resultDiv.innerHTML = '<p style="color:#7D39EB;">Please switch MetaMask to the <strong>' + window.SmartPUC.LOCAL_CHAIN_NAME + '</strong> network (chainId ' + window.SmartPUC.LOCAL_CHAIN_ID_DEC + ') and try again.</p>';
                         return;
                     }
                 }
@@ -743,7 +784,7 @@
                 const certAddr = statusData.pucCertAddress;
 
                 if (!certAddr) {
-                    resultDiv.innerHTML = '<p style="color:#F44336;">PUCCertificate contract not deployed.</p>';
+                    resultDiv.innerHTML = '<p style="color:#7D39EB;">PUCCertificate contract not deployed.</p>';
                     return;
                 }
 
@@ -753,23 +794,23 @@
                 const blockNum = await provider.getBlockNumber();
                 const network = await provider.getNetwork();
 
-                let html = `<div style="background:rgba(0,188,212,0.08); padding:1rem; border-radius:10px; margin-top:0.5rem; text-align:left;">`;
-                html += `<p style="color:#00BCD4; font-weight:600;">Direct Blockchain Read (Block #${blockNum})</p>`;
+                let html = `<div style="background:rgba(125,57,235,0.08); padding:1rem; border-radius:10px; margin-top:0.5rem; text-align:left;">`;
+                html += `<p style="color:#7D39EB; font-weight:600;">Direct Blockchain Read (Block #${blockNum})</p>`;
                 html += `<p>Network: ${network.name} (Chain ID: ${network.chainId})</p>`;
                 html += `<p>Contract: ${certAddr}</p>`;
-                html += `<p>Certificate Valid: <strong style="color:${valid ? '#4CAF50' : '#F44336'};">${valid}</strong></p>`;
+                html += `<p>Certificate Valid: <strong style="color:${valid ? '#C6FF33' : '#7D39EB'};">${valid}</strong></p>`;
                 html += `<p>Token ID: ${tokenId.toString()}</p>`;
                 if (expiry > 0) {
                     html += `<p>Expiry: ${new Date(Number(expiry) * 1000).toLocaleString()}</p>`;
                 }
-                html += `<p style="font-size:0.75rem; color:#8892b0; margin-top:0.5rem;">This data was read directly from the blockchain via your MetaMask wallet. No backend server was involved.</p>`;
+                html += `<p style="font-size:0.75rem; color:rgba(255,255,255,0.65); margin-top:0.5rem;">This data was read directly from the blockchain via your MetaMask wallet. No backend server was involved.</p>`;
                 html += `</div>`;
 
                 resultDiv.innerHTML = html;
                 document.getElementById('chainInfo').textContent = `Verified at block #${blockNum} on ${network.name}`;
 
             } catch (err) {
-                resultDiv.innerHTML = `<p style="color:#F44336;">Chain verification failed: ${escapeHtml(err.message)}</p>`;
+                resultDiv.innerHTML = `<p style="color:#7D39EB;">Chain verification failed: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -796,5 +837,28 @@
             }
         })();
     </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

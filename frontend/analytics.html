@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Analytics Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
         .analytics-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
@@ -16,7 +18,7 @@
         /* Fleet overview cards */
         .fleet-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
         .fleet-card {
-            background: var(--bg-card, #111834); border-radius: 14px;
+            background: var(--bg-card, #000000); border-radius: 14px;
             padding: 1.5rem; text-align: center;
             border: 1px solid rgba(255,255,255,0.06);
             transition: transform 0.2s, box-shadow 0.2s;
@@ -24,47 +26,41 @@
         .fleet-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
         .fleet-card .fleet-value {
             font-size: 2.2rem; font-weight: 700;
-            background: linear-gradient(135deg, #007AFF, #00BCD4);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--clr-lime);
         }
         .fleet-card .fleet-label {
-            font-size: 0.8rem; color: #8892b0; text-transform: uppercase;
+            font-size: 0.8rem; color: var(--clr-text-muted); text-transform: uppercase;
             letter-spacing: 1px; margin-top: 0.4rem;
         }
         .fleet-card.warn .fleet-value {
-            background: linear-gradient(135deg, #FF9800, #F44336);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--clr-purple);
         }
         .fleet-card.success .fleet-value {
-            background: linear-gradient(135deg, #4CAF50, #00BCD4);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--clr-lime);
         }
 
         /* Controls bar */
         .controls-bar {
             display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;
-            padding: 1.25rem; background: var(--bg-card, #111834);
+            padding: 1.25rem; background: var(--bg-card, #000000);
             border-radius: 14px; margin-bottom: 1.5rem;
             border: 1px solid rgba(255,255,255,0.06);
         }
         .controls-bar .form-group { margin-bottom: 0; }
-        .controls-bar .form-label { font-size: 0.75rem; color: #8892b0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; display: block; }
+        .controls-bar .form-label { font-size: 0.75rem; color: var(--clr-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; display: block; }
         .controls-bar .form-input,
         .controls-bar .form-select {
             padding: 0.6rem 0.8rem; border-radius: 8px;
-            border: 1px solid #2a3158; background: #0d1229; color: #fff;
+            border: 1px solid var(--clr-border); background: var(--clr-surface); color: var(--clr-text);
             font-size: 0.9rem;
         }
         .controls-bar .form-input:focus,
-        .controls-bar .form-select:focus { border-color: #007AFF; outline: none; }
+        .controls-bar .form-select:focus { border-color: #7D39EB; outline: none; }
 
         /* Worst performers table */
         .worst-table { width: 100%; border-collapse: collapse; }
         .worst-table th {
-            text-align: left; font-size: 0.72rem; color: #8892b0;
+            text-align: left; font-size: 0.72rem; color: var(--clr-text-muted);
             text-transform: uppercase; letter-spacing: 0.8px;
             padding: 0.7rem 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.08);
         }
@@ -77,32 +73,32 @@
             display: inline-flex; align-items: center; justify-content: center;
             width: 26px; height: 26px; border-radius: 50%;
             font-size: 0.75rem; font-weight: 700;
-            background: rgba(244,67,54,0.15); color: #F44336;
+            background: rgba(125,57,235,0.15); color: #7D39EB;
         }
-        .rank-badge.top3 { background: rgba(244,67,54,0.25); }
+        .rank-badge.top3 { background: rgba(125,57,235,0.25); }
 
         /* Export button */
         .btn-export {
-            padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #007AFF;
-            background: transparent; color: #007AFF; cursor: pointer;
+            padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #7D39EB;
+            background: transparent; color: #7D39EB; cursor: pointer;
             font-size: 0.85rem; font-weight: 600; transition: all 0.2s;
         }
-        .btn-export:hover { background: rgba(0,122,255,0.1); }
+        .btn-export:hover { background: rgba(125,57,235,0.1); }
 
         /* Status indicators */
         .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-        .status-dot.green { background: #4CAF50; }
-        .status-dot.red { background: #F44336; }
-        .status-dot.yellow { background: #FF9800; }
+        .status-dot.green { background: #C6FF33; }
+        .status-dot.red { background: #7D39EB; }
+        .status-dot.yellow { background: #C6FF33; }
 
         /* Loading spinner */
         .chart-loading {
             display: flex; align-items: center; justify-content: center;
-            min-height: 280px; color: #8892b0; font-size: 0.9rem;
+            min-height: 280px; color: var(--clr-text-muted); font-size: 0.9rem;
         }
         .chart-loading .spinner {
-            width: 28px; height: 28px; border: 3px solid rgba(0,122,255,0.2);
-            border-top-color: #007AFF; border-radius: 50%;
+            width: 28px; height: 28px; border: 3px solid rgba(125,57,235,0.2);
+            border-top-color: #7D39EB; border-radius: 50%;
             animation: spin 0.8s linear infinite; margin-right: 0.75rem;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -127,42 +123,58 @@
     </style>
 </head>
 <body>
-<div class="app-container">
-
-    <!-- Navbar -->
-    <nav class="navbar">
+<div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>Analytics Dashboard</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link active" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link active" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div id="alertsContainer"></div>
@@ -201,14 +213,14 @@
             <label class="form-label" for="dateTo">To</label>
             <input type="date" class="form-input" id="dateTo">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="flex: 1 1 100%;">
             <label class="form-label">&nbsp;</label>
-            <div style="display:flex; gap:0.5rem;">
+            <div style="display:flex; gap:0.5rem; flex-wrap: wrap;">
                 <button class="btn btn-accent" onclick="loadAllAnalytics()">Load Analytics</button>
-                <button class="btn-export" onclick="exportAllCSV()">Export CSV</button>
-                <button class="btn-export" onclick="exportVehicleCSV()">Export Vehicle CSV</button>
-                <button class="btn-export" onclick="exportVehicleReport()">Export Report</button>
-                <button class="btn-export" onclick="exportLatex()">Export LaTeX</button>
+                <button class="btn btn-outline btn-sm" onclick="exportAllCSV()">Export CSV</button>
+                <button class="btn btn-outline btn-sm" onclick="exportVehicleCSV()">Export Vehicle CSV</button>
+                <button class="btn btn-outline btn-sm" onclick="exportVehicleReport()">Export Report</button>
+                <button class="btn btn-outline btn-sm" onclick="exportLatex()">Export LaTeX</button>
             </div>
         </div>
     </div>
@@ -291,14 +303,14 @@
         <!-- Pre-PUC Predictor (audit 13B #3) -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#128200;</span> Pre-PUC Failure Predictor</div>
+                <div class="card-title"><span class="icon">&#128302;</span> Pre-PUC Failure Predictor</div>
                 <span class="text-muted text-mono" id="predictStatus">Idle</span>
             </div>
             <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
                 <input type="text" id="predictVehicleId" class="form-input" placeholder="Vehicle ID (e.g. MH12AB1234)" style="flex:1;">
                 <button id="predictBtn" class="btn btn-primary">Predict + Explain</button>
             </div>
-            <div id="predictResult" class="text-mono text-sm" style="min-height:160px; padding:0.75rem; background:#0d1229; border-radius:8px; overflow-x:auto;">
+            <div id="predictResult" class="text-mono text-sm" style="min-height:160px; padding:0.75rem; background:var(--clr-surface-2); border:1px solid var(--clr-border); border-radius:8px; overflow-x:auto;">
                 <span class="text-dim">Enter a vehicle id and click "Predict + Explain" to see the SHAP-lite explanation of the failure probability.</span>
             </div>
         </div>
@@ -306,14 +318,14 @@
         <!-- Station Fraud Analysis (audit 13B #14) -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">&#127981;</span> Station-Level Fraud Analysis</div>
+                <div class="card-title"><span class="icon">&#128683;</span> Station-Level Fraud Analysis</div>
                 <span class="text-muted text-mono" id="stationFraudStatus">Idle</span>
             </div>
             <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
                 <input type="number" id="stationFraudLimit" class="form-input" placeholder="Records limit (default 500)" style="flex:1;" value="500">
                 <button id="stationFraudBtn" class="btn btn-primary">Analyze all stations</button>
             </div>
-            <div id="stationFraudResult" class="text-mono text-sm" style="min-height:160px; padding:0.75rem; background:#0d1229; border-radius:8px; overflow-x:auto;">
+            <div id="stationFraudResult" class="text-mono text-sm" style="min-height:160px; padding:0.75rem; background:var(--clr-surface-2); border:1px solid var(--clr-border); border-radius:8px; overflow-x:auto;">
                 <span class="text-dim">Requires admin API key (set window.SMART_PUC_ADMIN_API_KEY). Returns per-station risk reports ranked highest-first.</span>
             </div>
         </div>
@@ -332,7 +344,7 @@
             <button id="chainRootsBtn" class="btn">Batch roots</button>
             <button id="chainStatusBtn" class="btn">Listener status</button>
         </div>
-        <pre id="chainEventsResult" class="text-mono text-sm" style="min-height:140px; padding:0.75rem; background:#0d1229; border-radius:8px; overflow-x:auto; white-space:pre-wrap; word-break:break-word;">Click a button to query the chain-events projection.</pre>
+        <pre id="chainEventsResult" class="text-mono text-sm" style="min-height:140px; padding:0.75rem; background:var(--clr-surface-2); border:1px solid var(--clr-border); border-radius:8px; overflow-x:auto; white-space:pre-wrap; word-break:break-word;">Click a button to query the chain-events projection.</pre>
     </div>
 
     <!-- Footer -->
@@ -394,9 +406,9 @@ async function loadAllAnalytics() {
 function showAlert(msg, type) {
     const container = document.getElementById('alertsContainer');
     const cls = type === 'warn' ? 'alert-warning' : type === 'fail' ? 'alert-violation' : '';
-    container.innerHTML = `<div class="alert ${cls}" style="margin:0.5rem 0; padding:0.75rem 1rem; border-radius:8px; background:rgba(255,152,0,0.1); border-left:4px solid #FF9800; display:flex; justify-content:space-between; align-items:center;">
+    container.innerHTML = `<div class="alert ${cls}" style="margin:0.5rem 0; padding:0.75rem 1rem; border-radius:8px; background:rgba(198,255,51,0.1); border-left:4px solid #C6FF33; display:flex; justify-content:space-between; align-items:center;">
         <span>${escapeHtml(msg)}</span>
-        <button style="background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.2rem;" onclick="this.parentElement.remove()">&#10005;</button>
+        <button style="background:none;border:none;color:rgba(255,255,255,0.65);cursor:pointer;font-size:1.2rem;" onclick="this.parentElement.remove()">&#10005;</button>
     </div>`;
     setTimeout(() => { if (container.firstChild) container.firstChild.remove(); }, 5000);
 }
@@ -448,7 +460,7 @@ async function loadEmissionTrends(vehicleId) {
 
         if (data.success === false) {
             statusEl.textContent = 'No data';
-            loadingEl.innerHTML = '<span style="color:#8892b0;">No trend data available for this vehicle.</span>';
+            loadingEl.innerHTML = '<span style="color:rgba(255,255,255,0.65);">No trend data available for this vehicle.</span>';
             return;
         }
 
@@ -470,36 +482,36 @@ async function loadEmissionTrends(vehicleId) {
                     {
                         label: 'CO2 (g/km)',
                         data: trends.co2 || [],
-                        borderColor: '#007AFF',
-                        backgroundColor: 'rgba(0,122,255,0.1)',
+                        borderColor: '#7D39EB',
+                        backgroundColor: 'rgba(125,57,235,0.1)',
                         borderWidth: 2, tension: 0.3, fill: true, pointRadius: 3
                     },
                     {
                         label: 'NOx (g/km)',
                         data: trends.nox || [],
-                        borderColor: '#F44336',
-                        backgroundColor: 'rgba(244,67,54,0.1)',
+                        borderColor: '#7D39EB',
+                        backgroundColor: 'rgba(125,57,235,0.1)',
                         borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
                     },
                     {
                         label: 'CO (g/km)',
                         data: trends.co || [],
-                        borderColor: '#FF9800',
-                        backgroundColor: 'rgba(255,152,0,0.1)',
+                        borderColor: '#C6FF33',
+                        backgroundColor: 'rgba(198,255,51,0.1)',
                         borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
                     },
                     {
                         label: 'HC (g/km)',
                         data: trends.hc || [],
-                        borderColor: '#9C27B0',
-                        backgroundColor: 'rgba(156,39,176,0.1)',
+                        borderColor: '#7D39EB',
+                        backgroundColor: 'rgba(125,57,235,0.1)',
                         borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
                     },
                     {
                         label: 'PM2.5 (g/km)',
                         data: trends.pm25 || [],
-                        borderColor: '#4CAF50',
-                        backgroundColor: 'rgba(76,175,80,0.1)',
+                        borderColor: '#C6FF33',
+                        backgroundColor: 'rgba(198,255,51,0.1)',
                         borderWidth: 2, tension: 0.3, fill: false, pointRadius: 3
                     }
                 ]
@@ -509,18 +521,18 @@ async function loadEmissionTrends(vehicleId) {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { labels: { color: '#8892b0', usePointStyle: true, padding: 16 } },
+                    legend: { labels: { color: 'rgba(255,255,255,0.65)', usePointStyle: true, padding: 16 } },
                     tooltip: {
-                        backgroundColor: '#1a2044',
-                        titleColor: '#e6f1ff',
-                        bodyColor: '#8892b0',
-                        borderColor: '#2a3158',
+                        backgroundColor: '#000000',
+                        titleColor: '#FFFFFF',
+                        bodyColor: 'rgba(255,255,255,0.65)',
+                        borderColor: '#000000',
                         borderWidth: 1
                     }
                 },
                 scales: {
-                    x: { ticks: { color: '#8892b0', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-                    y: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                    x: { ticks: { color: 'rgba(255,255,255,0.65)', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: 'rgba(255,255,255,0.65)' }, grid: { color: 'rgba(255,255,255,0.04)' } }
                 }
             }
         });
@@ -528,7 +540,7 @@ async function loadEmissionTrends(vehicleId) {
         statusEl.textContent = (trends.timestamps || []).length + ' data points';
     } catch (e) {
         statusEl.textContent = 'Error';
-        loadingEl.innerHTML = '<span style="color:#F44336;">Failed to load trends: ' + escapeHtml(e.message) + '</span>';
+        loadingEl.innerHTML = '<span style="color:#7D39EB;">Failed to load trends: ' + escapeHtml(e.message) + '</span>';
         console.error('Trends error:', e);
     }
 }
@@ -548,7 +560,7 @@ async function loadCESDistribution() {
 
         if (data.success === false) {
             statusEl.textContent = 'No data';
-            loadingEl.innerHTML = '<span style="color:#8892b0;">No distribution data available.</span>';
+            loadingEl.innerHTML = '<span style="color:rgba(255,255,255,0.65);">No distribution data available.</span>';
             return;
         }
 
@@ -557,14 +569,14 @@ async function loadCESDistribution() {
         const bucketKeys = ['0-0.25', '0.25-0.5', '0.5-0.75', '0.75-1.0', '1.0+'];
         const counts = bucketKeys.map(function(k) { return dist[k] || 0; });
         const bucketColors = [
-            'rgba(76,175,80,0.8)',
-            'rgba(0,188,212,0.8)',
-            'rgba(255,193,7,0.8)',
-            'rgba(255,152,0,0.8)',
-            'rgba(244,67,54,0.8)'
+            'rgba(198,255,51,0.8)',
+            'rgba(125,57,235,0.8)',
+            'rgba(198,255,51,0.8)',
+            'rgba(198,255,51,0.8)',
+            'rgba(125,57,235,0.8)'
         ];
         const bucketBorders = [
-            '#4CAF50', '#00BCD4', '#FFC107', '#FF9800', '#F44336'
+            '#C6FF33', '#7D39EB', '#C6FF33', '#C6FF33', '#7D39EB'
         ];
 
         if (distChartInstance) distChartInstance.destroy();
@@ -592,10 +604,10 @@ async function loadCESDistribution() {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#1a2044',
-                        titleColor: '#e6f1ff',
-                        bodyColor: '#8892b0',
-                        borderColor: '#2a3158',
+                        backgroundColor: '#000000',
+                        titleColor: '#FFFFFF',
+                        bodyColor: 'rgba(255,255,255,0.65)',
+                        borderColor: '#000000',
                         borderWidth: 1,
                         callbacks: {
                             title: function(ctx) { return 'CES Range: ' + ctx[0].label; },
@@ -609,14 +621,14 @@ async function loadCESDistribution() {
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#8892b0' },
+                        ticks: { color: 'rgba(255,255,255,0.65)' },
                         grid: { color: 'rgba(255,255,255,0.04)' },
-                        title: { display: true, text: 'CES Score Bucket', color: '#8892b0' }
+                        title: { display: true, text: 'CES Score Bucket', color: 'rgba(255,255,255,0.65)' }
                     },
                     y: {
-                        ticks: { color: '#8892b0', precision: 0 },
+                        ticks: { color: 'rgba(255,255,255,0.65)', precision: 0 },
                         grid: { color: 'rgba(255,255,255,0.04)' },
-                        title: { display: true, text: 'Count', color: '#8892b0' },
+                        title: { display: true, text: 'Count', color: 'rgba(255,255,255,0.65)' },
                         beginAtZero: true
                     }
                 }
@@ -627,7 +639,7 @@ async function loadCESDistribution() {
         statusEl.textContent = total + ' total readings';
     } catch (e) {
         statusEl.textContent = 'Error';
-        loadingEl.innerHTML = '<span style="color:#F44336;">Failed to load distribution: ' + escapeHtml(e.message) + '</span>';
+        loadingEl.innerHTML = '<span style="color:#7D39EB;">Failed to load distribution: ' + escapeHtml(e.message) + '</span>';
         console.error('Distribution error:', e);
     }
 }
@@ -647,7 +659,7 @@ async function loadPhaseBreakdown(vehicleId) {
 
         if (data.success === false) {
             statusEl.textContent = 'No data';
-            loadingEl.innerHTML = '<span style="color:#8892b0;">No phase data available for this vehicle.</span>';
+            loadingEl.innerHTML = '<span style="color:rgba(255,255,255,0.65);">No phase data available for this vehicle.</span>';
             return;
         }
 
@@ -661,10 +673,10 @@ async function loadPhaseBreakdown(vehicleId) {
         });
 
         const phaseColors = [
-            'rgba(0,122,255,0.85)',
-            'rgba(0,188,212,0.85)',
-            'rgba(255,152,0,0.85)',
-            'rgba(244,67,54,0.85)'
+            'rgba(125,57,235,0.85)',
+            'rgba(125,57,235,0.85)',
+            'rgba(198,255,51,0.85)',
+            'rgba(125,57,235,0.85)'
         ];
 
         if (phaseChartInstance) phaseChartInstance.destroy();
@@ -679,7 +691,7 @@ async function loadPhaseBreakdown(vehicleId) {
                 datasets: [{
                     data: avgEmissions,
                     backgroundColor: phaseColors,
-                    borderColor: '#0a0f1f',
+                    borderColor: '#000000',
                     borderWidth: 3,
                     hoverOffset: 8
                 }]
@@ -691,13 +703,13 @@ async function loadPhaseBreakdown(vehicleId) {
                 plugins: {
                     legend: {
                         position: 'bottom',
-                        labels: { color: '#8892b0', usePointStyle: true, padding: 16, font: { size: 12 } }
+                        labels: { color: 'rgba(255,255,255,0.65)', usePointStyle: true, padding: 16, font: { size: 12 } }
                     },
                     tooltip: {
-                        backgroundColor: '#1a2044',
-                        titleColor: '#e6f1ff',
-                        bodyColor: '#8892b0',
-                        borderColor: '#2a3158',
+                        backgroundColor: '#000000',
+                        titleColor: '#FFFFFF',
+                        bodyColor: 'rgba(255,255,255,0.65)',
+                        borderColor: '#000000',
                         borderWidth: 1,
                         callbacks: {
                             label: function(ctx) {
@@ -715,7 +727,7 @@ async function loadPhaseBreakdown(vehicleId) {
         statusEl.textContent = phaseKeys.map(function(k) { return (phases[k] || {}).records || 0; }).reduce(function(a, b) { return a + b; }, 0) + ' records';
     } catch (e) {
         statusEl.textContent = 'Error';
-        loadingEl.innerHTML = '<span style="color:#F44336;">Failed to load phase data: ' + escapeHtml(e.message) + '</span>';
+        loadingEl.innerHTML = '<span style="color:#7D39EB;">Failed to load phase data: ' + escapeHtml(e.message) + '</span>';
         console.error('Phase breakdown error:', e);
     }
 }
@@ -748,7 +760,7 @@ function renderWorstPerformers(performers) {
             '<td><span class="rank-badge ' + rankClass + '">' + rank + '</span></td>' +
             '<td><strong>' + escapeHtml(v.vehicle_id) + '</strong></td>' +
             '<td class="mono">' + escapeHtml(cesVal) + '</td>' +
-            '<td class="mono" style="color:#F44336;">' + escapeHtml(String(violations)) + '</td>' +
+            '<td class="mono" style="color:#7D39EB;">' + escapeHtml(String(violations)) + '</td>' +
             '<td class="mono">' + escapeHtml(String(records)) + '</td>' +
             '<td><span class="status-dot ' + statusColor + '"></span>' + statusLabel + '</td>' +
             '</tr>';
@@ -872,12 +884,12 @@ async function exportLatex() {
             var overlay = document.createElement('div');
             overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:2rem;';
             var box = document.createElement('div');
-            box.style.cssText = 'background:#111834;border-radius:14px;padding:1.5rem;max-width:800px;width:100%;max-height:80vh;overflow:auto;border:1px solid rgba(255,255,255,0.1);';
+            box.style.cssText = 'background:var(--clr-surface); border:1px solid var(--clr-border); border-radius:14px;padding:1.5rem;max-width:800px;width:100%;max-height:80vh;overflow:auto;border:1px solid rgba(255,255,255,0.1);';
             box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">' +
-                '<strong style="color:#e6f1ff;">LaTeX Table — ' + escapeHtml(vid) + '</strong>' +
-                '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;color:#8892b0;cursor:pointer;font-size:1.4rem;">&#10005;</button>' +
+                '<strong style="color:#FFFFFF;">LaTeX Table — ' + escapeHtml(vid) + '</strong>' +
+                '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;color:rgba(255,255,255,0.65);cursor:pointer;font-size:1.4rem;">&#10005;</button>' +
                 '</div>' +
-                '<pre style="background:#0d1229;padding:1rem;border-radius:8px;overflow-x:auto;font-size:0.82rem;color:#ccd6f6;white-space:pre-wrap;word-break:break-word;">' + escapeHtml(data.latex) + '</pre>' +
+                '<pre style="background:var(--clr-surface-2);padding:1rem;border-radius:8px;overflow-x:auto;font-size:0.82rem;color:#FFFFFF;white-space:pre-wrap;word-break:break-word;">' + escapeHtml(data.latex) + '</pre>' +
                 '<button onclick="navigator.clipboard.writeText(this.dataset.latex);this.textContent=\'Copied!\';setTimeout(()=>{this.textContent=\'Copy to Clipboard\'},2000);" data-latex="" class="btn btn-primary" style="margin-top:1rem;">Copy to Clipboard</button>';
             box.querySelector('button[data-latex]').dataset.latex = data.latex;
             overlay.appendChild(box);
@@ -1021,5 +1033,28 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Blockchain Explorer</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         .explorer-container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
 
@@ -121,7 +123,7 @@
             transition: var(--transition);
             cursor: pointer;
         }
-        .tx-item:hover { border-color: rgba(99,102,241,0.3); }
+        .tx-item:hover { border-color: rgba(125,57,235,0.3); }
         .tx-item-header {
             display: flex; align-items: center; gap: var(--space-md);
             padding: var(--space-md) var(--space-lg);
@@ -133,11 +135,11 @@
             font-size: 0.72rem; font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.04em;
         }
-        .badge-emission { background: rgba(34,211,238,0.12); color: #22d3ee; }
-        .badge-certificate { background: rgba(16,185,129,0.12); color: #10b981; }
-        .badge-token { background: rgba(245,158,11,0.12); color: #f59e0b; }
-        .badge-revoke { background: rgba(239,68,68,0.12); color: #ef4444; }
-        .badge-generic { background: rgba(99,102,241,0.12); color: #6366f1; }
+        .badge-emission { background: rgba(125,57,235,0.12); color: #7D39EB; }
+        .badge-certificate { background: rgba(198,255,51,0.12); color: #C6FF33; }
+        .badge-token { background: rgba(198,255,51,0.12); color: #C6FF33; }
+        .badge-revoke { background: rgba(125,57,235,0.12); color: #7D39EB; }
+        .badge-generic { background: rgba(125,57,235,0.12); color: #7D39EB; }
 
         .tx-hash {
             font-family: var(--font-mono); font-size: 0.8rem;
@@ -183,39 +185,65 @@
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Navbar -->
-        <nav class="navbar">
-            <div class="navbar-top-row">
-                <a href="index.html" class="navbar-brand">
-                    <div class="logo">&#9889;</div>
-                    <div><h1>Smart PUC</h1><span>Blockchain Explorer</span></div>
-                </a>
-                <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
-            </div>
-            <div class="navbar-actions" id="navbarActions">
-                <a href="index.html" class="nav-link">Vehicle</a>
-                <a href="authority.html" class="nav-link">Authority</a>
-                <a href="verify.html" class="nav-link">Verify</a>
-                <a href="analytics.html" class="nav-link">Analytics</a>
-                <a href="fleet.html" class="nav-link">Fleet</a>
-                <a href="rto.html" class="nav-link">RTO</a>
-                <a href="marketplace.html" class="nav-link">Marketplace</a>
-                <a href="cpcb.html" class="nav-link">CPCB</a>
-                <a href="compare.html" class="nav-link">Compare</a>
+    <div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
+        <div class="navbar-top-row">
+            <a href="index.html" class="navbar-brand">
+                <div class="logo">&#9889;</div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
+            </a>
+        </div>
+        <div class="navbar-actions" id="navbarActions">
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
                 <a href="twin.html" class="nav-link">Twin</a>
                 <a href="leaderboard.html" class="nav-link">Leaderboard</a>
                 <a href="explorer.html" class="nav-link active">Explorer</a>
-                <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-                <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Language Selector -->
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
+                <div class="lang-dropdown" id="langDropdown">
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                </div>
             </div>
-        </nav>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
+        </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
+    </nav>
 
         <!-- Health + Contracts Grid -->
         <div class="explorer-grid">
             <!-- API Health Dashboard -->
             <div class="health-panel">
-                <h3>&#128994; System Health</h3>
+                <h3>&#128153; System Health</h3>
                 <div class="health-items" id="healthItems">
                     <div class="health-item">
                         <span class="health-item-name">Backend API</span>
@@ -239,7 +267,7 @@
 
             <!-- Contract Addresses -->
             <div class="contracts-panel">
-                <h3>&#128220; Deployed Contracts</h3>
+                <h3>&#128279; Deployed Contracts</h3>
                 <div id="contractsList">
                     <div class="contract-item">
                         <div class="contract-name">EmissionRegistry</div>
@@ -267,7 +295,7 @@
         </div>
 
         <!-- Recent Transactions -->
-        <div class="section-title">&#128279; Recent Blockchain Transactions</div>
+        <div class="section-title">&#128260; Recent Blockchain Transactions</div>
         <div class="tx-panel">
             <div class="tx-filter">
                 <select class="form-select" id="txVehicleFilter" onchange="loadTransactions()" style="max-width:300px;">
@@ -294,7 +322,7 @@
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                 if (accounts.length > 0) {
                     document.getElementById('walletAddress').textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
-                    document.getElementById('walletDot').style.background = '#4CAF50';
+                    document.getElementById('walletDot').style.background = '#C6FF33';
                     document.getElementById('connectWalletBtn').textContent = 'Connected';
                 }
             } catch(e) { console.error(e); }
@@ -545,5 +573,28 @@
         loadVehicleFilter();
         startHealthRefresh();
     </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>

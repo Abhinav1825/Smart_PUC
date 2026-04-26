@@ -6,6 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://router.project-osrm.org https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>Smart PUC — Fleet Management Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="navbar.js" defer></script>
     <style>
         /* Fleet-specific styles */
         .fleet-overview { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
@@ -13,18 +15,16 @@
         @media (max-width: 500px) { .fleet-overview { grid-template-columns: 1fr; } }
 
         .fleet-stat-card {
-            background: var(--bg-card, #111834); border-radius: 14px; padding: 1.4rem;
-            text-align: center; border: 1px solid var(--clr-border, #1e2a4a);
+            background: var(--bg-card, #000000); border-radius: 14px; padding: 1.4rem;
+            text-align: center; border: 1px solid var(--clr-border, #000000);
             transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
         .fleet-stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
         .fleet-stat-card .stat-value {
             font-size: 2rem; font-weight: 700;
-            background: linear-gradient(135deg, #007AFF, #00BCD4);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--clr-lime);
         }
-        .fleet-stat-card .stat-label { font-size: 0.78rem; color: #8892b0; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .fleet-stat-card .stat-label { font-size: 0.78rem; color: var(--clr-text-muted); margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* Sortable table headers */
         .sortable { cursor: pointer; user-select: none; position: relative; padding-right: 1.2em; }
@@ -33,101 +33,117 @@
         .sortable.desc::after { content: '\25BC'; opacity: 0.9; }
 
         /* Row color coding */
-        tr.row-compliant { border-left: 3px solid #4CAF50; }
-        tr.row-violation { border-left: 3px solid #F44336; background: rgba(244,67,54,0.04); }
+        tr.row-compliant { border-left: 3px solid #C6FF33; }
+        tr.row-violation { border-left: 3px solid #7D39EB; background: rgba(125,57,235,0.04); }
 
         /* Alert severity badges */
-        .severity-high { background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336; }
-        .severity-medium { background: rgba(255,152,0,0.15); color: #FF9800; border: 1px solid #FF9800; }
-        .severity-low { background: rgba(33,150,243,0.15); color: #2196F3; border: 1px solid #2196F3; }
+        .severity-high { background: rgba(125,57,235,0.15); color: #7D39EB; border: 1px solid #7D39EB; }
+        .severity-medium { background: rgba(198,255,51,0.15); color: #C6FF33; border: 1px solid #C6FF33; }
+        .severity-low { background: rgba(125,57,235,0.15); color: #7D39EB; border: 1px solid #7D39EB; }
         .severity-badge { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
 
         .alert-card {
             padding: 0.9rem 1.1rem; border-radius: 10px; margin-bottom: 0.6rem;
-            background: rgba(255,255,255,0.02); border: 1px solid var(--clr-border, #1e2a4a);
+            background: rgba(255,255,255,0.02); border: 1px solid var(--clr-border, #000000);
             display: flex; justify-content: space-between; align-items: center; gap: 1rem;
         }
-        .alert-card-high { border-left: 3px solid #F44336; }
-        .alert-card-medium { border-left: 3px solid #FF9800; }
-        .alert-card-low { border-left: 3px solid #2196F3; }
+        .alert-card-high { border-left: 3px solid #7D39EB; }
+        .alert-card-medium { border-left: 3px solid #C6FF33; }
+        .alert-card-low { border-left: 3px solid #7D39EB; }
 
         .alert-info { flex: 1; }
         .alert-vehicle { font-weight: 600; font-size: 0.95rem; }
-        .alert-message { color: #8892b0; font-size: 0.82rem; margin-top: 0.15rem; }
-        .alert-time { color: #5a6a8a; font-size: 0.75rem; white-space: nowrap; }
+        .alert-message { color: var(--clr-text-muted); font-size: 0.82rem; margin-top: 0.15rem; }
+        .alert-time { color: var(--clr-text-muted); font-size: 0.75rem; white-space: nowrap; }
 
         /* Bulk actions bar */
         .bulk-bar {
             display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem;
-            background: rgba(0,122,255,0.08); border-radius: 10px; margin-bottom: 1rem;
-            border: 1px solid rgba(0,122,255,0.2);
+            background: rgba(125,57,235,0.08); border-radius: 10px; margin-bottom: 1rem;
+            border: 1px solid rgba(125,57,235,0.2);
         }
-        .bulk-bar .selected-count { font-weight: 600; color: #007AFF; }
+        .bulk-bar .selected-count { font-weight: 600; color: #7D39EB; }
 
         /* Eligibility indicators */
-        .eligibility-yes { color: #4CAF50; font-weight: 600; }
-        .eligibility-no { color: #F44336; font-weight: 600; }
-        .eligibility-pending { color: #FF9800; font-weight: 600; }
+        .eligibility-yes { color: #C6FF33; font-weight: 600; }
+        .eligibility-no { color: #7D39EB; font-weight: 600; }
+        .eligibility-pending { color: #C6FF33; font-weight: 600; }
 
         /* Chart container */
         .chart-container { position: relative; height: 350px; width: 100%; }
 
         /* Checkbox styling */
-        .fleet-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #007AFF; }
+        .fleet-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #7D39EB; }
 
         /* Loading spinner */
         .fleet-spinner {
             display: inline-block; width: 20px; height: 20px;
-            border: 2px solid rgba(255,255,255,0.1); border-top-color: #007AFF;
+            border: 2px solid rgba(255,255,255,0.1); border-top-color: #7D39EB;
             border-radius: 50%; animation: fleet-spin 0.6s linear infinite;
         }
         @keyframes fleet-spin { to { transform: rotate(360deg); } }
 
-        .empty-fleet-state { text-align: center; padding: 3rem 1rem; color: #5a6a8a; }
+        .empty-fleet-state { text-align: center; padding: 3rem 1rem; color: var(--clr-text-muted); }
         .empty-fleet-state .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
 
         .alerts-scroll { max-height: 400px; overflow-y: auto; padding-right: 0.5rem; }
         .alerts-scroll::-webkit-scrollbar { width: 4px; }
-        .alerts-scroll::-webkit-scrollbar-thumb { background: #2a3158; border-radius: 4px; }
+        .alerts-scroll::-webkit-scrollbar-thumb { background: var(--clr-surface); border-radius: 4px; }
     </style>
 </head>
 <body>
-<div class="app-container">
-
-    <!-- Navbar -->
-    <nav class="navbar">
+<div class="app-container">    <!-- Unified Navbar -->
+    <nav class="navbar" id="navbar">
         <div class="navbar-top-row">
             <a href="index.html" class="navbar-brand">
                 <div class="logo">&#9889;</div>
-                <div><h1>Smart PUC</h1><span>Fleet Management</span></div>
+                <div>
+                    <h1 data-i18n="brand_title">Smart PUC</h1>
+                    <span data-i18n="brand_subtitle">Multi-Pollutant Emission Monitor</span>
+                </div>
             </a>
-            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation">&#9776;</button>
         </div>
         <div class="navbar-actions" id="navbarActions">
-            <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
-            <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
-            <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
-            <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
-            <a href="fleet.html" class="nav-link active" data-i18n="nav_fleet">Fleet</a>
-            <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
-            <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
-            <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
-            <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
-            <a href="twin.html" class="nav-link">Twin</a>
-            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
-            <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="index.html" class="nav-link" data-i18n="nav_vehicle">Vehicle</a>
+                <a href="authority.html" class="nav-link" data-i18n="nav_authority">Authority</a>
+                <a href="verify.html" class="nav-link" data-i18n="nav_verify">Verify</a>
+                <a href="analytics.html" class="nav-link" data-i18n="nav_analytics">Analytics</a>
+                <a href="fleet.html" class="nav-link active" data-i18n="nav_fleet">Fleet</a>
+                <a href="rto.html" class="nav-link" data-i18n="nav_rto">RTO</a>
+                <a href="marketplace.html" class="nav-link" data-i18n="nav_marketplace">Marketplace</a>
+                <a href="cpcb.html" class="nav-link" data-i18n="nav_cpcb">CPCB</a>
+                <a href="compare.html" class="nav-link" data-i18n="nav_compare">Compare</a>
+                <a href="twin.html" class="nav-link">Twin</a>
+                <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+                <a href="explorer.html" class="nav-link">Explorer</a>
             <!-- Language Selector -->
             <div class="lang-selector" id="langSelector">
-                <button class="lang-selector-btn" onclick="toggleLangDropdown()">&#127760; EN</button>
+                <button class="lang-selector-btn" onclick="toggleLangDropdown && toggleLangDropdown()" aria-label="Language">&#127760; EN</button>
                 <div class="lang-dropdown" id="langDropdown">
-                    <button class="lang-option active" onclick="switchLanguage('en')">English</button>
-                    <button class="lang-option" onclick="switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
-                    <button class="lang-option" onclick="switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
+                    <button class="lang-option active" onclick="switchLanguage && switchLanguage('en')">English</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('hi')">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button>
+                    <button class="lang-option" onclick="switchLanguage && switchLanguage('mr')">&#2350;&#2352;&#2366;&#2336;&#2368;</button>
                 </div>
             </div>
-            <div class="wallet-status"><span class="wallet-dot" id="walletDot"></span><span id="walletAddress">Not Connected</span></div>
-            <button class="btn btn-primary btn-sm" id="connectWalletBtn" onclick="connectWallet()">Connect</button>
+            <!-- Notification Bell -->
+            <div class="notif-bell-container" id="notifBellContainer">
+                <button class="notif-bell-btn" onclick="toggleNotifDropdown && toggleNotifDropdown()" title="Notifications" aria-label="Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Notifications</div>
+                    <div id="notifList"><div class="notif-empty">No notifications yet</div></div>
+                </div>
+            </div>
+            <!-- Theme Toggle -->
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme && toggleTheme()" title="Toggle theme" aria-label="Toggle theme">&#127769;</button>
+            <div class="wallet-status" id="walletStatus">
+                <span class="wallet-dot" id="walletDot"></span>
+                <span id="walletAddress">Not Connected</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="connectWalletBtn" data-wallet-button>
+                Connect Wallet
+            </button>
         </div>
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation" aria-expanded="false">&#9776;</button>
     </nav>
 
     <div id="alertsContainer"></div>
@@ -151,7 +167,7 @@
             <div class="stat-label">Avg CES</div>
         </div>
         <div class="fleet-stat-card">
-            <div class="stat-value" id="ovTotalGCT" style="-webkit-text-fill-color:#4CAF50; color:#4CAF50;">--</div>
+            <div class="stat-value" id="ovTotalGCT">--</div>
             <div class="stat-label">Total GCT Earned</div>
         </div>
     </div>
@@ -170,7 +186,7 @@
             <span class="selected-count" id="selectedCount">0 selected</span>
             <button class="btn btn-accent btn-sm" id="bulkIssueBtn" onclick="bulkIssueCertificates()">Issue Certificates</button>
             <button class="btn btn-outline btn-sm" onclick="clearSelection()">Clear Selection</button>
-            <span id="bulkStatus" style="font-size:0.82rem;color:#8892b0;"></span>
+            <span id="bulkStatus" style="font-size:0.82rem;color:rgba(255,255,255,0.65);"></span>
         </div>
 
         <div class="table-container table-responsive">
@@ -205,7 +221,7 @@
             </div>
             <div class="alerts-scroll" id="alertsPanel">
                 <div class="empty-fleet-state">
-                    <div class="icon">&#128276;</div>
+                    <div class="icon">&#128202;</div>
                     <p>Loading alerts...</p>
                 </div>
             </div>
@@ -358,11 +374,11 @@ function renderFleetTable() {
         if (pucLower === 'valid' || pucLower === 'active') {
             pucBadge = '<span class="status-badge pass">VALID</span>';
         } else if (pucLower === 'expired') {
-            pucBadge = '<span class="status-badge" style="background:rgba(255,152,0,0.15);color:#FF9800;">EXPIRED</span>';
+            pucBadge = '<span class="status-badge" style="background:rgba(198,255,51,0.15);color:#C6FF33;">EXPIRED</span>';
         } else if (pucLower === 'revoked') {
             pucBadge = '<span class="status-badge fail">REVOKED</span>';
         } else {
-            pucBadge = '<span class="status-badge" style="background:rgba(255,255,255,0.05);color:#8892b0;">NONE</span>';
+            pucBadge = '<span class="status-badge" style="background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.65);">NONE</span>';
         }
 
         let eligBadge;
@@ -373,15 +389,15 @@ function renderFleetTable() {
         } else if (eligible === 'pending') {
             eligBadge = '<span class="eligibility-pending">Pending</span>';
         } else {
-            eligBadge = '<span style="color:#5a6a8a;">--</span>';
+            eligBadge = '<span style="color:rgba(255,255,255,0.65);">--</span>';
         }
 
         return '<tr class="' + rowClass + '">' +
             '<td><input type="checkbox" class="fleet-checkbox" value="' + escapeHtml(vid) + '" ' + checked + ' onchange="toggleVehicleSelect(this)"></td>' +
             '<td><strong>' + escapeHtml(vid) + '</strong></td>' +
             '<td class="mono">' + totalRec + '</td>' +
-            '<td class="mono" style="color:' + (violations > 0 ? '#F44336' : 'inherit') + ';">' + violations + '</td>' +
-            '<td class="mono" style="color:' + (fraudAlerts > 0 ? '#FF9800' : 'inherit') + ';">' + fraudAlerts + '</td>' +
+            '<td class="mono" style="color:' + (violations > 0 ? '#7D39EB' : 'inherit') + ';">' + violations + '</td>' +
+            '<td class="mono" style="color:' + (fraudAlerts > 0 ? '#C6FF33' : 'inherit') + ';">' + fraudAlerts + '</td>' +
             '<td class="mono">' + escapeHtml(avgCes) + '</td>' +
             '<td>' + pucBadge + '</td>' +
             '<td>' + eligBadge + '</td>' +
@@ -483,8 +499,8 @@ async function bulkIssueCertificates() {
         }
     }
 
-    statusEl.innerHTML = '<span style="color:#4CAF50;">' + issued + ' issued</span>' +
-        (failed > 0 ? ', <span style="color:#F44336;">' + failed + ' failed</span>' : '');
+    statusEl.innerHTML = '<span style="color:#C6FF33;">' + issued + ' issued</span>' +
+        (failed > 0 ? ', <span style="color:#7D39EB;">' + failed + ' failed</span>' : '');
     btn.disabled = false;
 
     clearSelection();
@@ -537,7 +553,7 @@ async function loadFleetAlerts() {
         }).join('');
     } catch (e) {
         console.warn('Fleet alerts fetch failed:', e.message);
-        panel.innerHTML = '<div class="empty-fleet-state"><div class="icon">&#128276;</div><p>Could not load alerts.</p></div>';
+        panel.innerHTML = '<div class="empty-fleet-state"><div class="icon">&#128202;</div><p>Could not load alerts.</p></div>';
         document.getElementById('alertCount').textContent = '0 alerts';
     }
 }
@@ -554,15 +570,15 @@ function renderComparisonChart() {
     const cesValues = fleetVehicles.map(function(v) { return v.avg_ces != null ? parseFloat(v.avg_ces) : 0; });
 
     const barColors = cesValues.map(function(ces) {
-        if (ces >= 1.0) return 'rgba(244, 67, 54, 0.75)';
-        if (ces >= 0.75) return 'rgba(255, 152, 0, 0.75)';
-        return 'rgba(76, 175, 80, 0.75)';
+        if (ces >= 1.0) return 'rgba(125,57,235,0.75)';
+        if (ces >= 0.75) return 'rgba(198,255,51,0.75)';
+        return 'rgba(198,255,51,0.75)';
     });
 
     const borderColors = cesValues.map(function(ces) {
-        if (ces >= 1.0) return '#F44336';
-        if (ces >= 0.75) return '#FF9800';
-        return '#4CAF50';
+        if (ces >= 1.0) return '#7D39EB';
+        if (ces >= 0.75) return '#C6FF33';
+        return '#C6FF33';
     });
 
     if (comparisonChart) {
@@ -589,10 +605,10 @@ function renderComparisonChart() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(17, 24, 52, 0.95)',
-                    titleColor: '#ffffff',
-                    bodyColor: '#8892b0',
-                    borderColor: '#2a3158',
+                    backgroundColor: 'rgba(125,57,235,0.95)',
+                    titleColor: '#FFFFFF',
+                    bodyColor: 'rgba(255,255,255,0.65)',
+                    borderColor: '#000000',
                     borderWidth: 1,
                     callbacks: {
                         label: function(ctx) {
@@ -603,14 +619,14 @@ function renderComparisonChart() {
             },
             scales: {
                 x: {
-                    ticks: { color: '#8892b0', font: { size: 10 }, maxRotation: 45, minRotation: 0 },
+                    ticks: { color: 'rgba(255,255,255,0.65)', font: { size: 10 }, maxRotation: 45, minRotation: 0 },
                     grid: { display: false }
                 },
                 y: {
                     beginAtZero: true,
-                    ticks: { color: '#8892b0' },
+                    ticks: { color: 'rgba(255,255,255,0.65)' },
                     grid: { color: 'rgba(255,255,255,0.04)' },
-                    title: { display: true, text: 'CES Score', color: '#8892b0' }
+                    title: { display: true, text: 'CES Score', color: 'rgba(255,255,255,0.65)' }
                 }
             },
             // Threshold line annotation via plugin
@@ -620,15 +636,15 @@ function renderComparisonChart() {
                         type: 'line',
                         yMin: 1.0,
                         yMax: 1.0,
-                        borderColor: '#F44336',
+                        borderColor: '#7D39EB',
                         borderWidth: 2,
                         borderDash: [6, 3],
                         label: {
                             content: 'Pass Threshold (1.0)',
                             enabled: true,
                             position: 'end',
-                            backgroundColor: 'rgba(244,67,54,0.8)',
-                            color: '#fff',
+                            backgroundColor: 'rgba(125,57,235,0.8)',
+                            color: '#FFFFFF',
                             font: { size: 10 }
                         }
                     }
@@ -646,12 +662,12 @@ function renderComparisonChart() {
                 ctx.save();
                 ctx.beginPath();
                 ctx.setLineDash([6, 3]);
-                ctx.strokeStyle = '#F44336';
+                ctx.strokeStyle = '#7D39EB';
                 ctx.lineWidth = 2;
                 ctx.moveTo(xScale.left, y);
                 ctx.lineTo(xScale.right, y);
                 ctx.stroke();
-                ctx.fillStyle = '#F44336';
+                ctx.fillStyle = '#7D39EB';
                 ctx.font = '10px sans-serif';
                 ctx.fillText('Pass Threshold (1.0)', xScale.right - 130, y - 6);
                 ctx.restore();
@@ -676,5 +692,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<script>
+// Unified navbar hamburger toggle
+(function() {
+    var btn = document.getElementById('hamburgerBtn');
+    var menu = document.getElementById('navbarActions');
+    if (btn && menu) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var active = menu.classList.toggle('active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+})();
+</script>
+
 </body>
 </html>
